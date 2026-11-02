@@ -44,7 +44,7 @@ local function LoadCustomImage(urlOrAsset, defaultAsset)
 end
 
 local StarHubUI = {
-    Version = "5.8.1",
+    Version = "5.8.4",
     Settings = {
         AutoSaveEnabled = true,
         SoundEnabled = true,
@@ -811,8 +811,9 @@ function StarHubUI:CreateWindow(cfg)
 
     local MainWindow = Instance.new("Frame", ScreenGui)
     MainWindow.Name = "MainWindow"
+    MainWindow.AnchorPoint = Vector2.new(0.5, 0.5)
     MainWindow.Size = WinSize
-    MainWindow.Position = UDim2.new(0.5, -WinSize.X.Offset/2, 0.5, -WinSize.Y.Offset/2)
+    MainWindow.Position = UDim2.new(0.5, 0, 0.5, 0)
     MainWindow.BackgroundColor3 = Theme.Background
     MainWindow.BackgroundTransparency = StarHubUI.Settings.WindowTransparency
     MainWindow.BorderSizePixel = 0
@@ -830,6 +831,7 @@ function StarHubUI:CreateWindow(cfg)
     local winScale = Instance.new("UIScale", MainWindow)
     local responsiveScale = 1
     local isMobileLayout = false
+    local isPortraitMobile = false
     local ApplyResponsiveLayout = function() end
 
     local function UpdateResponsiveScale()
@@ -842,6 +844,7 @@ function StarHubUI:CreateWindow(cfg)
         local isTouch = UserInputService.TouchEnabled
 
         isMobileLayout = isTouch or vp.X < 760 or vp.Y < 600
+        isPortraitMobile = isMobileLayout and vp.Y > vp.X
 
         if isMobileLayout then
             -- Keep a small, symmetric safe area so the full window remains
@@ -862,11 +865,24 @@ function StarHubUI:CreateWindow(cfg)
         ApplyResponsiveLayout()
     end
 
+    -- Recalculate after the first rendered frame as CurrentCamera may not be
+    -- available yet when the library is loaded for the first time.
     UpdateResponsiveScale()
+    task.defer(UpdateResponsiveScale)
+    task.delay(0.15, UpdateResponsiveScale)
     pcall(function()
-        if workspace.CurrentCamera then
-            TrackConnection(workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(UpdateResponsiveScale))
+        local function BindCamera(camera)
+            if not camera then return end
+            TrackConnection(camera:GetPropertyChangedSignal("ViewportSize"):Connect(UpdateResponsiveScale))
+            UpdateResponsiveScale()
         end
+
+        if workspace.CurrentCamera then
+            BindCamera(workspace.CurrentCamera)
+        end
+        TrackConnection(workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+            BindCamera(workspace.CurrentCamera)
+        end))
     end)
 
     local CustomWallpaper = Instance.new("ImageLabel", MainWindow)
@@ -1322,7 +1338,7 @@ function StarHubUI:CreateWindow(cfg)
         if show then
             MainWindow.Visible = true
             winScale.Scale = responsiveScale * 0.8
-            MainWindow.Position = UDim2.new(0.5, -WinSize.X.Offset/2, 0.5, -WinSize.Y.Offset/2)
+            MainWindow.Position = UDim2.new(0.5, 0, 0.5, 0)
             MainWindow.Size = isMinimized and UDim2.new(0, WinSize.X.Offset, 0, 44) or WinSize
             if isMinimized then
                 HeaderLine.Visible = false
@@ -1379,7 +1395,7 @@ function StarHubUI:CreateWindow(cfg)
 
     MakeTrafficDot(Color3.fromRGB(39, 201, 63), Color3.fromRGB(75, 235, 100), function()
         PlaySound("Click")
-        Tween(MainWindow, 0.32, {Position = UDim2.new(0.5, -WinSize.X.Offset/2, 0.5, -WinSize.Y.Offset/2)}, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+        Tween(MainWindow, 0.32, {Position = UDim2.new(0.5, 0, 0.5, 0)}, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
     end)
 
     local sep1 = Instance.new("Frame", Header)
@@ -1514,7 +1530,7 @@ function StarHubUI:CreateWindow(cfg)
     SearchInput.TextSize = 10.5
     SearchInput.TextColor3 = Theme.TextTitle
     SearchInput.PlaceholderColor3 = Theme.TextMuted
-    SearchInput.PlaceholderText = "Search..."
+    SearchInput.PlaceholderText = isMobileLayout and "Search" or "Search..."
     SearchInput.ClearTextOnFocus = false
     SearchInput.Text = ""
 
@@ -2257,7 +2273,7 @@ function StarHubUI:CreateWindow(cfg)
         RightCol.LayoutOrder = 2
 
         ApplyResponsiveLayout = function()
-            local sidebarWidth = isMobileLayout and 132 or 175
+            local sidebarWidth = isPortraitMobile and 168 or (isMobileLayout and 145 or 175)
             Sidebar.Size = UDim2.new(0, sidebarWidth, 1, 0)
             ContentArea.Size = UDim2.new(1, -sidebarWidth, 1, 0)
             ContentArea.Position = UDim2.new(0, sidebarWidth, 0, 0)
@@ -2340,11 +2356,12 @@ function StarHubUI:CreateWindow(cfg)
 
         local tName = Instance.new("TextLabel", TabBtn)
         tName.Name = "TabName"
-        tName.Size = UDim2.new(1, -70, 1, 0)
-        tName.Position = UDim2.new(0, 40, 0, 0)
+        tName.Size = UDim2.new(1, isMobileLayout and -58 or -70, 1, 0)
+        tName.Position = UDim2.new(0, isMobileLayout and 36 or 40, 0, 0)
         tName.BackgroundTransparency = 1
         tName.Font = Enum.Font.GothamMedium
-        tName.TextSize = 11.5
+        tName.TextSize = isMobileLayout and 10 or 11.5
+        tName.TextTruncate = Enum.TextTruncate.AtEnd
         tName.TextColor3 = Theme.TextDim
         tName.TextXAlignment = Enum.TextXAlignment.Left
         tName.Text = TabTitle
