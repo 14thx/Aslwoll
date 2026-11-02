@@ -696,7 +696,7 @@ function StarHubUI:Notify(cfg)
         tL.Position = UDim2.new(0, 58, 0, 11)
         tL.BackgroundTransparency = 1
         tL.Font = Enum.Font.GothamBold
-        tL.TextSize = 11
+        tL.TextSize = 12
         tL.TextColor3 = Theme.TextTitle
         tL.TextXAlignment = Enum.TextXAlignment.Left
         tL.TextTruncate = Enum.TextTruncate.AtEnd
@@ -708,7 +708,7 @@ function StarHubUI:Notify(cfg)
         sL.Position = UDim2.new(0, 58, 0, 29)
         sL.BackgroundTransparency = 1
         sL.Font = Enum.Font.GothamMedium
-        sL.TextSize = 9.5
+        sL.TextSize = 10.5
         sL.TextColor3 = Theme.AccentLight
         sL.TextXAlignment = Enum.TextXAlignment.Left
         sL.TextTruncate = Enum.TextTruncate.AtEnd
@@ -732,7 +732,7 @@ function StarHubUI:Notify(cfg)
         tagText.Size = UDim2.new(1, 0, 1, 0)
         tagText.BackgroundTransparency = 1
         tagText.Font = Enum.Font.GothamBold
-        tagText.TextSize = 8.5
+        tagText.TextSize = 9.5
         tagText.TextColor3 = badgeCol
         tagText.Text = string.upper(badgeText)
         tagText.ZIndex = 5002
@@ -1022,7 +1022,7 @@ function StarHubUI:CreateWindow(cfg)
         lbl.Position = UDim2.new(colX, 0, startY, 0)
         lbl.BackgroundTransparency = 1
         lbl.Font = Enum.Font.Code
-        lbl.TextSize = 11.5
+        lbl.TextSize = 12.5
         lbl.TextColor3 = Theme.AccentLight
         lbl.TextTransparency = math.random(25, 75) / 100
         lbl.Text = matrixChars[math.random(1, #matrixChars)]
@@ -1453,7 +1453,7 @@ function StarHubUI:CreateWindow(cfg)
     TitleLabel.Size = UDim2.new(0, 0, 0, 16)
     TitleLabel.BackgroundTransparency = 1
     TitleLabel.Font = Enum.Font.GothamBold
-    TitleLabel.TextSize = 13
+    TitleLabel.TextSize = 14
     TitleLabel.TextColor3 = Theme.TextTitle
     TitleLabel.Text = WinTitle
 
@@ -1462,7 +1462,7 @@ function StarHubUI:CreateWindow(cfg)
     SubLabel.Size = UDim2.new(0, 0, 0, 12)
     SubLabel.BackgroundTransparency = 1
     SubLabel.Font = Enum.Font.Gotham
-    SubLabel.TextSize = 9.5
+    SubLabel.TextSize = 10.5
     SubLabel.TextColor3 = Theme.TextDim
     SubLabel.Text = WinSubTitle
 
@@ -1514,6 +1514,7 @@ function StarHubUI:CreateWindow(cfg)
     LogoHolder.Size = UDim2.new(1, 0, 0, 94)
     LogoHolder.Position = UDim2.new(0, 0, 0, 6)
     LogoHolder.BackgroundTransparency = 1
+    LogoHolder.Visible = false
 
     local BrandSquircle = Instance.new("TextButton", LogoHolder)
     BrandSquircle.Size = UDim2.new(0, 74, 0, 74)
@@ -1549,7 +1550,7 @@ function StarHubUI:CreateWindow(cfg)
 
     local SearchBox = Instance.new("Frame", Sidebar)
     SearchBox.Size = UDim2.new(1, -16, 0, 28)
-    SearchBox.Position = UDim2.new(0, 8, 0, 104)
+    SearchBox.Position = UDim2.new(0, 8, 0, 14)
     SearchBox.BackgroundColor3 = Theme.Box
     Instance.new("UICorner", SearchBox).CornerRadius = UDim.new(0, 9)
     local sStroke = Instance.new("UIStroke", SearchBox)
@@ -1569,7 +1570,7 @@ function StarHubUI:CreateWindow(cfg)
     SearchInput.Position = UDim2.new(0, 26, 0, 0)
     SearchInput.BackgroundTransparency = 1
     SearchInput.Font = Enum.Font.Gotham
-    SearchInput.TextSize = 10.5
+    SearchInput.TextSize = 11.5
     SearchInput.TextColor3 = Theme.TextTitle
     SearchInput.PlaceholderColor3 = Theme.TextMuted
     SearchInput.PlaceholderText = isMobileLayout and "Search" or "Search..."
@@ -1582,7 +1583,7 @@ function StarHubUI:CreateWindow(cfg)
     sClear.BackgroundTransparency = 1
     sClear.Text = "X"
     sClear.Font = Enum.Font.GothamBold
-    sClear.TextSize = 9
+    sClear.TextSize = 10
     sClear.TextColor3 = Theme.TextMuted
     sClear.Visible = false
 
@@ -1593,8 +1594,8 @@ function StarHubUI:CreateWindow(cfg)
 
     local NavScroll = Instance.new("ScrollingFrame", Sidebar)
     NavScroll.Name = "NavScroll"
-    NavScroll.Size = UDim2.new(1, -8, 1, -146)
-    NavScroll.Position = UDim2.new(0, 4, 0, 140)
+    NavScroll.Size = UDim2.new(1, -8, 1, -56)
+    NavScroll.Position = UDim2.new(0, 4, 0, 50)
     NavScroll.BackgroundTransparency = 1
     NavScroll.BorderSizePixel = 0
     NavScroll.ScrollBarThickness = 2
@@ -1856,7 +1857,7 @@ function StarHubUI:CreateWindow(cfg)
         h.Position = UDim2.new(0, 6, 0, 0)
         h.BackgroundTransparency = 1
         h.Font = Enum.Font.GothamBold
-        h.TextSize = 9
+        h.TextSize = 10
         h.TextColor3 = Theme.TextDim
         h.TextXAlignment = Enum.TextXAlignment.Left
         h.Text = string.upper(titleText)
@@ -1902,7 +1903,7 @@ function StarHubUI:CreateWindow(cfg)
     cpTitle.Position = UDim2.new(0, 14, 0, 0)
     cpTitle.BackgroundTransparency = 1
     cpTitle.Font = Enum.Font.GothamBold
-    cpTitle.TextSize = 13
+    cpTitle.TextSize = 14
     cpTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     cpTitle.TextXAlignment = Enum.TextXAlignment.Left
     cpTitle.Text = "Colorpicker"
@@ -1914,7 +1915,7 @@ function StarHubUI:CreateWindow(cfg)
     cpClose.BackgroundColor3 = Color3.fromRGB(36, 32, 48)
     cpClose.Text = "X"
     cpClose.Font = Enum.Font.GothamBold
-    cpClose.TextSize = 10
+    cpClose.TextSize = 11
     cpClose.TextColor3 = Color3.fromRGB(180, 175, 195)
     cpClose.ZIndex = 102
     Instance.new("UICorner", cpClose).CornerRadius = UDim.new(1, 0)
@@ -2026,7 +2027,7 @@ function StarHubUI:CreateWindow(cfg)
         box.BackgroundColor3 = Color3.fromRGB(36, 31, 50)
         box.TextColor3 = Color3.fromRGB(255, 255, 255)
         box.Font = Enum.Font.GothamBold
-        box.TextSize = 10.5
+        box.TextSize = 11.5
         box.ClearTextOnFocus = false
         box.ZIndex = 102
         Instance.new("UICorner", box).CornerRadius = UDim.new(0, 6)
@@ -2039,7 +2040,7 @@ function StarHubUI:CreateWindow(cfg)
         lbl.Position = UDim2.new(1, -40, 0, 0)
         lbl.BackgroundTransparency = 1
         lbl.Font = Enum.Font.GothamMedium
-        lbl.TextSize = 9.5
+        lbl.TextSize = 10.5
         lbl.TextColor3 = Color3.fromRGB(180, 175, 195)
         lbl.TextXAlignment = Enum.TextXAlignment.Center
         lbl.Text = labelName
@@ -2094,7 +2095,7 @@ function StarHubUI:CreateWindow(cfg)
     doneBtn.BackgroundColor3 = Color3.fromRGB(38, 33, 52)
     doneBtn.Text = "Done"
     doneBtn.Font = Enum.Font.GothamBold
-    doneBtn.TextSize = 11
+    doneBtn.TextSize = 12
     doneBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     doneBtn.AutoButtonColor = false
     doneBtn.ZIndex = 102
@@ -2108,7 +2109,7 @@ function StarHubUI:CreateWindow(cfg)
     cancelBtn.BackgroundColor3 = Color3.fromRGB(38, 33, 52)
     cancelBtn.Text = "Cancel"
     cancelBtn.Font = Enum.Font.GothamBold
-    cancelBtn.TextSize = 11
+    cancelBtn.TextSize = 12
     cancelBtn.TextColor3 = Color3.fromRGB(180, 175, 195)
     cancelBtn.AutoButtonColor = false
     cancelBtn.ZIndex = 102
@@ -2448,7 +2449,7 @@ function StarHubUI:CreateWindow(cfg)
             local bText = Instance.new("TextLabel", bTag)
             bText.BackgroundTransparency = 1
             bText.Font = Enum.Font.GothamBold
-            bText.TextSize = 8.5
+            bText.TextSize = 9.5
             bText.TextColor3 = Color3.fromRGB(34, 197, 94)
             bText.Text = BadgeText
 
@@ -2650,7 +2651,7 @@ function StarHubUI:CreateWindow(cfg)
             bTitle.Position = UDim2.new(0, 32, 0, 0)
             bTitle.BackgroundTransparency = 1
             bTitle.Font = Enum.Font.GothamBold
-            bTitle.TextSize = 10.5
+            bTitle.TextSize = 11.5
             bTitle.TextColor3 = Theme.TextTitle
             bTitle.TextXAlignment = Enum.TextXAlignment.Left
             bTitle.Text = string.upper(titleText)
@@ -2661,7 +2662,7 @@ function StarHubUI:CreateWindow(cfg)
                 bBadge.Position = UDim2.new(1, -85, 0.5, -9)
                 bBadge.BackgroundColor3 = Theme.SubBox
                 bBadge.Font = Enum.Font.GothamBold
-                bBadge.TextSize = 8.5
+                bBadge.TextSize = 9.5
                 bBadge.TextColor3 = Theme.Success
                 bBadge.Text = string.upper(rightBadgeText)
                 Instance.new("UICorner", bBadge).CornerRadius = UDim.new(1, 0)
@@ -2722,7 +2723,7 @@ function StarHubUI:CreateWindow(cfg)
                 tLbl.Size = UDim2.new(1, 0, 0, 0)
                 tLbl.BackgroundTransparency = 1
                 tLbl.Font = Enum.Font.GothamMedium
-                tLbl.TextSize = 11
+                tLbl.TextSize = 12
                 tLbl.TextColor3 = Theme.TextBody
                 tLbl.TextXAlignment = Enum.TextXAlignment.Left
                 tLbl.TextWrapped = true
@@ -2734,7 +2735,7 @@ function StarHubUI:CreateWindow(cfg)
                     dLbl.Size = UDim2.new(1, 0, 0, 0)
                     dLbl.BackgroundTransparency = 1
                     dLbl.Font = Enum.Font.Gotham
-                    dLbl.TextSize = 9.5
+                    dLbl.TextSize = 10.5
                     dLbl.TextColor3 = Theme.TextDim
                     dLbl.TextXAlignment = Enum.TextXAlignment.Left
                     dLbl.TextWrapped = true
@@ -2809,7 +2810,7 @@ function StarHubUI:CreateWindow(cfg)
                 tLbl.Position = UDim2.new(0, 0, 0, 0)
                 tLbl.BackgroundTransparency = 1
                 tLbl.Font = Enum.Font.GothamBold
-                tLbl.TextSize = 10
+                tLbl.TextSize = 11
                 tLbl.TextColor3 = Theme.TextBody
                 tLbl.TextXAlignment = Enum.TextXAlignment.Left
                 tLbl.TextWrapped = true
@@ -2821,7 +2822,7 @@ function StarHubUI:CreateWindow(cfg)
                 valLbl.Position = UDim2.new(1, -65, 0, 0)
                 valLbl.BackgroundTransparency = 1
                 valLbl.Font = Enum.Font.GothamBold
-                valLbl.TextSize = 10
+                valLbl.TextSize = 11
                 valLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
                 valLbl.TextXAlignment = Enum.TextXAlignment.Right
                 valLbl.Text = tostring(currentVal) .. " " .. suffix
@@ -2839,7 +2840,7 @@ function StarHubUI:CreateWindow(cfg)
                 btnDown.BackgroundColor3 = Theme.SubBox
                 btnDown.Text = "-"
                 btnDown.Font = Enum.Font.GothamBold
-                btnDown.TextSize = 12
+                btnDown.TextSize = 13
                 btnDown.TextColor3 = Theme.TextDim
                 Instance.new("UICorner", btnDown).CornerRadius = UDim.new(1, 0)
                 local bdSt = Instance.new("UIStroke", btnDown)
@@ -2872,7 +2873,7 @@ function StarHubUI:CreateWindow(cfg)
                 btnUp.BackgroundColor3 = Theme.SubBox
                 btnUp.Text = "+"
                 btnUp.Font = Enum.Font.GothamBold
-                btnUp.TextSize = 12
+                btnUp.TextSize = 13
                 btnUp.TextColor3 = Theme.TextDim
                 Instance.new("UICorner", btnUp).CornerRadius = UDim.new(1, 0)
                 local buSt = Instance.new("UIStroke", btnUp)
@@ -2931,7 +2932,7 @@ function StarHubUI:CreateWindow(cfg)
                 tLbl.Size = UDim2.new(1, 0, 0, 14)
                 tLbl.BackgroundTransparency = 1
                 tLbl.Font = Enum.Font.GothamMedium
-                tLbl.TextSize = 10
+                tLbl.TextSize = 11
                 tLbl.TextColor3 = Theme.TextDim
                 tLbl.TextXAlignment = Enum.TextXAlignment.Left
                 tLbl.Text = string.upper(title)
@@ -2953,7 +2954,7 @@ function StarHubUI:CreateWindow(cfg)
                 vLbl.Position = UDim2.new(0, 10, 0, 0)
                 vLbl.BackgroundTransparency = 1
                 vLbl.Font = Enum.Font.GothamMedium
-                vLbl.TextSize = 10.5
+                vLbl.TextSize = 11.5
                 vLbl.TextColor3 = Theme.TextTitle
                 vLbl.TextXAlignment = Enum.TextXAlignment.Left
                 vLbl.Text = selected
@@ -2996,7 +2997,7 @@ function StarHubUI:CreateWindow(cfg)
                     ot.Position = UDim2.new(0, 10, 0, 0)
                     ot.BackgroundTransparency = 1
                     ot.Font = Enum.Font.Gotham
-                    ot.TextSize = 10
+                    ot.TextSize = 11
                     ot.TextColor3 = Theme.TextBody
                     ot.TextXAlignment = Enum.TextXAlignment.Left
                     ot.Text = opt
@@ -3021,7 +3022,7 @@ function StarHubUI:CreateWindow(cfg)
                 lbl.Size = UDim2.new(0.4, 0, 1, 0)
                 lbl.BackgroundTransparency = 1
                 lbl.Font = Enum.Font.GothamBold
-                lbl.TextSize = 9.5
+                lbl.TextSize = 10.5
                 lbl.TextColor3 = Theme.TextTitle
                 lbl.TextXAlignment = Enum.TextXAlignment.Left
                 lbl.Text = string.upper(name)
@@ -3034,7 +3035,7 @@ function StarHubUI:CreateWindow(cfg)
                 input.PlaceholderText = placeholder or ""
                 input.PlaceholderColor3 = Theme.TextMuted
                 input.Font = Enum.Font.Gotham
-                input.TextSize = 9.5
+                input.TextSize = 10.5
                 input.TextColor3 = Theme.TextTitle
                 input.TextXAlignment = Enum.TextXAlignment.Left
                 input.ClearTextOnFocus = false
@@ -3064,7 +3065,7 @@ function StarHubUI:CreateWindow(cfg)
                 tLbl.Position = UDim2.new(0, 0, 0, 0)
                 tLbl.BackgroundTransparency = 1
                 tLbl.Font = Enum.Font.GothamBold
-                tLbl.TextSize = 9.5
+                tLbl.TextSize = 10.5
                 tLbl.TextColor3 = Theme.TextMuted
                 tLbl.TextXAlignment = Enum.TextXAlignment.Left
                 tLbl.Text = "QUICK ACCENT PALETTES (ONE-TAP)"
@@ -3138,7 +3139,7 @@ function StarHubUI:CreateWindow(cfg)
                 lbl.Size = UDim2.new(0.5, 0, 1, 0)
                 lbl.BackgroundTransparency = 1
                 lbl.Font = Enum.Font.GothamBold
-                lbl.TextSize = 9.5
+                lbl.TextSize = 10.5
                 lbl.TextColor3 = Theme.TextTitle
                 lbl.TextXAlignment = Enum.TextXAlignment.Left
                 lbl.Text = string.upper(name)
@@ -3163,7 +3164,7 @@ function StarHubUI:CreateWindow(cfg)
                 hexLbl.Position = UDim2.new(1, -70, 0, 0)
                 hexLbl.BackgroundTransparency = 1
                 hexLbl.Font = Enum.Font.GothamBold
-                hexLbl.TextSize = 10
+                hexLbl.TextSize = 11
                 hexLbl.TextColor3 = Theme.AccentLight
                 hexLbl.TextXAlignment = Enum.TextXAlignment.Left
                 hexLbl.Text = ColorToHex(defaultColor)
@@ -3210,7 +3211,7 @@ function StarHubUI:CreateWindow(cfg)
                 lbl.Size = UDim2.new(1, 0, 0, 14)
                 lbl.BackgroundTransparency = 1
                 lbl.Font = Enum.Font.GothamBold
-                lbl.TextSize = 9.5
+                lbl.TextSize = 10.5
                 lbl.TextColor3 = Theme.TextDim
                 lbl.TextXAlignment = Enum.TextXAlignment.Left
                 lbl.Text = string.upper(name)
@@ -3261,7 +3262,7 @@ function StarHubUI:CreateWindow(cfg)
                     b.Size = UDim2.new(1 / #modes, -((#modes - 1) * 6) / #modes, 1, 0)
                     b.Text = m
                     b.Font = Enum.Font.GothamBold
-                    b.TextSize = 9.5
+                    b.TextSize = 10.5
                     b.AutoButtonColor = false
                     Instance.new("UICorner", b).CornerRadius = UDim.new(1, 0)
                     local bSt = Instance.new("UIStroke", b)
@@ -3308,7 +3309,7 @@ function StarHubUI:CreateWindow(cfg)
                 tLbl.Size = UDim2.new(1, 0, 0, 0)
                 tLbl.BackgroundTransparency = 1
                 tLbl.Font = Enum.Font.GothamBold
-                tLbl.TextSize = 10.5
+                tLbl.TextSize = 11.5
                 tLbl.TextColor3 = Theme.TextTitle
                 tLbl.TextXAlignment = Enum.TextXAlignment.Left
                 tLbl.TextWrapped = true
@@ -3320,7 +3321,7 @@ function StarHubUI:CreateWindow(cfg)
                     sLbl.Size = UDim2.new(1, 0, 0, 0)
                     sLbl.BackgroundTransparency = 1
                     sLbl.Font = Enum.Font.Gotham
-                    sLbl.TextSize = 8.5
+                    sLbl.TextSize = 9.5
                     sLbl.TextColor3 = Theme.TextDim
                     sLbl.TextXAlignment = Enum.TextXAlignment.Left
                     sLbl.TextWrapped = true
@@ -3376,7 +3377,7 @@ function StarHubUI:CreateWindow(cfg)
                 tLbl.Size = UDim2.new(1, 0, 0, 0)
                 tLbl.BackgroundTransparency = 1
                 tLbl.Font = Enum.Font.GothamBold
-                tLbl.TextSize = 10
+                tLbl.TextSize = 11
                 tLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
                 tLbl.TextXAlignment = Enum.TextXAlignment.Left
                 tLbl.TextWrapped = true
@@ -3388,7 +3389,7 @@ function StarHubUI:CreateWindow(cfg)
                     sLbl.Size = UDim2.new(1, 0, 0, 0)
                     sLbl.BackgroundTransparency = 1
                     sLbl.Font = Enum.Font.Gotham
-                    sLbl.TextSize = 8.5
+                    sLbl.TextSize = 9.5
                     sLbl.TextColor3 = Color3.fromRGB(255, 220, 220)
                     sLbl.TextXAlignment = Enum.TextXAlignment.Left
                     sLbl.TextWrapped = true
@@ -3422,7 +3423,7 @@ function StarHubUI:CreateWindow(cfg)
         shTitle.Size = UDim2.new(1, 0, 0, 16)
         shTitle.BackgroundTransparency = 1
         shTitle.Font = Enum.Font.GothamBold
-        shTitle.TextSize = 11.5
+        shTitle.TextSize = 12.5
         shTitle.TextColor3 = Theme.TextDim
         shTitle.TextXAlignment = Enum.TextXAlignment.Left
         shTitle.Text = "ภาพรวมและข้อมูลเซิร์ฟเวอร์"
@@ -3476,7 +3477,7 @@ function StarHubUI:CreateWindow(cfg)
         GreetLabel.Position = UDim2.new(0, 68, 0, 14)
         GreetLabel.BackgroundTransparency = 1
         GreetLabel.Font = Enum.Font.GothamMedium
-        GreetLabel.TextSize = 10.5
+        GreetLabel.TextSize = 11.5
         GreetLabel.TextColor3 = Theme.TextMuted
         GreetLabel.TextXAlignment = Enum.TextXAlignment.Left
         GreetLabel.Text = GetThaiGreeting()
@@ -3486,7 +3487,7 @@ function StarHubUI:CreateWindow(cfg)
         NameLabel.Position = UDim2.new(0, 68, 0, 30)
         NameLabel.BackgroundTransparency = 1
         NameLabel.Font = Enum.Font.GothamBold
-        NameLabel.TextSize = 16
+        NameLabel.TextSize = 17
         NameLabel.TextColor3 = Theme.TextTitle
         NameLabel.TextXAlignment = Enum.TextXAlignment.Left
         NameLabel.Text = LocalPlayer.DisplayName or LocalPlayer.Name
@@ -3496,7 +3497,7 @@ function StarHubUI:CreateWindow(cfg)
         ClockLabel.Position = UDim2.new(0.5, -16, 0, 11)
         ClockLabel.BackgroundTransparency = 1
         ClockLabel.Font = Enum.Font.GothamBold
-        ClockLabel.TextSize = 20
+        ClockLabel.TextSize = 21
         ClockLabel.TextColor3 = Theme.TextTitle
         ClockLabel.TextXAlignment = Enum.TextXAlignment.Right
         ClockLabel.Text = os.date("%H:%M:%S")
@@ -3506,7 +3507,7 @@ function StarHubUI:CreateWindow(cfg)
         DateLabel.Position = UDim2.new(0.55, -16, 0, 38)
         DateLabel.BackgroundTransparency = 1
         DateLabel.Font = Enum.Font.GothamMedium
-        DateLabel.TextSize = 10.5
+        DateLabel.TextSize = 11.5
         DateLabel.TextColor3 = Theme.TextMuted
         DateLabel.TextXAlignment = Enum.TextXAlignment.Right
         DateLabel.Text = os.date("%d / %m / %Y")
@@ -3595,7 +3596,7 @@ function StarHubUI:CreateWindow(cfg)
         GameTitleLbl.Position = UDim2.new(0, 84, 0, 12)
         GameTitleLbl.BackgroundTransparency = 1
         GameTitleLbl.Font = Enum.Font.GothamBold
-        GameTitleLbl.TextSize = 14
+        GameTitleLbl.TextSize = 15
         GameTitleLbl.TextColor3 = Theme.TextTitle
         GameTitleLbl.TextXAlignment = Enum.TextXAlignment.Left
         GameTitleLbl.Text = placeName
@@ -3606,7 +3607,7 @@ function StarHubUI:CreateWindow(cfg)
         GameSubLbl.Position = UDim2.new(0, 84, 0, 32)
         GameSubLbl.BackgroundTransparency = 1
         GameSubLbl.Font = Enum.Font.Gotham
-        GameSubLbl.TextSize = 9.5
+        GameSubLbl.TextSize = 10.5
         GameSubLbl.TextColor3 = Theme.TextDim
         GameSubLbl.TextXAlignment = Enum.TextXAlignment.Left
         GameSubLbl.Text = "โดย " .. ((creatorName and creatorName ~= "") and creatorName or "Roblox Creator")
@@ -3639,7 +3640,7 @@ function StarHubUI:CreateWindow(cfg)
             t.Position = UDim2.new(0, 8, 0, 0)
             t.BackgroundTransparency = 1
             t.Font = Enum.Font.GothamBold
-            t.TextSize = 8.5
+            t.TextSize = 9.5
             t.TextColor3 = col or Theme.TextDim
             t.Text = text
             local pad = Instance.new("UIPadding", p)
@@ -3690,7 +3691,7 @@ function StarHubUI:CreateWindow(cfg)
             lL.Position = UDim2.new(0, 8, 0, 4)
             lL.BackgroundTransparency = 1
             lL.Font = Enum.Font.GothamBold
-            lL.TextSize = 8
+            lL.TextSize = 9
             lL.TextColor3 = Theme.TextMuted
             lL.TextXAlignment = Enum.TextXAlignment.Left
             lL.Text = string.upper(label)
@@ -3700,7 +3701,7 @@ function StarHubUI:CreateWindow(cfg)
             vL.Position = UDim2.new(0, 8, 0, 16)
             vL.BackgroundTransparency = 1
             vL.Font = Enum.Font.GothamBold
-            vL.TextSize = 12.5
+            vL.TextSize = 13.5
             vL.TextColor3 = Theme.TextTitle
             vL.TextXAlignment = Enum.TextXAlignment.Left
             vL.TextTruncate = Enum.TextTruncate.AtEnd
@@ -3711,7 +3712,7 @@ function StarHubUI:CreateWindow(cfg)
             sL.Position = UDim2.new(0.62, 0, 0, 18)
             sL.BackgroundTransparency = 1
             sL.Font = Enum.Font.GothamBold
-            sL.TextSize = 8
+            sL.TextSize = 9
             sL.TextColor3 = Color3.fromRGB(255, 255, 255)
             sL.TextXAlignment = Enum.TextXAlignment.Right
             sL.Text = string.upper(sub)
@@ -3740,7 +3741,7 @@ function StarHubUI:CreateWindow(cfg)
         wTitle.Position = UDim2.new(0, 10, 0, 4)
         wTitle.BackgroundTransparency = 1
         wTitle.Font = Enum.Font.GothamBold
-        wTitle.TextSize = 8.5
+        wTitle.TextSize = 9.5
         wTitle.TextColor3 = Theme.TextMuted
         wTitle.TextXAlignment = Enum.TextXAlignment.Left
         wTitle.Text = "FRAME BUFFER ACTIVITY"
@@ -3750,7 +3751,7 @@ function StarHubUI:CreateWindow(cfg)
         wSub.Position = UDim2.new(0.55, 0, 0, 4)
         wSub.BackgroundTransparency = 1
         wSub.Font = Enum.Font.GothamBold
-        wSub.TextSize = 8.5
+        wSub.TextSize = 9.5
         wSub.TextColor3 = Theme.AccentLight
         wSub.TextXAlignment = Enum.TextXAlignment.Right
         wSub.Text = "REALTIME | 60 FPS"
@@ -4049,7 +4050,7 @@ function StarHubUI:CreateWindow(cfg)
         kBtn.BackgroundColor3 = Theme.SubBox
         kBtn.Text = "ปุ่มเปิด/ปิด: " .. WindowObj.Keybind.Name
         kBtn.Font = Enum.Font.GothamBold
-        kBtn.TextSize = 9.5
+        kBtn.TextSize = 10.5
         kBtn.TextColor3 = Theme.AccentLight
         Instance.new("UICorner", kBtn).CornerRadius = UDim.new(0, 8)
         local kbStroke = Instance.new("UIStroke", kBtn)
