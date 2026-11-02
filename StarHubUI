@@ -44,7 +44,7 @@ local function LoadCustomImage(urlOrAsset, defaultAsset)
 end
 
 local StarHubUI = {
-    Version = "5.8.4",
+    Version = "5.8.5",
     Settings = {
         AutoSaveEnabled = true,
         SoundEnabled = true,
@@ -829,7 +829,10 @@ function StarHubUI:CreateWindow(cfg)
     StarHubUI.CurrentMainWindow = MainWindow
 
     local winScale = Instance.new("UIScale", MainWindow)
-    local responsiveScale = 1
+    -- Start compact on touch devices immediately; this prevents a one-frame
+    -- desktop-sized flash before CurrentCamera becomes available.
+    local responsiveScale = UserInputService.TouchEnabled and 0.78 or 1
+    winScale.Scale = responsiveScale
     local isMobileLayout = false
     local isPortraitMobile = false
     local ApplyResponsiveLayout = function() end
@@ -869,7 +872,10 @@ function StarHubUI:CreateWindow(cfg)
     -- available yet when the library is loaded for the first time.
     UpdateResponsiveScale()
     task.defer(UpdateResponsiveScale)
+    task.delay(0.08, UpdateResponsiveScale)
     task.delay(0.15, UpdateResponsiveScale)
+    task.delay(0.30, UpdateResponsiveScale)
+    task.delay(0.60, UpdateResponsiveScale)
     pcall(function()
         local function BindCamera(camera)
             if not camera then return end
