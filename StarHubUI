@@ -56,7 +56,7 @@ local StarHubUI = {
         ControlsPosition = "Left",
         KeybindMode = "Toggle",
         ToggleKey = "RightControl",
-        CurrentTheme = "NeverloseCrimson",
+        CurrentTheme = "ObsidianViolet",
         AccentStyle = "Gradient",
         CustomColor1 = "",
         CustomColor2 = "",
@@ -3844,82 +3844,9 @@ function StarHubUI:CreateWindow(cfg)
     end
 
     function WindowObj:CreateDualColumnSettings(tabObj)
-        -- A compact control-center header makes the settings page easier to
-        -- scan, especially when the two columns stack on mobile.
-        local SettingsHero = Instance.new("Frame", tabObj.TopContainer)
-        SettingsHero.Name = "SettingsHero"
-        SettingsHero.Size = UDim2.new(1, 0, 0, 72)
-        SettingsHero.BackgroundColor3 = Theme.Box
-        SettingsHero.BorderSizePixel = 0
-        SettingsHero.LayoutOrder = 0
-        Instance.new("UICorner", SettingsHero).CornerRadius = UDim.new(0, 12)
-        local heroStroke = Instance.new("UIStroke", SettingsHero)
-        heroStroke.Color = Theme.Border
-        heroStroke.Thickness = 1
-        RegisterElement("Boxes", SettingsHero)
-        RegisterElement("Borders", heroStroke)
-
-        local heroGlow = Instance.new("Frame", SettingsHero)
-        heroGlow.Size = UDim2.new(0.48, 0, 1, 0)
-        heroGlow.BackgroundColor3 = Theme.Accent
-        heroGlow.BackgroundTransparency = 0.88
-        heroGlow.BorderSizePixel = 0
-        heroGlow.ZIndex = 0
-        Instance.new("UICorner", heroGlow).CornerRadius = UDim.new(0, 12)
-        RegisterElement("Accents", heroGlow)
-
-        local heroIcon = Instance.new("ImageLabel", SettingsHero)
-        heroIcon.Size = UDim2.new(0, 30, 0, 30)
-        heroIcon.Position = UDim2.new(0, 14, 0.5, -15)
-        heroIcon.BackgroundColor3 = Theme.SubBox
-        heroIcon.Image = StarHubUI.Icons.Settings
-        heroIcon.ImageColor3 = Theme.AccentLight
-        Instance.new("UICorner", heroIcon).CornerRadius = UDim.new(0, 9)
-        RegisterElement("SubBoxes", heroIcon)
-        RegisterElement("Accents", heroIcon)
-
-        local heroTitle = Instance.new("TextLabel", SettingsHero)
-        heroTitle.Size = UDim2.new(1, -170, 0, 18)
-        heroTitle.Position = UDim2.new(0, 54, 0, 13)
-        heroTitle.BackgroundTransparency = 1
-        heroTitle.Font = Enum.Font.GothamBold
-        heroTitle.TextSize = 12
-        heroTitle.TextColor3 = Theme.TextTitle
-        heroTitle.TextXAlignment = Enum.TextXAlignment.Left
-        heroTitle.Text = "CONTROL CENTER"
-
-        local heroSubtitle = Instance.new("TextLabel", SettingsHero)
-        heroSubtitle.Size = UDim2.new(1, -170, 0, 14)
-        heroSubtitle.Position = UDim2.new(0, 54, 0, 34)
-        heroSubtitle.BackgroundTransparency = 1
-        heroSubtitle.Font = Enum.Font.Gotham
-        heroSubtitle.TextSize = 9
-        heroSubtitle.TextColor3 = Theme.TextDim
-        heroSubtitle.TextXAlignment = Enum.TextXAlignment.Left
-        heroSubtitle.Text = "Personalize your interface and preferences"
-        heroSubtitle.TextTruncate = Enum.TextTruncate.AtEnd
-
-        local heroStatus = Instance.new("TextLabel", SettingsHero)
-        heroStatus.Size = UDim2.new(0, 86, 0, 22)
-        heroStatus.Position = UDim2.new(1, -98, 0.5, -11)
-        heroStatus.BackgroundColor3 = Theme.SubBox
-        heroStatus.BackgroundTransparency = 0.15
-        heroStatus.Font = Enum.Font.GothamBold
-        heroStatus.TextSize = 8
-        heroStatus.TextColor3 = Theme.Success
-        heroStatus.Text = "●  READY"
-        heroStatus.TextXAlignment = Enum.TextXAlignment.Center
-        Instance.new("UICorner", heroStatus).CornerRadius = UDim.new(1, 0)
-        local statusStroke = Instance.new("UIStroke", heroStatus)
-        statusStroke.Color = Theme.Success
-        statusStroke.Transparency = 0.45
-        statusStroke.Thickness = 0.8
-        RegisterElement("SubBoxes", heroStatus)
-        RegisterElement("Borders", statusStroke)
-
         local ThemeBox = tabObj:CreateGroupBox("Left", "THEMES & ACCENT COLOR", "PALETTE", StarHubUI.Icons.Palette)
 
-        ThemeBox:AddModeSelector("ACCENT COLOR STYLE", {"Gradient Mode", "Solid Mode"},
+        ThemeBox:AddModeSelector("รูปแบบสีเน้น", {"Gradient Mode", "Solid Mode"},
             (StarHubUI.Settings.AccentStyle == "Solid") and "Solid Mode" or "Gradient Mode",
             function(choice)
                 StarHubUI.Settings.AccentStyle = choice:find("Solid") and "Solid" or "Gradient"
@@ -3938,7 +3865,7 @@ function StarHubUI:CreateWindow(cfg)
 
         local p1Row, p2Row
 
-        ThemeBox:AddDropdown("READY-MADE THEME PRESET", tList, Theme.Name, function(sel)
+        ThemeBox:AddDropdown("เลือกธีมสำเร็จรูป", tList, Theme.Name, function(sel)
             for k, v in pairs(StarHubUI.Themes) do
                 if v.Name == sel then
                     StarHubUI.Settings.CurrentTheme = k
@@ -3962,7 +3889,7 @@ function StarHubUI:CreateWindow(cfg)
             StarHubUI:AutoSave()
         end)
 
-        p1Row = ThemeBox:AddColorPickerRow("PRIMARY ACCENT (COLOR 1)", Theme.Grad1 or Theme.Accent, function(newCol, hex)
+        p1Row = ThemeBox:AddColorPickerRow("สีเน้นหลัก (สี 1)", Theme.Grad1 or Theme.Accent, function(newCol, hex)
             Theme.Accent = newCol
             Theme.Grad1 = newCol
             StarHubUI.Settings.CurrentTheme = "Custom"
@@ -3978,7 +3905,7 @@ function StarHubUI:CreateWindow(cfg)
             StarHubUI:AutoSave()
         end)
 
-        p2Row = ThemeBox:AddColorPickerRow("SECONDARY ACCENT (COLOR 2)", Theme.Grad2 or Theme.AccentLight, function(newCol, hex)
+        p2Row = ThemeBox:AddColorPickerRow("สีเน้นรอง (สี 2)", Theme.Grad2 or Theme.AccentLight, function(newCol, hex)
             Theme.Grad2 = newCol
             Theme.AccentLight = newCol
             StarHubUI.Settings.CurrentTheme = "Custom"
@@ -3990,7 +3917,7 @@ function StarHubUI:CreateWindow(cfg)
 
         local GlassBox = tabObj:CreateGroupBox("Left", "INTERFACE & WINDOW CONTROLS", nil, StarHubUI.Icons.Visuals)
 
-        GlassBox:AddModeSelector("CONTROLS ALIGNMENT", {"Left (macOS)", "Right (Windows)"}, StarHubUI.Settings.ControlsPosition == "Left" and "Left (macOS)" or "Right (Windows)", function(pos)
+        GlassBox:AddModeSelector("ตำแหน่งปุ่มควบคุม", {"Left (macOS)", "Right (Windows)"}, StarHubUI.Settings.ControlsPosition == "Left" and "Left (macOS)" or "Right (Windows)", function(pos)
             local p = pos:find("Left") and "Left" or "Right"
             SetControlsPosition(p)
             StarHubUI.Settings.ControlsPosition = p
@@ -3998,7 +3925,7 @@ function StarHubUI:CreateWindow(cfg)
             StarHubUI:AutoSave()
         end)
 
-        GlassBox:AddActionRow("TEST NOTIFICATION", "Send sample Discord-style breakout notification", StarHubUI.Icons.Bell, function()
+        GlassBox:AddActionRow("ทดสอบการแจ้งเตือน", "แสดงตัวอย่างการแจ้งเตือน", StarHubUI.Icons.Bell, function()
             StarHubUI:Notify({
                 Title = "DISCORD STYLE NOTIFICATION",
                 Content = "Breakout notification modal verified & active!",
@@ -4009,23 +3936,23 @@ function StarHubUI:CreateWindow(cfg)
             })
         end)
 
-        GlassBox:AddActionRow("RESPONSIVE AUTO-SCALE", "Locked for PC (100%) & Auto-Fit for Mobile", StarHubUI.Icons.Zap, function()
+        GlassBox:AddActionRow("ปรับขนาดอัตโนมัติ", "พีซี 100% และปรับให้พอดีบนมือถือ", StarHubUI.Icons.Zap, function()
             UpdateResponsiveScale()
             StarHubUI:Notify({Title = "RESPONSIVE SCALE", Content = "Display scale re-synchronized!", Badge = "SYSTEM"})
         end)
 
-        GlassBox:AddToggle("SHOW FLOATING TOGGLE BUTTON", "Displays draggable Logo Squircle to open/close...", StarHubUI.Settings.ShowFloatingToggle, function(v)
+        GlassBox:AddToggle("แสดงปุ่มลอยเปิด/ปิด", "แสดงปุ่มโลโก้ลอยที่ลากย้ายได้ เพื่อเปิดหรือปิดหน้าต่าง", StarHubUI.Settings.ShowFloatingToggle, function(v)
             StarHubUI.Settings.ShowFloatingToggle = v
             FloatingSquircle.Visible = v
             StarHubUI:AutoSave()
         end)
 
-        GlassBox:AddToggle("ACRYLIC GLASS EFFECT", "Enables translucent glowing backdrop...", StarHubUI.Settings.AcrylicEnabled, function(v)
+        GlassBox:AddToggle("เอฟเฟกต์กระจก Acrylic", "เปิดพื้นหลังโปร่งแสงพร้อมแสงเรือง", StarHubUI.Settings.AcrylicEnabled, function(v)
             StarHubUI.Settings.AcrylicEnabled = v
             StarHubUI:AutoSave()
         end)
 
-        GlassBox:AddSlider("WINDOW TRANSPARENCY", 0, 80, math.floor((StarHubUI.Settings.WindowTransparency or 0) * 100), "%", function(v)
+        GlassBox:AddSlider("ความโปร่งใสของหน้าต่าง", 0, 80, math.floor((StarHubUI.Settings.WindowTransparency or 0) * 100), "%", function(v)
             StarHubUI.Settings.WindowTransparency = v / 100
             MainWindow.BackgroundTransparency = v / 100
             StarHubUI:AutoSave()
@@ -4033,18 +3960,18 @@ function StarHubUI:CreateWindow(cfg)
 
         local AudioBox = tabObj:CreateGroupBox("Left", "AUDIO & HAPTICS", nil, StarHubUI.Icons.Zap)
 
-        AudioBox:AddToggle("UI SOUND EFFECTS", "Toggle interactive Apple iOS Bubble audio on clicks and switches", StarHubUI.Settings.SoundEnabled, function(v)
+        AudioBox:AddToggle("เสียงเอฟเฟกต์ของ UI", "เปิดหรือปิดเสียงเมื่อคลิกและเปลี่ยนตัวเลือก", StarHubUI.Settings.SoundEnabled, function(v)
             StarHubUI.Settings.SoundEnabled = v
             if v then PlaySound("ToggleOn") end
             StarHubUI:AutoSave()
         end)
 
-        AudioBox:AddSlider("SOUND VOLUME", 0, 100, math.floor((StarHubUI.Settings.SoundVolume or 0.55) * 100), "%", function(v)
+        AudioBox:AddSlider("ระดับเสียง", 0, 100, math.floor((StarHubUI.Settings.SoundVolume or 0.55) * 100), "%", function(v)
             StarHubUI.Settings.SoundVolume = v / 100
             StarHubUI:AutoSave()
         end)
 
-        AudioBox:AddActionRow("TEST BUBBLE SOUND", "Play Apple iOS Bubble audio sequence", StarHubUI.Icons.Bell, function()
+        AudioBox:AddActionRow("ทดสอบเสียง", "เล่นตัวอย่างเสียง UI", StarHubUI.Icons.Bell, function()
             PlaySound("ToggleOn")
             task.delay(0.16, function() PlaySound("Click") end)
             task.delay(0.32, function() PlaySound("Notify") end)
@@ -4052,7 +3979,7 @@ function StarHubUI:CreateWindow(cfg)
 
         local BrandBox = tabObj:CreateGroupBox("Right", "BRANDING & BACKGROUND", nil, StarHubUI.Icons.Logo)
 
-        BrandBox:AddDropdown("BACKGROUND EFFECT", {
+        BrandBox:AddDropdown("เอฟเฟกต์พื้นหลัง", {
             "Floating Bubbles",
             "Matrix Cyber Rain",
             "Starlight Fireflies",
@@ -4063,11 +3990,11 @@ function StarHubUI:CreateWindow(cfg)
         }, StarHubUI.Settings.BackgroundEffect or "Floating Bubbles", function(sel)
             SetBackgroundEffect(sel)
             StarHubUI.Settings.BackgroundEffect = sel
-            StarHubUI:Notify({Title = "BACKGROUND EFFECT", Content = "Active mode: " .. sel, Badge = "EFFECT"})
+            StarHubUI:Notify({Title = "เอฟเฟกต์พื้นหลัง", Content = "Active mode: " .. sel, Badge = "EFFECT"})
             StarHubUI:AutoSave()
         end)
 
-        BrandBox:AddInput("CUSTOM LOGO...", "https://... or Decal ID", StarHubUI.Settings.CustomLogoUrl or "", function(txt)
+        BrandBox:AddInput("โลโก้กำหนดเอง...", "ใส่ URL หรือ Decal ID", StarHubUI.Settings.CustomLogoUrl or "", function(txt)
             if txt and txt ~= "" then
                 local res = LoadCustomImage(txt, StarHubUI.Icons.Logo)
                 BrandIcon.Image = res
@@ -4077,7 +4004,7 @@ function StarHubUI:CreateWindow(cfg)
             end
         end)
 
-        BrandBox:AddInput("BACKGROUND...", "https://... or Decal ID", StarHubUI.Settings.CustomWallpaperId or "", function(txt)
+        BrandBox:AddInput("วอลเปเปอร์...", "ใส่ URL หรือ Decal ID", StarHubUI.Settings.CustomWallpaperId or "", function(txt)
             if txt and txt ~= "" then
                 local res = LoadCustomImage(txt, "")
                 CustomWallpaper.Image = res
@@ -4086,13 +4013,13 @@ function StarHubUI:CreateWindow(cfg)
             end
         end)
 
-        BrandBox:AddSlider("BACKGROUND TRANSPARENCY", 0, 100, math.floor((StarHubUI.Settings.WallpaperTransparency or 0.92) * 100), "%", function(v)
+        BrandBox:AddSlider("ความโปร่งใสของวอลเปเปอร์", 0, 100, math.floor((StarHubUI.Settings.WallpaperTransparency or 0.92) * 100), "%", function(v)
             StarHubUI.Settings.WallpaperTransparency = v / 100
             CustomWallpaper.ImageTransparency = v / 100
             StarHubUI:AutoSave()
         end)
 
-        BrandBox:AddSlider("WALLPAPER DIMMING", 0, 100, math.floor((StarHubUI.Settings.WallpaperDimming or 0.35) * 100), "%", function(v)
+        BrandBox:AddSlider("ความมืดของวอลเปเปอร์", 0, 100, math.floor((StarHubUI.Settings.WallpaperDimming or 0.35) * 100), "%", function(v)
             StarHubUI.Settings.WallpaperDimming = v / 100
             local f = 1 - (v / 100)
             CustomWallpaper.ImageColor3 = Color3.fromRGB(math.floor(255 * f), math.floor(255 * f), math.floor(255 * f))
@@ -4101,7 +4028,7 @@ function StarHubUI:CreateWindow(cfg)
 
         local ConfigBox = tabObj:CreateGroupBox("Right", "CONFIG & SYSTEM", nil, StarHubUI.Icons.Settings)
 
-        ConfigBox:AddToggle("REAL-TIME AUTO SAVE", "Automatically saves all configuration changes to disk", StarHubUI.Settings.AutoSaveEnabled ~= false, function(v)
+        ConfigBox:AddToggle("บันทึกอัตโนมัติทันที", "บันทึกการเปลี่ยนแปลงการตั้งค่าโดยอัตโนมัติ", StarHubUI.Settings.AutoSaveEnabled ~= false, function(v)
             StarHubUI.Settings.AutoSaveEnabled = v
             if v then
                 StarHubUI:SaveConfig()
@@ -4111,7 +4038,7 @@ function StarHubUI:CreateWindow(cfg)
             end
         end)
 
-        ConfigBox:AddModeSelector("KEYBIND MODE", {"Toggle", "Hold", "Always"}, StarHubUI.Settings.KeybindMode, function(m)
+        ConfigBox:AddModeSelector("รูปแบบการทำงานของปุ่มลัด", {"Toggle", "Hold", "Always"}, StarHubUI.Settings.KeybindMode, function(m)
             StarHubUI.Settings.KeybindMode = m
             StarHubUI:Notify({Title = "KEYBIND_MODE", Content = "Mode active: " .. m})
             StarHubUI:AutoSave()
@@ -4120,7 +4047,7 @@ function StarHubUI:CreateWindow(cfg)
         local kBtn = Instance.new("TextButton", ConfigBox.Container)
         kBtn.Size = UDim2.new(1, 0, 0, 28)
         kBtn.BackgroundColor3 = Theme.SubBox
-        kBtn.Text = "TOGGLE KEY: " .. WindowObj.Keybind.Name
+        kBtn.Text = "ปุ่มเปิด/ปิด: " .. WindowObj.Keybind.Name
         kBtn.Font = Enum.Font.GothamBold
         kBtn.TextSize = 9.5
         kBtn.TextColor3 = Theme.AccentLight
@@ -4135,7 +4062,7 @@ function StarHubUI:CreateWindow(cfg)
         kBtn.MouseButton1Click:Connect(function()
             if listening then return end
             listening = true
-            kBtn.Text = "PRESS ANY KEY..."
+            kBtn.Text = "กดปุ่มที่ต้องการ..."
             kBtn.TextColor3 = Theme.TextTitle
 
             local conn
@@ -4143,7 +4070,7 @@ function StarHubUI:CreateWindow(cfg)
                 if inp.UserInputType == Enum.UserInputType.Keyboard then
                     WindowObj.Keybind = inp.KeyCode
                     StarHubUI.Settings.ToggleKey = inp.KeyCode.Name
-                    kBtn.Text = "TOGGLE KEY: " .. inp.KeyCode.Name
+                    kBtn.Text = "ปุ่มเปิด/ปิด: " .. inp.KeyCode.Name
                     if KeyPill and KeyPill.Parent then KeyPill.Text = inp.KeyCode.Name end
                     StarHubUI:Notify({Title = "KEYBIND UPDATED", Content = "Hub bind set to: " .. inp.KeyCode.Name})
                     StarHubUI:AutoSave()
@@ -4153,12 +4080,12 @@ function StarHubUI:CreateWindow(cfg)
             end))
         end)
 
-        ConfigBox:AddActionRow("Save UI Settings", "Manually writes configuration to StarHubUI_Config.json", StarHubUI.Icons.Save, function()
+        ConfigBox:AddActionRow("บันทึกการตั้งค่า UI", "บันทึกการตั้งค่าลงไฟล์ StarHubUI_Config.json ด้วยตนเอง", StarHubUI.Icons.Save, function()
             StarHubUI:SaveConfig()
             StarHubUI:Notify({Title = "CONFIG SAVED", Content = "Preferences saved to StarHubUI_Config.json!", Badge = "SAVED", Icon = StarHubUI.Icons.Save})
         end)
 
-        ConfigBox:AddActionRow("Reset All Settings", "Deletes saved configuration and restores defaults", StarHubUI.Icons.Refresh, function()
+        ConfigBox:AddActionRow("รีเซ็ตการตั้งค่าทั้งหมด", "ลบไฟล์ตั้งค่าที่บันทึกไว้ เพื่อกลับไปใช้ค่าเริ่มต้น", StarHubUI.Icons.Refresh, function()
             pcall(function()
                 if isfile and delfile and isfile(ConfigFileName) then
                     delfile(ConfigFileName)
@@ -4167,7 +4094,7 @@ function StarHubUI:CreateWindow(cfg)
             StarHubUI:Notify({Title = "RESET DEFAULTS", Content = "Saved config deleted! Reopen UI to apply defaults.", Badge = "RESET"})
         end)
 
-        ConfigBox:AddDangerButton("Unload Script Hub", "Completely unloads UI and disconnects hooks", StarHubUI.Icons.Skull, function()
+        ConfigBox:AddDangerButton("ปิด Script Hub", "ปิด UI และยกเลิกการเชื่อมต่อของสคริปต์", StarHubUI.Icons.Skull, function()
             local tw = Tween(MainWindow, 0.22, {Size = UDim2.new(0, 0, 0, 0), Position = UDim2.new(0.5, 0, 0.5, 0)})
             tw.Completed:Connect(function() WindowObj:Destroy() end)
         end)
@@ -4222,51 +4149,10 @@ if not _G.STARHUB_LIBRARY_ONLY then
         Window:CreateDualColumnDashboard(DashTab)
 
         local CombatTab = Window:CreateTab({ Title = "Combat & Move", IconId = StarHubUI.Icons.Combat, LayoutOrder = 3 })
-        local AimBox = CombatTab:CreateGroupBox("Left", "AIMBOT CORE ENGINE", "AIM", StarHubUI.Icons.Combat)
-        AimBox:AddToggle("Aimbot Tracking", "Locks hitscan vectors to closest target", true, function(v) end)
-        AimBox:AddDropdown("Target Bone", {"Head (Critical)", "UpperTorso", "HumanoidRootPart"}, "Head (Critical)", function(v) end)
-        AimBox:AddSlider("Smoothness Factor", 1, 20, 8, "VAL", function(v) end)
-        AimBox:AddSlider("Field of View (FOV)", 30, 400, 120, "DEG", function(v) end)
-        AimBox:AddToggle("Draw FOV Circle", "Visualizes lock-on radius on screen", true, function(v) end)
-        AimBox:AddToggle("Wall Check (Visible Only)", "Restricts targeting to visible line of sight", true, function(v) end)
-
-        local MoveBox = CombatTab:CreateGroupBox("Right", "MOVEMENT MODIFIERS", "MOVE", StarHubUI.Icons.Zap)
-        MoveBox:AddToggle("Infinite Jump", "Allows air jumping without touching ground", true, function(v) end)
-        MoveBox:AddSlider("WalkSpeed Multiplier", 16, 150, 32, "SPD", function(v) end)
-        MoveBox:AddSlider("Jump Power", 50, 300, 100, "PWR", function(v) end)
-        MoveBox:AddToggle("Bunny Hop Glide", "Continuous momentum hopping across obstacles", true, function(v) end)
-        MoveBox:AddToggle("Noclip Collision Bypass", "Allows walking through doors and barricades", false, function(v) end)
-        MoveBox:AddToggle("Auto-Sprint Boost", "Maintains maximum velocity without holding shift", true, function(v) end)
 
         local VisualTab = Window:CreateTab({ Title = "Visuals & ESP", IconId = StarHubUI.Icons.Visuals, LayoutOrder = 4 })
-        local EspBox = VisualTab:CreateGroupBox("Left", "PLAYER OVERLAYS", "ESP", StarHubUI.Icons.Visuals)
-        EspBox:AddToggle("2D Bounding Brackets", "Projects corner frame around players", true, function(v) end)
-        EspBox:AddToggle("Overhead Distance & Tags", "Displays distance in studs and health", true, function(v) end)
-        EspBox:AddToggle("Dynamic Healthbars", "Displays colored dynamic health indicators", true, function(v) end)
-        EspBox:AddToggle("Directional Snaplines", "Draws line from screen bottom to nearest target", false, function(v) end)
-
-        local WorldBox = VisualTab:CreateGroupBox("Right", "RENDER THRESHOLDS", "WORLD", StarHubUI.Icons.Logo)
-        WorldBox:AddSlider("Render Distance", 100, 3500, 1200, "STUDS", function(v) end)
-        WorldBox:AddToggle("Occlusion Ray Check", "Shift color when target behind wall", true, function(v) end)
-        WorldBox:AddToggle("Player Chams Highlight", "Silhouettes character models through walls", true, function(v) end)
-        WorldBox:AddToggle("Fullbright Night Vision", "Removes shadows and maximizes map illumination", true, function(v) end)
 
         local TeleTab = Window:CreateTab({ Title = "World Teleport", IconId = StarHubUI.Icons.Teleport, LayoutOrder = 5 })
-        local WpBox = TeleTab:CreateGroupBox("Left", "COORDINATE WAYPOINTS", "LOCATIONS", StarHubUI.Icons.Teleport)
-        local dest = "Spawn Lobby"
-        WpBox:AddDropdown("Select Destination", {"Spawn Lobby", "Egg Market", "Secret Vault", "Safe Zone", "VIP Lounge", "Sky Islands"}, "Spawn Lobby", function(w) dest = w end)
-        WpBox:AddToggle("Auto-Teleport On Spawn", "Automatically warp to destination after death/respawn", false, function(v) end)
-        WpBox:AddSlider("Tween Glide Speed", 50, 400, 180, "STUDS/S", function(v) end)
-
-        local ActionBox = TeleTab:CreateGroupBox("Right", "WARP EXECUTION", "ACTIVE", StarHubUI.Icons.Zap)
-        ActionBox:AddActionRow("Execute Instant Warp", "Warps local character directly to selected coordinate", StarHubUI.Icons.Zap, function()
-            StarHubUI:Notify({Title = "WARP DISPATCH", Content = "Warping character to: " .. dest})
-        end)
-        ActionBox:AddActionRow("Copy Vector3 Position", "Copies current player studs coordinates to clipboard", StarHubUI.Icons.Copy, function()
-            pcall(function() setclipboard("Vector3.new(0, 50, 0)") end)
-            StarHubUI:Notify({Title = "POSITION COPIED", Content = "Vector3 coordinates copied to clipboard!"})
-        end)
-        ActionBox:AddToggle("Void Fall Protection", "Prevents character falling beneath map boundaries", true, function(v) end)
 
         Window:AddNavHeader("PREFERENCES", 6)
 
