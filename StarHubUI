@@ -1498,6 +1498,7 @@ function StarHubUI:CreateWindow(cfg)
     local Sidebar = Instance.new("Frame", BodyContainer)
     Sidebar.Name = "Sidebar"
     Sidebar.Size = UDim2.new(0, 175, 1, 0)
+    Sidebar.Position = UDim2.new(0, 8, 0, 0)
     Sidebar.BackgroundColor3 = Theme.Sidebar
     Sidebar.BorderSizePixel = 0
     Instance.new("UICorner", Sidebar).CornerRadius = UDim.new(0, 16)
@@ -1615,8 +1616,8 @@ function StarHubUI:CreateWindow(cfg)
 
     local ContentArea = Instance.new("Frame", BodyContainer)
     ContentArea.Name = "ContentArea"
-    ContentArea.Size = UDim2.new(1, -175, 1, 0)
-    ContentArea.Position = UDim2.new(0, 175, 0, 0)
+    ContentArea.Size = UDim2.new(1, -183, 1, 0)
+    ContentArea.Position = UDim2.new(0, 183, 0, 0)
     ContentArea.BackgroundTransparency = 1
 
     local FloatingSquircle = Instance.new("Frame", ScreenGui)
