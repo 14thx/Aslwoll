@@ -44,7 +44,7 @@ local function LoadCustomImage(urlOrAsset, defaultAsset)
 end
 
 local StarHubUI = {
-    Version = "5.8.5",
+    Version = "5.8.9",
     Settings = {
         AutoSaveEnabled = true,
         SoundEnabled = true,
@@ -818,6 +818,13 @@ function StarHubUI:CreateWindow(cfg)
     MainWindow.BackgroundTransparency = StarHubUI.Settings.WindowTransparency
     MainWindow.BorderSizePixel = 0
     MainWindow.ClipsDescendants = false
+
+    local function CenterMainWindow()
+        MainWindow.AnchorPoint = Vector2.new(0.5, 0.5)
+        MainWindow.Position = UDim2.new(0.5, 0, 0.5, 0)
+    end
+
+    CenterMainWindow()
     Instance.new("UICorner", MainWindow).CornerRadius = UDim.new(0, 16)
     local MainStroke = Instance.new("UIStroke", MainWindow)
     MainStroke.Color = Theme.Border
@@ -834,6 +841,7 @@ function StarHubUI:CreateWindow(cfg)
     local responsiveScale = UserInputService.TouchEnabled and 0.78 or 1
     winScale.Scale = responsiveScale
     local isMobileLayout = false
+    local UpdateFloatingToggleSize = function() end
     local isPortraitMobile = false
     local ApplyResponsiveLayout = function() end
 
@@ -865,7 +873,9 @@ function StarHubUI:CreateWindow(cfg)
             responsiveScale = 1.0
         end
 
+        CenterMainWindow()
         ApplyResponsiveLayout()
+        UpdateFloatingToggleSize()
     end
 
     -- Recalculate after the first rendered frame as CurrentCamera may not be
@@ -1262,14 +1272,15 @@ function StarHubUI:CreateWindow(cfg)
         end
     end
 
-    local function AttachDrag(handle)
+    local function AttachDrag(handle, target)
+        target = target or MainWindow
         local dragging = false
         local dragInput, dragStart, startPos
         handle.InputBegan:Connect(function(inp)
             if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
                 dragging = true
                 dragStart = inp.Position
-                startPos = MainWindow.Position
+                startPos = target.Position
                 inp.Changed:Connect(function()
                     if inp.UserInputState == Enum.UserInputState.End then dragging = false end
                 end)
@@ -1283,7 +1294,7 @@ function StarHubUI:CreateWindow(cfg)
         TrackConnection(UserInputService.InputChanged:Connect(function(inp)
             if inp == dragInput and dragging then
                 local delta = inp.Position - dragStart
-                Tween(MainWindow, 0.04, {
+                Tween(target, 0.04, {
                     Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
                 }, Enum.EasingStyle.Linear)
             end
@@ -1340,11 +1351,12 @@ function StarHubUI:CreateWindow(cfg)
     local UpdateFloatingToggleVisual = nil
 
     local function ToggleMainWindow(show)
+        CenterMainWindow()
         if show == nil then show = not MainWindow.Visible end
         if show then
             MainWindow.Visible = true
             winScale.Scale = responsiveScale * 0.8
-            MainWindow.Position = UDim2.new(0.5, 0, 0.5, 0)
+            CenterMainWindow()
             MainWindow.Size = isMinimized and UDim2.new(0, WinSize.X.Offset, 0, 44) or WinSize
             if isMinimized then
                 HeaderLine.Visible = false
@@ -1401,6 +1413,7 @@ function StarHubUI:CreateWindow(cfg)
 
     MakeTrafficDot(Color3.fromRGB(39, 201, 63), Color3.fromRGB(75, 235, 100), function()
         PlaySound("Click")
+        CenterMainWindow()
         Tween(MainWindow, 0.32, {Position = UDim2.new(0.5, 0, 0.5, 0)}, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
     end)
 
@@ -1594,6 +1607,14 @@ function StarHubUI:CreateWindow(cfg)
     local flScale = Instance.new("UIScale", FloatingSquircle)
     flScale.Scale = 1
 
+    UpdateFloatingToggleSize = function()
+        FloatingSquircle.Size = isMobileLayout
+            and UDim2.new(0, 44, 0, 44)
+            or UDim2.new(0, 52, 0, 52)
+        flScale.Scale = isMobileLayout and 0.88 or 1
+    end
+    UpdateFloatingToggleSize()
+
     local flCircleStroke = Instance.new("UIStroke", FloatingSquircle)
     flCircleStroke.Color = Color3.fromRGB(255, 255, 255)
     flCircleStroke.Thickness = 3.6
@@ -1678,14 +1699,14 @@ function StarHubUI:CreateWindow(cfg)
         end
     end))
 
-    AttachDrag(FloatingSquircle)
-
     local flBtn = Instance.new("TextButton", FloatingSquircle)
     flBtn.Name = "HitboxButton"
     flBtn.Size = UDim2.new(1, 0, 1, 0)
     flBtn.BackgroundTransparency = 1
     flBtn.Text = ""
     flBtn.ZIndex = 25
+    -- Drag the floating logo itself, not the main window behind it.
+    AttachDrag(flBtn, FloatingSquircle)
 
     UpdateFloatingToggleVisual = function()
         if not FloatingSquircle or not FloatingSquircle.Parent then return end
@@ -2362,7 +2383,7 @@ function StarHubUI:CreateWindow(cfg)
 
         local tName = Instance.new("TextLabel", TabBtn)
         tName.Name = "TabName"
-        tName.Size = UDim2.new(1, isMobileLayout and -58 or -70, 1, 0)
+        tName.Size = UDim2.new(1, isMobileLayout and (BadgeText and -52 or -58) or -70, 1, 0)
         tName.Position = UDim2.new(0, isMobileLayout and 36 or 40, 0, 0)
         tName.BackgroundTransparency = 1
         tName.Font = Enum.Font.GothamMedium
@@ -2387,8 +2408,10 @@ function StarHubUI:CreateWindow(cfg)
         if BadgeText then
             local bTag = Instance.new("Frame", TabBtn)
             bTag.Name = "BadgeTag"
-            bTag.Size = UDim2.new(0, 46, 0, 18)
-            bTag.Position = UDim2.new(1, -52, 0.5, -9)
+            bTag.Size = isMobileLayout and UDim2.new(0, 34, 0, 16) or UDim2.new(0, 46, 0, 18)
+            bTag.Position = isMobileLayout
+                and UDim2.new(1, -40, 0.5, -8)
+                or UDim2.new(1, -52, 0.5, -9)
             bTag.BackgroundColor3 = Color3.fromRGB(15, 26, 20)
             bTag.BackgroundTransparency = 0.25
             bTag.BorderSizePixel = 0
@@ -2407,13 +2430,15 @@ function StarHubUI:CreateWindow(cfg)
             bText.Text = BadgeText
 
             if BadgeText == "LIVE" then
-                bText.Size = UDim2.new(1, -17, 1, 0)
-                bText.Position = UDim2.new(0, 16, 0, 0)
-                bText.TextXAlignment = Enum.TextXAlignment.Left
+                bText.Size = isMobileLayout and UDim2.new(1, -4, 1, 0) or UDim2.new(1, -17, 1, 0)
+                bText.Position = isMobileLayout and UDim2.new(0, 2, 0, 0) or UDim2.new(0, 16, 0, 0)
+                bText.TextXAlignment = Enum.TextXAlignment.Center
+                bText.TextSize = isMobileLayout and 7.5 or 8.5
 
                 local liveDot = Instance.new("Frame", bTag)
-                liveDot.Size = UDim2.new(0, 6, 0, 6)
-                liveDot.Position = UDim2.new(0, 6, 0.5, -3)
+                liveDot.Size = isMobileLayout and UDim2.new(0, 4, 0, 4) or UDim2.new(0, 6, 0, 6)
+                liveDot.Position = isMobileLayout and UDim2.new(0, 3, 0.5, -2) or UDim2.new(0, 6, 0.5, -3)
+                liveDot.Visible = not isMobileLayout
                 liveDot.BackgroundColor3 = Color3.fromRGB(34, 197, 94)
                 liveDot.BorderSizePixel = 0
                 Instance.new("UICorner", liveDot).CornerRadius = UDim.new(1, 0)
