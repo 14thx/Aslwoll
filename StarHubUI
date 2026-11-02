@@ -44,7 +44,7 @@ local function LoadCustomImage(urlOrAsset, defaultAsset)
 end
 
 local StarHubUI = {
-    Version = "5.8.0",
+    Version = "5.8.1",
     Settings = {
         AutoSaveEnabled = true,
         SoundEnabled = true,
@@ -828,6 +828,7 @@ function StarHubUI:CreateWindow(cfg)
     StarHubUI.CurrentMainWindow = MainWindow
 
     local winScale = Instance.new("UIScale", MainWindow)
+    local responsiveScale = 1
     local isMobileLayout = false
     local ApplyResponsiveLayout = function() end
 
@@ -835,7 +836,10 @@ function StarHubUI:CreateWindow(cfg)
         local cam = workspace.CurrentCamera
         if not cam then return end
         local vp = cam.ViewportSize
-        local isTouch = UserInputService.TouchEnabled and not (UserInputService.KeyboardEnabled and UserInputService.MouseEnabled)
+        -- TouchEnabled is sufficient to identify phones/tablets. Some Roblox
+        -- clients report keyboard/mouse capability as well (for example when
+        -- using a Bluetooth controller), so do not exclude those devices.
+        local isTouch = UserInputService.TouchEnabled
 
         isMobileLayout = isTouch or vp.X < 760 or vp.Y < 600
 
@@ -846,9 +850,13 @@ function StarHubUI:CreateWindow(cfg)
             local safeHeight = math.max(vp.Y - 20, 220)
             local scaleX = safeWidth / math.max(WinSize.X.Offset, 1)
             local scaleY = safeHeight / math.max(WinSize.Y.Offset, 1)
-            winScale.Scale = math.clamp(math.min(scaleX, scaleY), 0.42, 0.92)
+            local fitScale = math.min(scaleX, scaleY)
+            -- Landscape phones have plenty of width but limited height; keep
+            -- the whole panel compact instead of rendering at desktop scale.
+            local mobileMaxScale = (vp.X > vp.Y) and 0.78 or 0.92
+            responsiveScale = math.clamp(fitScale, 0.42, mobileMaxScale)
         else
-            winScale.Scale = 1.0
+            responsiveScale = 1.0
         end
 
         ApplyResponsiveLayout()
@@ -1313,7 +1321,7 @@ function StarHubUI:CreateWindow(cfg)
         if show == nil then show = not MainWindow.Visible end
         if show then
             MainWindow.Visible = true
-            winScale.Scale = 0.8
+            winScale.Scale = responsiveScale * 0.8
             MainWindow.Position = UDim2.new(0.5, -WinSize.X.Offset/2, 0.5, -WinSize.Y.Offset/2)
             MainWindow.Size = isMinimized and UDim2.new(0, WinSize.X.Offset, 0, 44) or WinSize
             if isMinimized then
@@ -1325,20 +1333,20 @@ function StarHubUI:CreateWindow(cfg)
                 if BodyContainer then BodyContainer.Visible = true end
             end
             PlaySound("ToggleOn")
-            Tween(winScale, 0.35, {Scale = 1}, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+            Tween(winScale, 0.35, {Scale = responsiveScale}, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
         else
             PlaySound("ToggleOff")
-            local tw = Tween(winScale, 0.22, {Scale = 0.8}, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+            local tw = Tween(winScale, 0.22, {Scale = responsiveScale * 0.8}, Enum.EasingStyle.Back, Enum.EasingDirection.In)
             tw.Completed:Connect(function()
-                if not MainWindow.Visible or winScale.Scale <= 0.85 then
+                if not MainWindow.Visible or winScale.Scale <= responsiveScale * 0.85 then
                     MainWindow.Visible = false
-                    winScale.Scale = 1
+                    winScale.Scale = responsiveScale
                 end
             end)
             task.delay(0.24, function()
-                if not MainWindow.Visible or winScale.Scale <= 0.85 then
+                if not MainWindow.Visible or winScale.Scale <= responsiveScale * 0.85 then
                     MainWindow.Visible = false
-                    winScale.Scale = 1
+                    winScale.Scale = responsiveScale
                 end
             end)
         end
