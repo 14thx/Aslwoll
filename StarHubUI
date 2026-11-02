@@ -44,7 +44,7 @@ local function LoadCustomImage(urlOrAsset, defaultAsset)
 end
 
 local StarHubUI = {
-    Version = "5.8.9",
+    Version = "5.9.2",
     Settings = {
         AutoSaveEnabled = true,
         SoundEnabled = true,
@@ -1349,41 +1349,64 @@ function StarHubUI:CreateWindow(cfg)
 
     local isMinimized = false
     local UpdateFloatingToggleVisual = nil
+    local activeWindowTween = nil
+    local windowAnimationId = 0
 
     local function ToggleMainWindow(show)
         CenterMainWindow()
         if show == nil then show = not MainWindow.Visible end
+
+        windowAnimationId = windowAnimationId + 1
+        local animationId = windowAnimationId
+        if activeWindowTween then
+            pcall(function() activeWindowTween:Cancel() end)
+            activeWindowTween = nil
+        end
+
+        local restingScale = responsiveScale
+        local collapsedScale = restingScale * 0.93
+
         if show then
             MainWindow.Visible = true
-            winScale.Scale = responsiveScale * 0.8
-            CenterMainWindow()
             MainWindow.Size = isMinimized and UDim2.new(0, WinSize.X.Offset, 0, 44) or WinSize
-            if isMinimized then
-                HeaderLine.Visible = false
-                MainWindow.ClipsDescendants = true
-            else
-                HeaderLine.Visible = true
-                MainWindow.ClipsDescendants = false
-                if BodyContainer then BodyContainer.Visible = true end
-            end
+            MainWindow.ClipsDescendants = isMinimized
+            HeaderLine.Visible = not isMinimized
+            if BodyContainer then BodyContainer.Visible = not isMinimized end
+            CenterMainWindow()
+
+            winScale.Scale = collapsedScale
             PlaySound("ToggleOn")
-            Tween(winScale, 0.35, {Scale = responsiveScale}, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-        else
-            PlaySound("ToggleOff")
-            local tw = Tween(winScale, 0.22, {Scale = responsiveScale * 0.8}, Enum.EasingStyle.Back, Enum.EasingDirection.In)
-            tw.Completed:Connect(function()
-                if not MainWindow.Visible or winScale.Scale <= responsiveScale * 0.85 then
-                    MainWindow.Visible = false
-                    winScale.Scale = responsiveScale
+            activeWindowTween = Tween(
+                winScale,
+                0.28,
+                {Scale = restingScale},
+                Enum.EasingStyle.Quint,
+                Enum.EasingDirection.Out
+            )
+            activeWindowTween.Completed:Connect(function()
+                if animationId == windowAnimationId and MainWindow.Visible then
+                    winScale.Scale = restingScale
+                    activeWindowTween = nil
                 end
             end)
-            task.delay(0.24, function()
-                if not MainWindow.Visible or winScale.Scale <= responsiveScale * 0.85 then
+        else
+            PlaySound("ToggleOff")
+            activeWindowTween = Tween(
+                winScale,
+                0.20,
+                {Scale = collapsedScale},
+                Enum.EasingStyle.Quint,
+                Enum.EasingDirection.In
+            )
+            activeWindowTween.Completed:Connect(function()
+                if animationId == windowAnimationId then
                     MainWindow.Visible = false
-                    winScale.Scale = responsiveScale
+                    winScale.Scale = restingScale
+                    activeWindowTween = nil
                 end
             end)
         end
+
         if UpdateFloatingToggleVisual then
             pcall(UpdateFloatingToggleVisual)
         end
@@ -2391,7 +2414,7 @@ function StarHubUI:CreateWindow(cfg)
         tName.TextTruncate = Enum.TextTruncate.AtEnd
         tName.TextColor3 = Theme.TextDim
         tName.TextXAlignment = Enum.TextXAlignment.Left
-        tName.Text = TabTitle
+        tName.Text = (isMobileLayout and TabTitle == "System & Theme") and "Settings" or TabTitle
 
         local rightIndicator = Instance.new("ImageLabel", TabBtn)
         rightIndicator.Name = "RightIndicator"
@@ -2438,7 +2461,7 @@ function StarHubUI:CreateWindow(cfg)
                 local liveDot = Instance.new("Frame", bTag)
                 liveDot.Size = isMobileLayout and UDim2.new(0, 4, 0, 4) or UDim2.new(0, 6, 0, 6)
                 liveDot.Position = isMobileLayout and UDim2.new(0, 3, 0.5, -2) or UDim2.new(0, 6, 0.5, -3)
-                liveDot.Visible = not isMobileLayout
+                liveDot.Visible = true
                 liveDot.BackgroundColor3 = Color3.fromRGB(34, 197, 94)
                 liveDot.BorderSizePixel = 0
                 Instance.new("UICorner", liveDot).CornerRadius = UDim.new(1, 0)
@@ -3821,6 +3844,79 @@ function StarHubUI:CreateWindow(cfg)
     end
 
     function WindowObj:CreateDualColumnSettings(tabObj)
+        -- A compact control-center header makes the settings page easier to
+        -- scan, especially when the two columns stack on mobile.
+        local SettingsHero = Instance.new("Frame", tabObj.TopContainer)
+        SettingsHero.Name = "SettingsHero"
+        SettingsHero.Size = UDim2.new(1, 0, 0, 72)
+        SettingsHero.BackgroundColor3 = Theme.Box
+        SettingsHero.BorderSizePixel = 0
+        SettingsHero.LayoutOrder = 0
+        Instance.new("UICorner", SettingsHero).CornerRadius = UDim.new(0, 12)
+        local heroStroke = Instance.new("UIStroke", SettingsHero)
+        heroStroke.Color = Theme.Border
+        heroStroke.Thickness = 1
+        RegisterElement("Boxes", SettingsHero)
+        RegisterElement("Borders", heroStroke)
+
+        local heroGlow = Instance.new("Frame", SettingsHero)
+        heroGlow.Size = UDim2.new(0.48, 0, 1, 0)
+        heroGlow.BackgroundColor3 = Theme.Accent
+        heroGlow.BackgroundTransparency = 0.88
+        heroGlow.BorderSizePixel = 0
+        heroGlow.ZIndex = 0
+        Instance.new("UICorner", heroGlow).CornerRadius = UDim.new(0, 12)
+        RegisterElement("Accents", heroGlow)
+
+        local heroIcon = Instance.new("ImageLabel", SettingsHero)
+        heroIcon.Size = UDim2.new(0, 30, 0, 30)
+        heroIcon.Position = UDim2.new(0, 14, 0.5, -15)
+        heroIcon.BackgroundColor3 = Theme.SubBox
+        heroIcon.Image = StarHubUI.Icons.Settings
+        heroIcon.ImageColor3 = Theme.AccentLight
+        Instance.new("UICorner", heroIcon).CornerRadius = UDim.new(0, 9)
+        RegisterElement("SubBoxes", heroIcon)
+        RegisterElement("Accents", heroIcon)
+
+        local heroTitle = Instance.new("TextLabel", SettingsHero)
+        heroTitle.Size = UDim2.new(1, -170, 0, 18)
+        heroTitle.Position = UDim2.new(0, 54, 0, 13)
+        heroTitle.BackgroundTransparency = 1
+        heroTitle.Font = Enum.Font.GothamBold
+        heroTitle.TextSize = 12
+        heroTitle.TextColor3 = Theme.TextTitle
+        heroTitle.TextXAlignment = Enum.TextXAlignment.Left
+        heroTitle.Text = "CONTROL CENTER"
+
+        local heroSubtitle = Instance.new("TextLabel", SettingsHero)
+        heroSubtitle.Size = UDim2.new(1, -170, 0, 14)
+        heroSubtitle.Position = UDim2.new(0, 54, 0, 34)
+        heroSubtitle.BackgroundTransparency = 1
+        heroSubtitle.Font = Enum.Font.Gotham
+        heroSubtitle.TextSize = 9
+        heroSubtitle.TextColor3 = Theme.TextDim
+        heroSubtitle.TextXAlignment = Enum.TextXAlignment.Left
+        heroSubtitle.Text = "Personalize your interface and preferences"
+        heroSubtitle.TextTruncate = Enum.TextTruncate.AtEnd
+
+        local heroStatus = Instance.new("TextLabel", SettingsHero)
+        heroStatus.Size = UDim2.new(0, 86, 0, 22)
+        heroStatus.Position = UDim2.new(1, -98, 0.5, -11)
+        heroStatus.BackgroundColor3 = Theme.SubBox
+        heroStatus.BackgroundTransparency = 0.15
+        heroStatus.Font = Enum.Font.GothamBold
+        heroStatus.TextSize = 8
+        heroStatus.TextColor3 = Theme.Success
+        heroStatus.Text = "●  READY"
+        heroStatus.TextXAlignment = Enum.TextXAlignment.Center
+        Instance.new("UICorner", heroStatus).CornerRadius = UDim.new(1, 0)
+        local statusStroke = Instance.new("UIStroke", heroStatus)
+        statusStroke.Color = Theme.Success
+        statusStroke.Transparency = 0.45
+        statusStroke.Thickness = 0.8
+        RegisterElement("SubBoxes", heroStatus)
+        RegisterElement("Borders", statusStroke)
+
         local ThemeBox = tabObj:CreateGroupBox("Left", "THEMES & ACCENT COLOR", "PALETTE", StarHubUI.Icons.Palette)
 
         ThemeBox:AddModeSelector("ACCENT COLOR STYLE", {"Gradient Mode", "Solid Mode"},
