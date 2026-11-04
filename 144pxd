@@ -1262,14 +1262,28 @@ local function SetWindow(visible)
     end
 end
 
+local function ClampGuiCenter(target, center, screenSize)
+    -- Clamp by half of the rendered UI size so its edges stay inside the viewport.
+    local half = target.AbsoluteSize / 2
+    local minX = math.min(half.X, screenSize.X / 2)
+    local minY = math.min(half.Y, screenSize.Y / 2)
+    local maxX = math.max(screenSize.X - half.X, screenSize.X / 2)
+    local maxY = math.max(screenSize.Y - half.Y, screenSize.Y / 2)
+    return Vector2.new(
+        math.clamp(center.X, minX, maxX),
+        math.clamp(center.Y, minY, maxY)
+    )
+end
+
 local function SavePosition(target, kx, ky)
     local s = Screen.AbsoluteSize
     if s.X <= 0 or s.Y <= 0 then
         return
     end
-    local c = target.AbsolutePosition + target.AbsoluteSize / 2
-    local fx = math.clamp(c.X / s.X, 0.02, 0.98)
-    local fy = math.clamp(c.Y / s.Y, 0.02, 0.98)
+    local center = target.AbsolutePosition + target.AbsoluteSize / 2
+    center = ClampGuiCenter(target, center, s)
+    local fx = center.X / s.X
+    local fy = center.Y / s.Y
     target.Position = UDim2.fromScale(fx, fy)
     SetConfig(kx, math.floor(fx * 10000) / 10000)
     SetConfig(ky, math.floor(fy * 10000) / 10000)
@@ -1301,10 +1315,8 @@ local function MakeDraggable(handle, target, kx, ky, onClick)
         end
         if moved then
             local s = Screen.AbsoluteSize
-            target.Position = UDim2.fromOffset(
-                math.clamp(startCenter.X + d.X, 0, s.X),
-                math.clamp(startCenter.Y + d.Y, 0, s.Y)
-            )
+            local center = ClampGuiCenter(target, startCenter + d, s)
+            target.Position = UDim2.fromOffset(center.X, center.Y)
         end
     end))
 
