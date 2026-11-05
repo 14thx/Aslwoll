@@ -1770,13 +1770,14 @@ local UserBox = New("Frame", {
     Size = UDim2.new(1, -16, 0, 52),
     Position = UDim2.new(0, 8, 1, -60),
     BorderSizePixel = 0,
+    ClipsDescendants = true,
 }, Rail)
 Bind(UserBox, "BackgroundColor3", "Surface2")
 Corner(UserBox, 12)
 
 local Avatar = New("ImageLabel", {
     Size = UDim2.fromOffset(34, 34),
-    Position = UDim2.new(0, 9, 0.5, -17),
+    Position = UDim2.new(0, UIS.TouchEnabled and 7 or 9, 0.5, -17),
     BorderSizePixel = 0,
     Image = "rbxthumb://type=AvatarHeadShot&id=" .. LocalPlayer.UserId .. "&w=60&h=60",
 }, UserBox)
@@ -1786,7 +1787,7 @@ Bind(Stroke(Avatar, Theme.Accent, 1.5, 0.2), "Color", "Accent")
 Bind(Stroke(UserBox, Theme.Stroke, 1, 0.5), "Color", "Stroke")
 local Online = New("Frame", {
     Size = UDim2.fromOffset(10, 10),
-    Position = UDim2.new(0, 36, 0.5, 7),
+    Position = UDim2.new(0, UIS.TouchEnabled and 34 or 36, 0.5, 7),
     BorderSizePixel = 0,
     BackgroundColor3 = RGB(70, 200, 120),
     ZIndex = 3,
@@ -1880,7 +1881,9 @@ local function Category(name, id, iconKind)
     }, b)
     Corner(ind, 2)
 
-    local setIcon = Icon(b, iconKind, 16, 12)
+    -- The collapsed touch rail is 64px wide; its list has 8px side margins.
+    -- Place the 18px icon at x=15 so its center is exactly the rail center.
+    local setIcon = Icon(b, iconKind, UIS.TouchEnabled and 15 or 16, 12)
 
     local lbl = Text(b, name, 13, FNT.M)
     lbl.Position = UDim2.fromOffset(44, 0)
@@ -1964,6 +1967,23 @@ do
     local expanded = false
     Track(RunService.RenderStepped:Connect(function()
         if not Main.Visible then
+            return
+        end
+        -- Touch devices report a synthetic mouse location that can make the
+        -- rail expand/collapse while dragging or tapping. Keep its layout stable.
+        if UIS.TouchEnabled then
+            if expanded then
+                expanded = false
+                Tween(Rail, 0.2, { Size = UDim2.new(0, 64, 1, -84) })
+                Tween(Body, 0.2, {
+                    Position = UDim2.fromOffset(88, 72),
+                    Size = UDim2.new(1, -100, 1, -84),
+                })
+                Tween(Main:FindFirstChild("Deco"), 0.2, {
+                    Position = UDim2.fromOffset(88, 72),
+                    Size = UDim2.new(1, -100, 1, -84),
+                })
+            end
             return
         end
         local m = UIS:GetMouseLocation()
@@ -3369,6 +3389,11 @@ end
 MakeDraggable(RX, Float, "FloatX", "FloatY", function()
     SetWindow(not Config.WindowVisible)
 end)
+
+-- Normalize positions loaded from older versions. Older saves may have been
+-- calculated from AbsolutePosition on touch devices and can start off-screen.
+SavePosition(Main, "WindowX", "WindowY")
+SavePosition(Float, "FloatX", "FloatY")
 
 --==================================================
 -- START
