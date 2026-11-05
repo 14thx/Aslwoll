@@ -1263,7 +1263,7 @@ local function SetWindow(visible)
 end
 
 local function ClampGuiCenter(target, center, screenSize)
-    -- Clamp by half of the rendered UI size so its edges stay inside the viewport.
+    -- target uses AnchorPoint (0.5, 0.5); clamp the anchor using rendered size.
     local half = target.AbsoluteSize / 2
     local minX = math.min(half.X, screenSize.X / 2)
     local minY = math.min(half.Y, screenSize.Y / 2)
@@ -1280,7 +1280,13 @@ local function SavePosition(target, kx, ky)
     if s.X <= 0 or s.Y <= 0 then
         return
     end
-    local center = target.AbsolutePosition + target.AbsoluteSize / 2
+    -- Read the anchor location from UDim2 rather than AbsolutePosition; this
+    -- avoids mobile touch / GUI-inset coordinate-space mismatches.
+    local pos = target.Position
+    local center = Vector2.new(
+        pos.X.Scale * s.X + pos.X.Offset,
+        pos.Y.Scale * s.Y + pos.Y.Offset
+    )
     center = ClampGuiCenter(target, center, s)
     local fx = center.X / s.X
     local fy = center.Y / s.Y
@@ -1298,7 +1304,12 @@ local function MakeDraggable(handle, target, kx, ky, onClick)
             moved = false
             dragInput = input
             startPos = input.Position
-            startTargetPosition = target.Position
+            local s = Screen.AbsoluteSize
+            local p = target.Position
+            startTargetPosition = Vector2.new(
+                p.X.Scale * s.X + p.X.Offset,
+                p.Y.Scale * s.Y + p.Y.Offset
+            )
         end
     end)
 
@@ -1314,14 +1325,10 @@ local function MakeDraggable(handle, target, kx, ky, onClick)
             moved = true
         end
         if moved then
-            -- Keep the starting UDim2 and apply only the pointer delta.
-            -- This avoids absolute-screen/inset mismatches that can snap the UI on touch.
-            target.Position = UDim2.new(
-                startTargetPosition.X.Scale,
-                startTargetPosition.X.Offset + d.X,
-                startTargetPosition.Y.Scale,
-                startTargetPosition.Y.Offset + d.Y
-            )
+            local s = Screen.AbsoluteSize
+            local center = ClampGuiCenter(target, startTargetPosition + Vector2.new(d.X, d.Y), s)
+            -- Use offset coordinates during drag; normalize and save on release.
+            target.Position = UDim2.fromOffset(center.X, center.Y)
         end
     end))
 
