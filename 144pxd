@@ -1776,7 +1776,8 @@ Corner(UserBox, 12)
 
 local Avatar = New("ImageLabel", {
     Size = UDim2.fromOffset(34, 34),
-    Position = UDim2.new(0, 9, 0.5, -17),
+    -- Center avatar in the compact 48px profile card on touch screens.
+    Position = UDim2.new(0, UIS.TouchEnabled and 7 or 9, 0.5, -17),
     BorderSizePixel = 0,
     Image = "rbxthumb://type=AvatarHeadShot&id=" .. LocalPlayer.UserId .. "&w=60&h=60",
 }, UserBox)
@@ -1880,7 +1881,8 @@ local function Category(name, id, iconKind)
     }, b)
     Corner(ind, 2)
 
-    local setIcon = Icon(b, iconKind, 16, 12)
+    -- Center all navigation icons in the compact touch rail; keep desktop layout unchanged.
+    local setIcon = Icon(b, iconKind, UIS.TouchEnabled and 15 or 16, 12)
 
     local lbl = Text(b, name, 13, FNT.M)
     lbl.Position = UDim2.fromOffset(44, 0)
