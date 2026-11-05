@@ -1752,7 +1752,7 @@ Bind(Stroke(Rail, Theme.Stroke, 1, 0.4), "Color", "Stroke")
 
 local CatList = New("ScrollingFrame", {
     Size = UDim2.new(1, -16, 1, -80),
-    Position = UDim2.fromOffset(8, 10),
+    Position = UDim2.new(0.5, -24, 0, 10),
     BackgroundTransparency = 1,
     BorderSizePixel = 0,
     ScrollBarThickness = 2,
@@ -1768,16 +1768,15 @@ Pad(CatList, 0, 4, 1, 1)
 
 local UserBox = New("Frame", {
     Size = UDim2.new(1, -16, 0, 52),
-    Position = UDim2.new(0, 8, 1, -60),
+    Position = UDim2.new(0.5, -24, 1, -60),
     BorderSizePixel = 0,
-    ClipsDescendants = true,
 }, Rail)
 Bind(UserBox, "BackgroundColor3", "Surface2")
 Corner(UserBox, 12)
 
 local Avatar = New("ImageLabel", {
     Size = UDim2.fromOffset(34, 34),
-    Position = UDim2.new(0, UIS.TouchEnabled and 7 or 9, 0.5, -17),
+    Position = UDim2.new(0, 9, 0.5, -17),
     BorderSizePixel = 0,
     Image = "rbxthumb://type=AvatarHeadShot&id=" .. LocalPlayer.UserId .. "&w=60&h=60",
 }, UserBox)
@@ -1787,7 +1786,7 @@ Bind(Stroke(Avatar, Theme.Accent, 1.5, 0.2), "Color", "Accent")
 Bind(Stroke(UserBox, Theme.Stroke, 1, 0.5), "Color", "Stroke")
 local Online = New("Frame", {
     Size = UDim2.fromOffset(10, 10),
-    Position = UDim2.new(0, UIS.TouchEnabled and 34 or 36, 0.5, 7),
+    Position = UDim2.new(0, 36, 0.5, 7),
     BorderSizePixel = 0,
     BackgroundColor3 = RGB(70, 200, 120),
     ZIndex = 3,
@@ -1881,9 +1880,7 @@ local function Category(name, id, iconKind)
     }, b)
     Corner(ind, 2)
 
-    -- The collapsed touch rail is 64px wide; its list has 8px side margins.
-    -- Place the 18px icon at x=15 so its center is exactly the rail center.
-    local setIcon = Icon(b, iconKind, UIS.TouchEnabled and 15 or 16, 12)
+    local setIcon = Icon(b, iconKind, 16, 12)
 
     local lbl = Text(b, name, 13, FNT.M)
     lbl.Position = UDim2.fromOffset(44, 0)
