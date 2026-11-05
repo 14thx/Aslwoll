@@ -1290,7 +1290,7 @@ local function SavePosition(target, kx, ky)
 end
 
 local function MakeDraggable(handle, target, kx, ky, onClick)
-    local dragging, dragInput, startPos, startCenter, moved = false, nil, nil, nil, false
+    local dragging, dragInput, startPos, startTargetPosition, moved = false, nil, nil, nil, false
 
     handle.InputBegan:Connect(function(input)
         if IsPointer(input) then
@@ -1298,7 +1298,7 @@ local function MakeDraggable(handle, target, kx, ky, onClick)
             moved = false
             dragInput = input
             startPos = input.Position
-            startCenter = target.AbsolutePosition + target.AbsoluteSize / 2
+            startTargetPosition = target.Position
         end
     end)
 
@@ -1314,9 +1314,14 @@ local function MakeDraggable(handle, target, kx, ky, onClick)
             moved = true
         end
         if moved then
-            local s = Screen.AbsoluteSize
-            local center = ClampGuiCenter(target, startCenter + d, s)
-            target.Position = UDim2.fromOffset(center.X, center.Y)
+            -- Keep the starting UDim2 and apply only the pointer delta.
+            -- This avoids absolute-screen/inset mismatches that can snap the UI on touch.
+            target.Position = UDim2.new(
+                startTargetPosition.X.Scale,
+                startTargetPosition.X.Offset + d.X,
+                startTargetPosition.Y.Scale,
+                startTargetPosition.Y.Offset + d.Y
+            )
         end
     end))
 
