@@ -3398,6 +3398,8 @@ print("[RELWX] UI Loaded" .. (LoadedFromFile and " (Config loaded)" or " (new Co
 
 
 do -- isolated Typer Town module scope
+local TyperModuleRunning = true
+local FloatingButtonGui = nil -- RELWX's own RX button replaces Typer Town's floating button
 local Fluent = { Options = {} }
 function Fluent:Notify(item)
     pcall(function() Toast(tostring(item.Content or item.Text or item.Title or "Typer Town")) end)
@@ -3425,7 +3427,12 @@ end)
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local VirtualInputManager = game:GetService("VirtualInputManager")
+local okVirtualInput, VirtualInputManager = pcall(function()
+    return game:GetService("VirtualInputManager")
+end)
+if not okVirtualInput then
+    VirtualInputManager = nil
+end
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 
@@ -6254,8 +6261,9 @@ Tabs.Main:AddToggle("ToggleAutoEatAndDrink", {
 })
 
 task.spawn(function()
-    while true do
+    while TyperModuleRunning do
         task.wait(3.0)
+        if not TyperModuleRunning then break end
         if isAutoEatAndDrinkEnabled and not isConsumingItem then
             local char = LocalPlayer.Character
             local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -6756,8 +6764,9 @@ Tabs.Settings:AddButton({
 })
 
 task.spawn(function()
-    while true do
+    while TyperModuleRunning do
         task.wait(0.4)
+        if not TyperModuleRunning then break end
         pcall(function()
             local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
             if root and PosParagraph then
@@ -6795,6 +6804,7 @@ Tabs.Settings:AddButton({
     Title = "🔴 ปิดสคริปต์และลบ UI ทั้งหมด (Unload Script)",
     Description = "หยุดฟาร์มทั้งหมด ลบหน้าต่าง UI และปุ่มลอยทั้งหมดออกจากหน้าจอทันที",
     Callback = function()
+        TyperModuleRunning = false
         CurrentFarmSessionId = CurrentFarmSessionId + 1
         CurrentActiveFarmKey = nil
         if FloatingButtonGui then FloatingButtonGui:Destroy() end
