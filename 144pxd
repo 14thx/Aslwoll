@@ -45,6 +45,14 @@ local Defaults = {
     FloatingButtonColor = "#0C0B16",
     FloatingBorderColor = "#C4B5FD",
     FloatingGlowColor = "#8B5CF6",
+    Typer_ToggleAutoEatAndDrink = true,
+    Typer_ToggleSandwichLoop = false,
+    Typer_ToggleMangoRiceLoop = false,
+    Typer_ToggleBananaPackLoop = false,
+    Typer_ToggleKangSomLoop = false,
+    Typer_ToggleIndividualMaster = false,
+    Typer_Crop = "Bread",
+    Typer_VehicleSpeed = 200,
     ExampleFunctionEnabled = false,
     ExampleFunction2Enabled = false,
     ExampleSlider = 50,
@@ -1752,7 +1760,7 @@ Bind(Stroke(Rail, Theme.Stroke, 1, 0.4), "Color", "Stroke")
 
 local CatList = New("ScrollingFrame", {
     Size = UDim2.new(1, -16, 1, -80),
-    Position = UDim2.new(0.5, -24, 0, 10),
+    Position = UDim2.fromOffset(8, 10),
     BackgroundTransparency = 1,
     BorderSizePixel = 0,
     ScrollBarThickness = 2,
@@ -1768,7 +1776,7 @@ Pad(CatList, 0, 4, 1, 1)
 
 local UserBox = New("Frame", {
     Size = UDim2.new(1, -16, 0, 52),
-    Position = UDim2.new(0.5, -24, 1, -60),
+    Position = UDim2.new(0, 8, 1, -60),
     BorderSizePixel = 0,
 }, Rail)
 Bind(UserBox, "BackgroundColor3", "Surface2")
@@ -1776,8 +1784,7 @@ Corner(UserBox, 12)
 
 local Avatar = New("ImageLabel", {
     Size = UDim2.fromOffset(34, 34),
-    -- Center avatar in the compact 48px profile card on touch screens.
-    Position = UDim2.new(0, UIS.TouchEnabled and 7 or 9, 0.5, -17),
+    Position = UDim2.new(0, 9, 0.5, -17),
     BorderSizePixel = 0,
     Image = "rbxthumb://type=AvatarHeadShot&id=" .. LocalPlayer.UserId .. "&w=60&h=60",
 }, UserBox)
@@ -1881,8 +1888,7 @@ local function Category(name, id, iconKind)
     }, b)
     Corner(ind, 2)
 
-    -- Center all navigation icons in the compact touch rail; keep desktop layout unchanged.
-    local setIcon = Icon(b, iconKind, UIS.TouchEnabled and 15 or 16, 12)
+    local setIcon = Icon(b, iconKind, 16, 12)
 
     local lbl = Text(b, name, 13, FNT.M)
     lbl.Position = UDim2.fromOffset(44, 0)
@@ -1966,23 +1972,6 @@ do
     local expanded = false
     Track(RunService.RenderStepped:Connect(function()
         if not Main.Visible then
-            return
-        end
-        -- Touch devices report a synthetic mouse location that can make the
-        -- rail expand/collapse while dragging or tapping. Keep its layout stable.
-        if UIS.TouchEnabled then
-            if expanded then
-                expanded = false
-                Tween(Rail, 0.2, { Size = UDim2.new(0, 64, 1, -84) })
-                Tween(Body, 0.2, {
-                    Position = UDim2.fromOffset(88, 72),
-                    Size = UDim2.new(1, -100, 1, -84),
-                })
-                Tween(Main:FindFirstChild("Deco"), 0.2, {
-                    Position = UDim2.fromOffset(88, 72),
-                    Size = UDim2.new(1, -100, 1, -84),
-                })
-            end
             return
         end
         local m = UIS:GetMouseLocation()
@@ -3389,11 +3378,6 @@ MakeDraggable(RX, Float, "FloatX", "FloatY", function()
     SetWindow(not Config.WindowVisible)
 end)
 
--- Normalize positions loaded from older versions. Older saves may have been
--- calculated from AbsolutePosition on touch devices and can start off-screen.
-SavePosition(Main, "WindowX", "WindowY")
-SavePosition(Float, "FloatX", "FloatY")
-
 --==================================================
 -- START
 --==================================================
@@ -3411,3 +3395,3424 @@ if not LoadedFromFile then
 end
 
 print("[RELWX] UI Loaded" .. (LoadedFromFile and " (Config loaded)" or " (new Config)"))
+-- [NEXUS_AUTH_SUCCESS]
+pcall(function()
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "NEXUS HUB - " .. "TYPER FARM",
+        Text = "Key Verified! Device (1/1) - Loading...",
+        Duration = 5
+    })
+end)
+
+-- ==============================================================================
+-- [[ TYPER TOWN - EASY HUB V4.3 ULTIMATE PRO ]]
+-- สคริปต์ฟาร์มอัตโนมัติเสมือนคนเล่นจริง 100%
+-- 1. เช็คของในกระเป๋า Real-time 100% ผ่าน PlayerData:GetAttribute
+-- 2. ขับรถไปเก็บที่เสาฟาร์มโดยตรง (ไม่ใช่จุดเบิกรถ)
+-- 3. ฟาร์มเสร็จเดินไปเบิกรถที่เสาที่ใกล้ที่สุด พร้อมการันตีมีรถและนั่งคนขับ 100%
+-- 4. ระบบออโต้กินข้าว/อาหารอัตโนมัติ (Auto Eat Food) เมื่อความหิวต่ำ
+-- 5. ปุ่มลอยเปิด/ปิดเมนูถาวร (Draggable Floating Toggle Button)
+-- ==============================================================================
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- ==============================================================================
+-- 0. ANTI-KICK & ANTI-BAN SHIELD (ป้องกันโดนเตะออกจากเกม 100%)
+-- ==============================================================================
+pcall(function()
+    local lp = Players.LocalPlayer
+    
+    -- 1. บล็อกคำสั่ง Kick จากสคริปต์ของเกมทุกรูปแบบ
+    if hookmetamethod then
+        local oldNm
+        oldNm = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+            local method = getnamecallmethod()
+            local args = {...}
+
+            if (method == "Kick" or method == "kick") and (self == lp or self == Players) then
+                local reason = tostring(args[1] or "Unknown")
+                warn("🛡️ [EASY HUB ANTI-KICK] บล็อกคำสั่ง Kick จากเกมสำเร็จ: " .. reason)
+                return nil
+            end
+
+            -- บล็อก Remote ตรวจจับความเร็ว / การวาป / Anticheat
+            if method == "FireServer" or method == "InvokeServer" then
+                for _, a in ipairs(args) do
+                    local str = tostring(a):lower()
+                    if str:find("kick") or str:find("anticheat") or str:find("antifall") or str:find("teleport") or str:find("exploit") or str:find("speed") or str:find("fly") then
+                        return nil
+                    end
+                end
+            end
+
+            return oldNm(self, ...)
+        end))
+    end
+
+    -- 2. Hook ฟังก์ชัน LocalPlayer:Kick โดยตรง
+    if hookfunction and lp and lp.Kick then
+        hookfunction(lp.Kick, newcclosure(function(self, ...)
+            local args = {...}
+            local reason = tostring(args[1] or "Unknown")
+            warn("🛡️ [EASY HUB ANTI-KICK] บล็อก LocalPlayer:Kick: " .. reason)
+            return nil
+        end))
+    end
+
+    -- 3. ปิดการทำงานของ Antifall script ในตัวละครอัตโนมัติ
+    local function NeutralizeCharScripts(char)
+        if not char then return end
+        for _, desc in ipairs(char:GetDescendants()) do
+            if desc:IsA("Script") or desc:IsA("LocalScript") then
+                local name = desc.Name:lower()
+                if name:find("antifall") or name:find("fall") or name:find("ragdoll") or name:find("anti") then
+                    pcall(function()
+                        desc.Disabled = true
+                        desc:Destroy()
+                    end)
+                end
+            end
+        end
+    end
+
+    if lp.Character then NeutralizeCharScripts(lp.Character) end
+    lp.CharacterAdded:Connect(NeutralizeCharScripts)
+end)
+
+
+-- ------------------------------------------------------------------------------
+-- จุดเกิดรถในเมือง (Town Car Spawn): สำหรับเปิดฟังก์ชันครั้งแรก
+-- ------------------------------------------------------------------------------
+local TOWN_CAR_SPAWN = Vector3.new(-311.83, 17.5, 5490.39)
+local LAST_STORED_BOOTH = nil
+local isAutoEatEnabled = true
+local isAutoCoffeeEnabled = true
+local isAutoEatAndDrinkEnabled = true
+local VehicleDriveSpeed = 300
+
+-- ==============================================================================
+-- 1. ระบบบายพาสระบบตรวจจับตำแหน่ง (Anti-Fall & Anti-Cheat Grace)
+-- ==============================================================================
+local function GrantAntiXGrace(seconds)
+    seconds = seconds or 25
+    pcall(function()
+        local char = LocalPlayer.Character
+        if not char then return end
+
+        local antiFall = char:FindFirstChild("Antifall") or char:FindFirstChild("AntiFall")
+        if antiFall and antiFall:IsA("Script") then
+            antiFall.Disabled = true
+        end
+
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if root then
+            root:SetAttribute("TeleportGrace", os.clock() + seconds)
+            root:SetAttribute("AntiFallGrace", os.clock() + seconds)
+            root:SetAttribute("VehicleGrace", os.clock() + seconds)
+            root:SetAttribute("IgnoreAntiCheat", true)
+        end
+
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+            hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+        end
+    end)
+end
+
+local function GetGroundLevel(x, z, fallbackY)
+    fallbackY = fallbackY or 20
+    local rayOrigin = Vector3.new(x, fallbackY + 150, z)
+    local rayDir = Vector3.new(0, -350, 0)
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.IgnoreWater = false
+
+    local filterList = {}
+    if LocalPlayer.Character then table.insert(filterList, LocalPlayer.Character) end
+    local vehFolder = (workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Vehicles")) or workspace:FindFirstChild("Vehicles")
+    if vehFolder then table.insert(filterList, vehFolder) end
+    params.FilterDescendantsInstances = filterList
+
+    local result = workspace:Raycast(rayOrigin, rayDir, params)
+    if result and result.Position then
+        return result.Position.Y
+    end
+    return fallbackY
+end
+
+-- ==============================================================================
+-- 2. ระบบเช็คของในตัวแบบ REAL-TIME 100% (ผ่าน PlayerData Attributes)
+-- ==============================================================================
+local function GetPlayerInventoryCount(itemName)
+    local pd = LocalPlayer:FindFirstChild("PlayerData")
+    if pd then
+        local count = pd:GetAttribute(itemName)
+        if typeof(count) == "number" then
+            return count
+        end
+    end
+    return 0
+end
+
+local function IsCropFull(cropName)
+    return GetPlayerInventoryCount(cropName) >= 60
+end
+
+-- ==============================================================================
+-- 3. ระบบออโต้กินข้าว / อาหาร และ ดื่มกาแฟ (Auto Eat Food/Rice & Drink Coffee)
+-- ==============================================================================
+local function GetPlayerHunger()
+    local hud = PlayerGui:FindFirstChild("HUD")
+    local hFrame = hud and hud:FindFirstChild("Health") and hud.Health:FindFirstChild("Hunger")
+    if hFrame then
+        local tLabel = hFrame:FindFirstChildWhichIsA("TextLabel", true)
+        if tLabel then
+            local val = tonumber(string.match(tLabel.Text, "%d+"))
+            if val then return val end
+        end
+    end
+    local pd = LocalPlayer:FindFirstChild("PlayerData") or LocalPlayer:FindFirstChild("Stats") or LocalPlayer:FindFirstChild("DataStats")
+    if pd then
+        local hv = pd:GetAttribute("Hunger") or (pd:FindFirstChild("HungerVal") and pd.HungerVal.Value) or pd:GetAttribute("Food")
+        if typeof(hv) == "number" then return hv end
+    end
+    return 100
+end
+
+local function GetPlayerEnergy()
+    local hud = PlayerGui:FindFirstChild("HUD")
+    if hud and hud:FindFirstChild("Health") then
+        local eFrame = hud.Health:FindFirstChild("Energy") 
+                    or hud.Health:FindFirstChild("Stamina") 
+                    or hud.Health:FindFirstChild("Thirst") 
+                    or hud.Health:FindFirstChild("Coffee")
+                    or hud.Health:FindFirstChild("Brain")
+        if eFrame then
+            local tLabel = eFrame:FindFirstChildWhichIsA("TextLabel", true)
+            if tLabel then
+                local val = tonumber(string.match(tLabel.Text, "%d+"))
+                if val then return val end
+            end
+        end
+    end
+    local pd = LocalPlayer:FindFirstChild("PlayerData") or LocalPlayer:FindFirstChild("Stats") or LocalPlayer:FindFirstChild("DataStats")
+    if pd then
+        local ev = pd:GetAttribute("Energy") or pd:GetAttribute("Stamina") or pd:GetAttribute("Thirst") or (pd:FindFirstChild("ThirstVal") and pd.ThirstVal.Value)
+        if typeof(ev) == "number" then return ev end
+    end
+    return 100
+end
+
+local function FindAvailableFood()
+    local pd = LocalPlayer:FindFirstChild("PlayerData")
+    local itemFolder = LocalPlayer:FindFirstChild("Item")
+    local bp = LocalPlayer:FindFirstChild("Backpack")
+    local char = LocalPlayer.Character
+
+    local foodCandidates = {
+        "RiceKapaoMoo", "MangoRice", "Rice", "Sushi", "Sandwish",
+        "Burger", "Bread", "Watermelon", "Curry", "Ramen", "Onigiri"
+    }
+
+    for _, food in ipairs(foodCandidates) do
+        if pd then
+            local count = pd:GetAttribute(food)
+            if typeof(count) == "number" and count > 0 then return food end
+        end
+        if itemFolder and itemFolder:FindFirstChild(food) and itemFolder[food].Value > 0 then
+            return food
+        end
+        if bp and bp:FindFirstChild(food) then return food end
+        if char and char:FindFirstChild(food) then return food end
+    end
+
+    if pd then
+        for attr, val in pairs(pd:GetAttributes()) do
+            if typeof(val) == "number" and val > 0 then
+                local low = attr:lower()
+                if low:find("rice") or low:find("khao") or low:find("food") or low:find("kapao") or low:find("sushi") or low:find("sandwich") or low:find("burger") then
+                    return attr
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function FindAvailableCoffee()
+    local pd = LocalPlayer:FindFirstChild("PlayerData")
+    local itemFolder = LocalPlayer:FindFirstChild("Item")
+    local bp = LocalPlayer:FindFirstChild("Backpack")
+    local char = LocalPlayer.Character
+
+    local coffeeCandidates = {
+        "Coffee", "HotCoffee", "IcedCoffee", "HotCocoa", "Cocoa",
+        "OrangeJuice", "Water", "Ice", "Drink"
+    }
+
+    for _, drink in ipairs(coffeeCandidates) do
+        if pd then
+            local count = pd:GetAttribute(drink)
+            if typeof(count) == "number" and count > 0 then return drink end
+        end
+        if itemFolder and itemFolder:FindFirstChild(drink) and itemFolder[drink].Value > 0 then
+            return drink
+        end
+        if bp and bp:FindFirstChild(drink) then return drink end
+        if char and char:FindFirstChild(drink) then return drink end
+    end
+
+    if pd then
+        for attr, val in pairs(pd:GetAttributes()) do
+            if typeof(val) == "number" and val > 0 then
+                local low = attr:lower()
+                if low:find("coffee") or low:find("cafe") or low:find("cocoa") or low:find("tea") or low:find("drink") or low:find("water") then
+                    return attr
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function UseItem(itemName)
+    pcall(function()
+        local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
+        if remCore then
+            local Remotes_m = require(remCore)
+            Remotes_m.Fire("_inventory", "Use", itemName)
+        else
+            local rem = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Remotes")
+            if rem and rem:FindFirstChild("_inventory") then
+                rem._inventory:FireServer("Use", itemName)
+            end
+        end
+    end)
+    pcall(function()
+        local bp = LocalPlayer.PlayerGui:FindFirstChild("Backpack_Never")
+        local check = bp and bp:FindFirstChild("Check")
+        local hold = check and check:FindFirstChild("hold")
+        local delay = check and check:FindFirstChild("delay")
+        local bag = game:GetService("ReplicatedStorage"):FindFirstChild("RemoteEvent_Solf") 
+            and game:GetService("ReplicatedStorage").RemoteEvent_Solf:FindFirstChild("RemoteEventA")
+            and game:GetService("ReplicatedStorage").RemoteEvent_Solf.RemoteEventA:FindFirstChild("Bag")
+        if bag and hold and delay then
+            bag:FireServer("Use", itemName, hold, delay)
+        end
+    end)
+end
+
+local isConsumingItem = false
+local lastEatTime = 0
+local lastCoffeeTime = 0
+
+local function ConsumeItemSafely(itemName, isFood)
+    if isConsumingItem or not itemName then return end
+    isConsumingItem = true
+
+    pcall(function()
+        local char = LocalPlayer.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if not hum then return end
+
+        -- 1. เรียกใช้งานไอเทมเพื่อให้ระบบเกมส่ง Tool มาที่มือ/กระเป๋า
+        pcall(function()
+            local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
+            if remCore then
+                local Remotes_m = require(remCore)
+                Remotes_m.Fire("_inventory", "Use", itemName)
+            else
+                UseItem(itemName)
+            end
+        end)
+
+        -- รอให้ไอเทมเข้ามาอยู่ในมือหรือกระเป๋า
+        local tool = nil
+        local t0 = os.clock()
+        while os.clock() - t0 < 2.5 do
+            char = LocalPlayer.Character
+            tool = char and char:FindFirstChild(itemName)
+            if not tool and LocalPlayer:FindFirstChild("Backpack") then
+                tool = LocalPlayer.Backpack:FindFirstChild(itemName)
+                if tool and hum then
+                    hum:EquipTool(tool)
+                end
+            end
+            if tool and tool.Parent == char then break end
+            task.wait(0.1)
+        end
+
+        -- 2. [คำสั่งผู้ใช้]: ให้มันกดถือก่อน เเล้วกดกิน และรอหลอด Eating/Drinking โหลดจนจบ 100%
+        if tool and char then
+            hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                if tool.Parent ~= char then
+                    hum:EquipTool(tool)
+                    task.wait(0.25)
+                end
+                task.wait(0.4) -- จังหวะถือของในมือให้เห็นชัดเจน
+                tool:Activate() -- กดกิน/ดื่ม
+                
+                -- ตรวจสอบและรอหลอด Progress Bar ใน PlayerGui.Bar.Main โหลดเสร็จสมบูรณ์
+                local barGui = PlayerGui:FindFirstChild("Bar")
+                local barMain = barGui and barGui:FindFirstChild("Main")
+                
+                -- รอจังหวะที่หลอดโหลดโผล่ขึ้นมา
+                local barT0 = os.clock()
+                local hasBarStarted = false
+                while os.clock() - barT0 < 1.2 do
+                    if barMain then
+                        for _, child in ipairs(barMain:GetChildren()) do
+                            if child:IsA("GuiObject") then
+                                hasBarStarted = true
+                                break
+                            end
+                        end
+                    end
+                    if hasBarStarted then break end
+                    task.wait(0.08)
+                end
+
+                -- รอกิน/ดื่มจนกว่าหลอดโหลดจะหายไป (Sushi ใช้เวลา 5 วิ, Hot Cocoa 3 วิ)
+                local maxWait = (itemName:lower():find("sushi") and 5.6) or (isFood and 5.4 or 3.8)
+                local waitStart = os.clock()
+                while os.clock() - waitStart < maxWait do
+                    local isStillActive = false
+                    if barMain then
+                        for _, child in ipairs(barMain:GetChildren()) do
+                            if child:IsA("GuiObject") then
+                                isStillActive = true
+                                break
+                            end
+                        end
+                    end
+                    if hasBarStarted and not isStillActive and (os.clock() - waitStart >= 2.0) then
+                        break
+                    end
+                    task.wait(0.15)
+                end
+
+                task.wait(0.3)
+                pcall(function() hum:UnequipTools() end)
+            end
+        else
+            task.wait(1.5)
+        end
+    end)
+
+    isConsumingItem = false
+end
+
+local function AutoEatThenDrink(targetPercent)
+    targetPercent = targetPercent or 95
+    if isConsumingItem then return end
+
+    -- 1. [คำสั่งผู้ใช้]: กินข้าวก่อนจนเต็มหลอด (ทั้งสองหลอดเต็ม 100%)
+    local hunger = GetPlayerHunger()
+    if hunger and hunger < targetPercent then
+        local eatLoopCount = 0
+        while hunger and hunger < targetPercent and eatLoopCount < 8 do
+            eatLoopCount = eatLoopCount + 1
+            local food = FindAvailableFood()
+            if not food then break end
+
+            pcall(function()
+                Fluent:Notify({
+                    Title = "EASY HUB",
+                    Content = "🍣 [1/2] กำลังกิน " .. food .. " (" .. tostring(hunger) .. "% -> เต็มหลอด)...",
+                    Duration = 2.5
+                })
+            end)
+
+            ConsumeItemSafely(food, true)
+            task.wait(0.5)
+            hunger = GetPlayerHunger()
+        end
+    end
+
+    task.wait(0.4)
+
+    -- 2. [คำสั่งผู้ใช้]: ดื่มกาแฟ/โกโก้/น้ำจนเต็มหลอด (ทั้งสองหลอดเต็ม 100%)
+    local energy = GetPlayerEnergy()
+    if energy and energy < targetPercent then
+        local drinkLoopCount = 0
+        while energy and energy < targetPercent and drinkLoopCount < 8 do
+            drinkLoopCount = drinkLoopCount + 1
+            local drink = FindAvailableCoffee()
+            if not drink then break end
+
+            pcall(function()
+                Fluent:Notify({
+                    Title = "EASY HUB",
+                    Content = "☕ [2/2] กินข้าวแล้ว! กำลังดื่ม " .. drink .. " (" .. tostring(energy) .. "% -> เต็มหลอด)...",
+                    Duration = 2.5
+                })
+            end)
+
+            ConsumeItemSafely(drink, false)
+            task.wait(0.5)
+            energy = GetPlayerEnergy()
+        end
+    end
+end
+
+local function CheckAndAutoEat()
+    if not isAutoEatAndDrinkEnabled or isConsumingItem then return end
+    local hunger = GetPlayerHunger()
+    local energy = GetPlayerEnergy()
+    if (hunger and hunger <= 75) or (energy and energy <= 75) then
+        AutoEatThenDrink(95)
+    end
+end
+
+local function CheckAndAutoDrinkCoffee()
+    CheckAndAutoEat()
+end
+
+local function CancelGameFarm()
+    pcall(function()
+        local af = PlayerGui:FindFirstChild("Auto Farm") or PlayerGui:FindFirstChild("AutoFarm")
+        if af then
+            local closeBtn = af:FindFirstChild("Close", true) or (af:FindFirstChild("Group") and af.Group:FindFirstChild("Main") and af.Group.Main:FindFirstChild("Prees") and af.Group.Main.Prees:FindFirstChild("Close"))
+            if closeBtn then
+                ClickGuiButton(closeBtn)
+            end
+            af.Enabled = false
+        end
+    end)
+    pcall(function()
+        local char = LocalPlayer.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum then hum:UnequipTools() end
+    end)
+    task.wait(0.3)
+end
+local TYPER_LOCATIONS = {
+    Bread = {
+        Booth = Vector3.new(872.19, 15.90, 4682.54),
+        Farm = Vector3.new(828.31, 11.21, 4817.85)
+    },
+    Catchup = {
+        Booth = Vector3.new(1763.23, 14.23, 4206.70),
+        Farm = Vector3.new(1803.05, 12.65, 4236.79)
+    },
+    Pig = {
+        Booth = Vector3.new(306.01, 30.77, -1558.06),
+        Farm = Vector3.new(268.61, 28.74, -1513.65)
+    },
+    Mango = {
+        Booth = Vector3.new(-1855.59, 20.06, 586.40),
+        Farm = Vector3.new(-1862.26, 17.33, 535.43)
+    },
+    Rice = {
+        Booth = Vector3.new(-92.11, 11.46, 89.48),
+        Farm = Vector3.new(-128.87, 11.02, 78.51)
+    },
+    Tomato = {
+        Booth = Vector3.new(-2294.10, 31.28, -1273.91),
+        Farm = Vector3.new(-2319.61, 27.21, -1229.19)
+    },
+    Banana = {
+        Booth = Vector3.new(-1528.59, 30.34, -1253.46),
+        Farm = Vector3.new(-1545.12, 28.80, -1126.87)
+    },
+    Crab = {
+        Booth = Vector3.new(1442.30, 30.56, 613.34),
+        Farm = Vector3.new(1400.27, 28.69, 648.22)
+    },
+    Coconut = {
+        Booth = Vector3.new(-1296.67, 10.37, 4216.59),
+        Farm = Vector3.new(-1333.68, 10.87, 4376.67)
+    },
+    Corn = {
+        Booth = Vector3.new(-164.76, 12.39, 4426.24),
+        Farm = Vector3.new(-264.44, 11.95, 4527.12)
+    },
+    Egg = {
+        Booth = Vector3.new(-1680.12, 11.39, 4390.69),
+        Farm = Vector3.new(-1799.30, 10.98, 4492.20)
+    },
+    Milk = {
+        Booth = Vector3.new(-903.04, 11.41, 4716.36),
+        Farm = Vector3.new(-998.66, 11.23, 4831.62)
+    },
+    Sugarcane = {
+        Booth = Vector3.new(-1805.15, 12.98, 3816.89),
+        Farm = Vector3.new(-1922.31, 13.06, 3962.32)
+    },
+    Food = {
+        Crafting = Vector3.new(3442.48, 56.40, 3925.24),
+        BananaProcess = Vector3.new(3429.20, 56.80, 3911.80)
+    },
+    Economy = {
+        Market = Vector3.new(-462.0, 18.0, 5324.7) -- จุดขายในเมือง (Economy NPC Phineas) จาก MapLocations
+    }
+}
+
+
+local function GetPreferredCarName()
+    return "Buggy"
+end
+
+local function StoreCarAtFarmPillar(farmPos)
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if hum and hum.Sit then hum.Sit = false task.wait(0.12) end
+    if root then
+        root.AssemblyLinearVelocity = Vector3.zero
+    end
+end
+
+local MY_SPAWNED_CAR = nil
+
+-- [คำสั่งผู้ใช้]: ตรวจสอบว่าเป็นรถของตัวเองเท่านั้น ห้ามแตะต้อง/ขึ้นรถคนอื่นเด็ดขาด 100%
+local function IsMyVehicle(v)
+    if not v or not v:IsA("Model") or not v.Parent then return false end
+
+    local myName = LocalPlayer.Name
+    local myUserId = LocalPlayer.UserId
+
+    -- 1. ตรวจสอบ Attribute Owner จากระบบเกม (ชัดเจนและตรงที่สุด 100%)
+    local owner = v:GetAttribute("Owner") or v:GetAttribute("OwnerName") or v:GetAttribute("Player")
+    local ownerId = v:GetAttribute("OwnerId") or v:GetAttribute("UserId") or v:GetAttribute("PlayerId")
+
+    -- ถ้าตัวรถมีระบุชื่อเจ้าของ และไม่ใช่ตัวเรา -> คืนค่า FALSE ทันที ห้ามแตะต้องรถคนอื่นเด็ดขาด!
+    if owner ~= nil and tostring(owner) ~= "" then
+        if tostring(owner) == myName or tostring(owner) == tostring(myUserId) then
+            return true
+        else
+            return false
+        end
+    end
+
+    -- ถ้าตัวรถมีระบุ UserId และไม่ใช่ ID ของเรา -> คืนค่า FALSE ทันที!
+    if ownerId ~= nil and tonumber(ownerId) then
+        if tonumber(ownerId) == myUserId then
+            return true
+        else
+            return false
+        end
+    end
+
+    -- 2. ตรวจสอบ Value Object Owner ภายในตัวรถ
+    local ownerVal = v:FindFirstChild("Owner") or v:FindFirstChild("Player")
+    if ownerVal and (ownerVal:IsA("StringValue") or ownerVal:IsA("ObjectValue")) then
+        if ownerVal.Value == myName or ownerVal.Value == LocalPlayer then
+            return true
+        else
+            return false
+        end
+    end
+
+    -- 3. ถ้าไม่มีหลักฐานยืนยันว่าเป็นรถของเรา -> ปฏิเสธทันที ไม่ใช่รถเราเด็ดขาด
+    return false
+end
+
+-- [คำสั่งผู้ใช้]: ค้นหารถของตัวเองเท่านั้น
+local function GetPlayerVehicle()
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+    -- 1. ถ้าตัวเรากำลังนั่งอยู่ในรถ และต้องเป็นรถของตัวเองเท่านั้น
+    if hum and hum.SeatPart and hum.SeatPart:IsA("VehicleSeat") then
+        local veh = hum.SeatPart:FindFirstAncestorOfClass("Model")
+        if veh and IsMyVehicle(veh) then
+            return veh
+        end
+    end
+
+    -- 2. ถ้ารถที่เราจำไว้ยังคงอยู่ในแมพ และยังเป็นรถของเราจริง
+    if MY_SPAWNED_CAR and MY_SPAWNED_CAR.Parent and MY_SPAWNED_CAR.PrimaryPart and IsMyVehicle(MY_SPAWNED_CAR) then
+        return MY_SPAWNED_CAR
+    end
+
+    -- 3. ค้นหาในโฟลเดอร์ Vehicles เฉพาะที่เป็นรถของตัวเอง 100%
+    local vehFolder = (workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Vehicles")) or workspace:FindFirstChild("Vehicles")
+    if vehFolder then
+        for _, v in ipairs(vehFolder:GetChildren()) do
+            if v:IsA("Model") and IsMyVehicle(v) and v.PrimaryPart then
+                MY_SPAWNED_CAR = v
+                return v
+            end
+        end
+    end
+
+    return nil
+end
+
+-- [คำสั่งผู้ใช้]: ค้นหารถของตัวเองที่อยู่ใกล้ตัว (ห้ามหยิบรถคนอื่นเด็ดขาด)
+local function GetNearbyPlayerVehicle(maxDist)
+    maxDist = maxDist or 80
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return nil, math.huge, nil end
+
+    -- 1. ถ้าตัวเรากำลังนั่งอยู่ในรถของตัวเอง
+    if hum and hum.Sit and hum.SeatPart and hum.SeatPart:IsA("VehicleSeat") then
+        local veh = hum.SeatPart:FindFirstAncestorOfClass("Model")
+        if veh and IsMyVehicle(veh) then
+            return veh, 0, nil
+        end
+    end
+
+    -- 2. สแกนหาเฉพาะรถของตัวเองในระยะที่ใกล้ที่สุด
+    local vehFolder = (workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Vehicles")) or workspace:FindFirstChild("Vehicles")
+    local nearestCar = nil
+    local minDist = math.huge
+
+    if vehFolder then
+        for _, v in ipairs(vehFolder:GetChildren()) do
+            if v:IsA("Model") and IsMyVehicle(v) and v.PrimaryPart then
+                local dist = (v.PrimaryPart.Position - root.Position).Magnitude
+                if dist < minDist then
+                    minDist = dist
+                    nearestCar = v
+                end
+            end
+        end
+    end
+
+    if nearestCar then
+        if minDist <= maxDist then
+            MY_SPAWNED_CAR = nearestCar
+            return nearestCar, minDist, nil
+        else
+            -- รถเราอยู่ไกลเกินระยะ maxDist
+            return nil, minDist, nearestCar
+        end
+    end
+
+    return nil, math.huge, nil
+end
+
+-- [คำสั่งผู้ใช้]: กด F ขึ้นรถคนขับเฉพาะรถของตัวเองเท่านั้น ห้ามขึ้นรถคนอื่นเด็ดขาด 100%
+local function PressFToEnterCar(car)
+    if not car or not car.Parent then return false end
+
+    -- ปฏิเสธทันทีถ้าไม่ใช่รถของตัวเอง
+    if not IsMyVehicle(car) then
+        pcall(function()
+            Fluent:Notify({
+                Title = "EASY HUB",
+                Content = "⚠️ ปฏิเสธการขึ้นรถ: คันนี้ไม่ใช่รถของเรา!",
+                Duration = 2.0
+            })
+        end)
+        return false
+    end
+
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root then return false end
+
+    local seat = car:FindFirstChild("DriveSeat", true) or car:FindFirstChildWhichIsA("VehicleSeat", true)
+    if not seat then return false end
+
+    -- ถ้าตัวเรานั่งอยู่ในเบาะคนขับคันนี้อยู่แล้ว
+    if hum.Sit and hum.SeatPart == seat then
+        pcall(function()
+            game:GetService("ProximityPromptService").Enabled = false
+        end)
+        return true
+    end
+
+    -- ถ้าตัวเรากำลังนั่งอยู่ในรถคันอื่น ให้ลุกออกทันที
+    if hum.Sit and hum.SeatPart ~= seat then
+        hum.Sit = false
+        task.wait(0.2)
+    end
+
+    GrantAntiXGrace(15)
+
+    -- ค้นหา ProximityPrompt [F] Drive ของที่นั่งคนขับในรถตัวเองเท่านั้น
+    local drivePrompt = nil
+    local pFolder = seat:FindFirstChild("Prompt")
+    if pFolder and pFolder:FindFirstChild("Prompt") and pFolder.Prompt:IsA("ProximityPrompt") then
+        drivePrompt = pFolder.Prompt
+    else
+        for _, d in ipairs(seat:GetDescendants()) do
+            if d:IsA("ProximityPrompt") and d.ActionText:lower():find("drive") and not d.ActionText:lower():find("passenger") then
+                drivePrompt = d
+                break
+            end
+        end
+    end
+
+    -- ปิด ProximityPrompt ของที่นั่งผู้โดยสาร (Passenger) ในรถตัวเองชั่วคราว เพื่อไม่ให้เผลอกดขึ้นเป็นผู้โดยสาร
+    for _, d in ipairs(car:GetDescendants()) do
+        if d:IsA("ProximityPrompt") and (d.ActionText:lower():find("passenger") or d.Name:lower():find("passenger")) then
+            d.Enabled = false
+        end
+    end
+
+    -- ปิด ProximityPrompt ของรถคันอื่นทั้งหมดรอบตัว เพื่อไม่ให้กดผิดคัน 100%
+    local vehFolder = (workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Vehicles")) or workspace:FindFirstChild("Vehicles")
+    if vehFolder then
+        for _, otherVeh in ipairs(vehFolder:GetChildren()) do
+            if otherVeh ~= car then
+                for _, otherP in ipairs(otherVeh:GetDescendants()) do
+                    if otherP:IsA("ProximityPrompt") then
+                        otherP.Enabled = false
+                    end
+                end
+            end
+        end
+    end
+
+    -- ยืนข้างประตูคนขับ (ฝั่งซ้ายของเบาะคนขับ -2.6 studs) ของรถตัวเองอย่างเป็นธรรมชาติ
+    local doorCF = seat.CFrame * CFrame.new(-2.6, 0.2, 0)
+    root.CFrame = CFrame.lookAt(doorCF.Position, seat.Position)
+    root.AssemblyLinearVelocity = Vector3.zero
+    root.AssemblyAngularVelocity = Vector3.zero
+    task.wait(0.15)
+
+    -- เปิดให้ระบบ ProximityPrompt ทำงานเฉพาะปุ่ม Drive ของรถเรา
+    pcall(function()
+        game:GetService("ProximityPromptService").Enabled = true
+        if drivePrompt then drivePrompt.Enabled = true end
+    end)
+
+    -- กดปุ่ม F เข้าที่นั่งคนขับ
+    if drivePrompt then
+        pcall(function() fireproximityprompt(drivePrompt) end)
+        pcall(function() drivePrompt:InputHoldBegin() end)
+        task.wait(0.06)
+        pcall(function() drivePrompt:InputHoldEnd() end)
+    end
+
+    -- รอให้ระบบของเกมส่งตัวเข้าที่นั่งคนขับ
+    local t0 = os.clock()
+    while os.clock() - t0 < 1.5 do
+        if hum.Sit and hum.SeatPart == seat then
+            break
+        end
+        task.wait(0.1)
+    end
+
+    -- Fallback: ถ้ายังไม่ได้เข้าที่นั่ง ให้ Sit ป้องกันค้าง
+    if not (hum.Sit and hum.SeatPart == seat) then
+        pcall(function()
+            root.CFrame = seat.CFrame + Vector3.new(0, 0.5, 0)
+            seat:Sit(hum)
+        end)
+        task.wait(0.2)
+    end
+
+    local isSeated = hum.Sit and hum.SeatPart == seat
+    if isSeated then
+        MY_SPAWNED_CAR = car
+        pcall(function()
+            game:GetService("ProximityPromptService").Enabled = false
+        end)
+    end
+    return isSeated
+end
+
+local function EnsurePlayerSeatedInCar(car)
+    return PressFToEnterCar(car)
+end
+-- ฟังก์ชันลงจากรถอย่างเป็นธรรมชาติ (ตัวไม่ลอย ไม่กระโดดเคว้ง เท้าติดพื้นข้างประตูรถ)
+local function ExitCarNaturally(car)
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root then return end
+
+    if hum.Sit then
+        hum.Sit = false
+        task.wait(0.12)
+    end
+
+    pcall(function()
+        game:GetService("ProximityPromptService").Enabled = true
+    end)
+
+    if car and car.PrimaryPart then
+        local rightVec = car.PrimaryPart.CFrame.RightVector
+        local exitPos = car.PrimaryPart.Position - (rightVec * 4.2)
+        local groundY = GetGroundLevel(exitPos.X, exitPos.Z, car.PrimaryPart.Position.Y)
+        root.CFrame = CFrame.new(exitPos.X, groundY + 1.8, exitPos.Z)
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+    end
+    task.wait(0.15)
+end
+
+-- ค้นหา ProximityPrompt ใกล้จุดที่กำหนดแบบรวดเร็ว (ค้นหาเฉพาะใน Systems เพื่อป้องกันเกมค้าง/เด้งบนมือถือ 100%)
+local function FindPromptNear(centerPos, maxDist, matchKeyword)
+    maxDist = maxDist or 25
+    local closest, closestDist = nil, maxDist
+
+    local systems = workspace:FindFirstChild("Systems")
+    local containers = systems and {systems} or {workspace}
+
+    for _, container in ipairs(containers) do
+        for _, prompt in ipairs(container:GetDescendants()) do
+            if prompt:IsA("ProximityPrompt") and prompt.Enabled then
+                local pPart = prompt.Parent
+                local pPos = pPart and (pPart:IsA("BasePart") and pPart.Position or (pPart:IsA("Attachment") and pPart.WorldPosition) or (pPart:FindFirstChildWhichIsA("BasePart") and pPart:FindFirstChildWhichIsA("BasePart").Position))
+                if pPos then
+                    local d = (pPos - centerPos).Magnitude
+                    if d <= closestDist then
+                        if not matchKeyword or string.find(string.lower(prompt.ActionText or ""), string.lower(matchKeyword)) or string.find(string.lower(prompt.ObjectText or ""), string.lower(matchKeyword)) then
+                            closest = prompt
+                            closestDist = d
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return closest
+end
+
+
+local function ClickGuiButton(btn)
+    if not btn then return end
+    pcall(function()
+        if getconnections then
+            for _, con in ipairs(getconnections(btn.MouseButton1Click)) do
+                pcall(function()
+                    if con.Function then con.Function()
+                    elseif con.Fire then con:Fire() end
+                end)
+            end
+            for _, con in ipairs(getconnections(btn.Activated)) do
+                pcall(function()
+                    if con.Function then con.Function()
+                    elseif con.Fire then con:Fire() end
+                end)
+            end
+            for _, con in ipairs(getconnections(btn.MouseButton1Down)) do
+                pcall(function()
+                    if con.Function then con.Function()
+                    elseif con.Fire then con:Fire() end
+                end)
+            end
+        end
+    end)
+    pcall(function()
+        if firesignal then
+            pcall(function() firesignal(btn.MouseButton1Click) end)
+            pcall(function() firesignal(btn.Activated) end)
+            pcall(function() firesignal(btn.MouseButton1Down) end)
+        end
+    end)
+    pcall(function()
+        if VirtualInputManager and btn.AbsolutePosition and btn.AbsoluteSize then
+            local pos = btn.AbsolutePosition + (btn.AbsoluteSize / 2)
+            VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 0)
+            task.wait(0.05)
+            VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 0)
+        end
+    end)
+end
+
+local function SafeClickGuiButton(btn)
+    if not btn or not btn:IsA("GuiButton") then return end
+    pcall(function()
+        if firesignal then
+            pcall(function() firesignal(btn.MouseButton1Click) end)
+            pcall(function() firesignal(btn.Activated) end)
+        end
+    end)
+end
+
+local function TriggerPrompt(prompt)
+    if not prompt or not prompt.Enabled then return end
+    pcall(function()
+        if fireproximityprompt then
+            pcall(function() fireproximityprompt(prompt) end)
+        end
+        pcall(function()
+            prompt:InputHoldBegin()
+            task.wait(prompt.HoldDuration > 0 and (prompt.HoldDuration + 0.05) or 0.1)
+            prompt:InputHoldEnd()
+        end)
+    end)
+end
+
+-- ==============================================================================
+-- 5. ค้นหาเสาเบิกรถที่ใกล้ที่สุด (Find Nearest Car Spawn Booth)
+-- ==============================================================================
+local function GetNearestCarBooth(fromPos)
+    fromPos = fromPos or (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character.HumanoidRootPart.Position) or TOWN_CAR_SPAWN
+    local closestPos = nil
+    local closestDist = math.huge
+
+    -- 1. ตรวจสอบจาก TYPER_LOCATIONS ก่อนเสมอ เพราะมีพิกัดตู้เบิกรถที่แท้จริงและแม่นยำ 100%
+    if TYPER_LOCATIONS then
+        for cropName, data in pairs(TYPER_LOCATIONS) do
+            if data and data.Booth then
+                local d = (data.Booth - fromPos).Magnitude
+                if d < closestDist then
+                    closestDist = d
+                    closestPos = data.Booth
+                end
+            end
+        end
+    end
+
+    -- 2. ตรวจสอบจากใน workspace.Systems.Farm
+    local farmSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Farm")
+    if farmSys then
+        for _, cropFolder in ipairs(farmSys:GetChildren()) do
+            local promptFolder = cropFolder:FindFirstChild("Prompt")
+            local spawnFolder = promptFolder and promptFolder:FindFirstChild("Spawn")
+            if spawnFolder then
+                local part = spawnFolder:FindFirstChild("Prompt") or spawnFolder:FindFirstChildWhichIsA("BasePart", true)
+                local pos = part and (part:IsA("BasePart") and part.Position or (part:IsA("Attachment") and part.WorldPosition))
+                if pos then
+                    local d = (pos - fromPos).Magnitude
+                    if d < closestDist then
+                        closestDist = d
+                        closestPos = pos
+                    end
+                end
+            end
+        end
+    end
+
+    -- 3. ตรวจสอบตู้ในเมือง TOWN_CAR_SPAWN
+    if TOWN_CAR_SPAWN then
+        local d = (TOWN_CAR_SPAWN - fromPos).Magnitude
+        if d < closestDist then
+            closestDist = d
+            closestPos = TOWN_CAR_SPAWN
+        end
+    end
+
+    return closestPos or TOWN_CAR_SPAWN
+end
+
+-- ==============================================================================
+-- 6. ระบบการเดินเท้าจริง (Smooth Walking Only) ไม่มีการวาร์ป
+-- ==============================================================================
+local function SmoothWalkTo(targetPos, maxTimeout, shouldContinueCheck, stopDist)
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root then return false end
+
+    maxTimeout = maxTimeout or 50
+    stopDist = stopDist or 2.5
+    local startTime = os.clock()
+    local lastPos = root.Position
+    local stuckTicks = 0
+
+    while (root.Position - targetPos).Magnitude > stopDist and (os.clock() - startTime < maxTimeout) do
+        if shouldContinueCheck and not shouldContinueCheck() then return false end
+        GrantAntiXGrace(5)
+
+        hum:MoveTo(targetPos)
+
+        if (root.Position - lastPos).Magnitude < 0.4 then
+            stuckTicks = stuckTicks + 1
+            if stuckTicks >= 3 then
+                hum.Jump = true
+                stuckTicks = 0
+            end
+        else
+            stuckTicks = 0
+        end
+
+        lastPos = root.Position
+        task.wait(0.2)
+    end
+
+    return (root.Position - targetPos).Magnitude <= 8
+end
+
+-- ==============================================================================
+-- 7. ระบบการขับรถไปฟาร์ม (Drive Car Only)
+-- ==============================================================================
+
+local safeFloorPart = nil
+local function GetSafeWaterFloor()
+    if not safeFloorPart or not safeFloorPart.Parent then
+        safeFloorPart = workspace:FindFirstChild("TyperTown_SafeWaterFloor")
+        if not safeFloorPart then
+            safeFloorPart = Instance.new("Part")
+            safeFloorPart.Name = "TyperTown_SafeWaterFloor"
+            safeFloorPart.Size = Vector3.new(36, 3, 36)
+            safeFloorPart.Anchored = true
+            safeFloorPart.CanCollide = true
+            safeFloorPart.Transparency = 1
+            safeFloorPart.Material = Enum.Material.SmoothPlastic
+            safeFloorPart.Parent = workspace
+        end
+    end
+    return safeFloorPart
+end
+
+local function DriveCarTo(destination, shouldContinueCheck)
+    local myCar = GetNearbyPlayerVehicle(80)
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+
+    -- ตรวจสอบว่าตัวเรานั่งอยู่ในรถคนอื่นหรือไม่ ถ้าใช่ให้สละรถทันที!
+    if hum and hum.Sit and hum.SeatPart then
+        local currentVeh = hum.SeatPart:FindFirstAncestorOfClass("Model")
+        if currentVeh and not IsMyVehicle(currentVeh) then
+            pcall(function()
+                Fluent:Notify({
+                    Title = "EASY HUB",
+                    Content = "⚠️ ตรวจพบว่านั่งรถคนอื่น! กำลังสละรถและเบิกรถตัวเอง...",
+                    Duration = 2.0
+                })
+                hum.Sit = false
+            end)
+            task.wait(0.3)
+            myCar = nil
+        end
+    end
+
+    if not myCar or not IsMyVehicle(myCar) or not (hum and hum.Sit) then
+        if not myCar or not IsMyVehicle(myCar) then
+            myCar = EnsureCarAvailable()
+        elseif hum then
+            EnsurePlayerSeatedInCar(myCar)
+        end
+    end
+
+    if not myCar or not hum or not root then return false end
+
+    local seat = myCar:FindFirstChildWhichIsA("VehicleSeat", true)
+    if not seat then return false end
+
+    EnsurePlayerSeatedInCar(myCar)
+    task.wait(0.1)
+    pcall(function()
+        game:GetService("ProximityPromptService").Enabled = false
+    end)
+
+    local currentPos = seat.Position
+    local startY = currentPos.Y
+
+    local initialGround = GetGroundLevel(currentPos.X, currentPos.Z, startY)
+    local naturalRideHeight = math.clamp(startY - initialGround, 2.3, 3.2)
+
+    local distTotal = (Vector2.new(destination.X, destination.Z) - Vector2.new(currentPos.X, currentPos.Z)).Magnitude
+    if distTotal < 5 then return true end
+
+    -- [คำสั่งผู้ใช้]: ปรับความเร็วได้จริง ดึงค่าจาก Slider หรือตัวแปร VehicleDriveSpeed แบบเรียลไทม์
+    local traveled = 0
+    local lastTick = os.clock()
+
+    while traveled < distTotal do
+        if shouldContinueCheck and not shouldContinueCheck() then
+            return false
+        end
+        GrantAntiXGrace(15)
+
+        pcall(function()
+            game:GetService("ProximityPromptService").Enabled = false
+        end)
+
+        if not hum.Sit or hum.SeatPart ~= seat then
+            pcall(function()
+                root.CFrame = seat.CFrame + Vector3.new(0, 0.8, 0)
+                seat:Sit(hum)
+            end)
+        end
+
+        -- ดึงความเร็วปัจจุบันจาก Slider แบบเรียลไทม์ทันทีขณะรถกำลังวิ่ง
+        local currentSpeed = tonumber(VehicleDriveSpeed) or 200
+        currentSpeed = math.clamp(currentSpeed, 10, 500)
+
+        local now = os.clock()
+        local dt = math.min(now - lastTick, 0.1)
+        lastTick = now
+
+        traveled = math.min(distTotal, traveled + (currentSpeed * dt))
+        local alpha = math.clamp(traveled / distTotal, 0, 1)
+
+        local targetX = currentPos.X + (destination.X - currentPos.X) * alpha
+        local targetZ = currentPos.Z + (destination.Z - currentPos.Z) * alpha
+
+        local groundY = GetGroundLevel(targetX, targetZ, startY)
+        local surfaceY = math.max(groundY + naturalRideHeight, 6.0)
+
+        local dir = Vector3.new(destination.X - targetX, 0, destination.Z - targetZ)
+        local lookCFrame = CFrame.new(targetX, surfaceY, targetZ)
+        if dir.Magnitude > 0.1 then
+            lookCFrame = CFrame.lookAt(Vector3.new(targetX, surfaceY, targetZ), Vector3.new(targetX, surfaceY, targetZ) + dir)
+        end
+
+        myCar:PivotTo(lookCFrame)
+        RunService.Heartbeat:Wait()
+    end
+
+    -- จอดที่จุดหมายในฟาร์มอย่างนุ่มนวล
+    local endGround = GetGroundLevel(destination.X, destination.Z, destination.Y)
+    local finalSurfaceY = math.max(endGround + naturalRideHeight, 6.0)
+    myCar:PivotTo(CFrame.new(destination.X, finalSurfaceY, destination.Z))
+    task.wait(0.1)
+    return true
+end
+
+-- ==============================================================================
+-- 8. ระบบเบิกรถในเมือง & เก็บรถตรงเสาฟาร์ม & เบิกรถที่เสาที่ใกล้ที่สุด (Mobile Safe 100%)
+-- ==============================================================================
+local function StoreCarAtBooth(boothPos)
+    GrantAntiXGrace(35)
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local myCar = GetPlayerVehicle()
+    if not myCar then return end
+
+    local carName = myCar.Name or "Buggy"
+    local spPt = GetSpawnPointForBooth(boothPos)
+
+    -- จอดรถตรงจุด Spawn Box ของตู้เพื่อให้ระบบคลุมแสงสีฟ้าอ่อนรอบตัวรถ
+    if myCar.PrimaryPart then
+        if spPt and spPt:IsA("BasePart") then
+            myCar:PivotTo(spPt.CFrame + Vector3.new(0, 1.2, 0))
+        else
+            local groundY = GetGroundLevel(boothPos.X, boothPos.Z, boothPos.Y)
+            myCar:PivotTo(CFrame.new(boothPos.X, groundY + 1.2, boothPos.Z))
+        end
+        myCar.PrimaryPart.AssemblyLinearVelocity = Vector3.zero
+        myCar.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
+    end
+
+    -- รอ 2 วินาทีก่อนลงรถ/เก็บรถ เพื่อให้ระบบ Spawn Box แสดงแสงสีฟ้าคลุมรถชัดเจน
+    task.wait(2.0)
+
+    -- ลงจากรถอย่างเป็นธรรมชาติ เท้าแตะพื้นข้างประตูรถ ไม่กระโดดลอยฟ้า
+    ExitCarNaturally(myCar)
+
+    -- หากอยู่ห่างจากตู้ ให้เดินเข้าหาตู้เบิกรถอย่างราบรื่น
+    if root and (root.Position - boothPos).Magnitude > 8 then
+        SmoothWalkTo(boothPos, 3, nil, 1.2)
+    end
+
+    -- ปลดล็อค ProximityPrompt ทันที
+    pcall(function()
+        local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if not hum or not hum.Sit then
+            game:GetService("ProximityPromptService").Enabled = true
+        end
+    end)
+
+    -- ค้นหา Prompt ตู้เบิกรถเพื่อเปิด UI และกด Pound
+    local boothPrompt = nil
+    local farmSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Farm")
+    if farmSys then
+        for _, f in ipairs(farmSys:GetChildren()) do
+            local sp = f:FindFirstChild("Prompt") and f.Prompt:FindFirstChild("Spawn")
+            local p = sp and sp:FindFirstChildWhichIsA("ProximityPrompt", true)
+            if p then
+                local pos = (p.Parent:IsA("Attachment") and p.Parent.WorldPosition) or (p.Parent:IsA("BasePart") and p.Parent.Position)
+                if pos and (pos - boothPos).Magnitude <= 40 then
+                    boothPrompt = p
+                    p.Enabled = true
+                    break
+                end
+            end
+        end
+    end
+    if not boothPrompt then
+        local carSpawns = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Car_Spawn")
+        if carSpawns then
+            for _, sp in ipairs(carSpawns:GetChildren()) do
+                local p = sp:FindFirstChildWhichIsA("ProximityPrompt", true)
+                if p then
+                    local pos = (p.Parent:IsA("Attachment") and p.Parent.WorldPosition) or (p.Parent:IsA("BasePart") and p.Parent.Position)
+                    if pos and (pos - boothPos).Magnitude <= 40 then
+                        boothPrompt = p
+                        p.Enabled = true
+                        break
+                    end
+                end
+            end
+        end
+    end
+    if not boothPrompt then
+        boothPrompt = FindPromptNear(boothPos, 40, "SPAWN") or FindPromptNear(root.Position, 30, nil)
+    end
+
+    -- เปิด UI Car_Spawn
+    if boothPrompt then
+        boothPrompt.Enabled = true
+        TriggerPrompt(boothPrompt)
+    end
+
+    local cs = PlayerGui:WaitForChild("Car_Spawn", 1.5)
+    local t0 = os.clock()
+    while (not cs or not cs:FindFirstChild("Group") or not cs.Group.Visible) and (os.clock() - t0 < 1.2) do
+        if boothPrompt then TriggerPrompt(boothPrompt) end
+        task.wait(0.15)
+    end
+
+    -- กดปุ่ม Pound เพื่อเก็บรถ
+    if cs and cs:FindFirstChild("Group") and cs.Group.Visible then
+        local btn, btnType = FindCarSpawnOrPoundButton(cs.Group, carName)
+        if btn and btnType == "pound" then
+            ClickGuiButton(btn)
+            task.wait(0.4)
+        else
+            for _, desc in ipairs(cs.Group:GetDescendants()) do
+                if desc.Name == "Pound" and desc:IsA("GuiButton") and desc.Visible then
+                    ClickGuiButton(desc)
+                    task.wait(0.4)
+                    break
+                end
+            end
+        end
+    end
+
+    -- ยิง Remote Despawn สำรอง
+    pcall(function()
+        local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
+        if remCore then
+            local Remotes_m = require(remCore)
+            Remotes_m.Fire("_carspawn", "Despawn", carName)
+            Remotes_m.Fire("_carspawn", "Despawn")
+            MY_SPAWNED_CAR = nil
+        end
+    end)
+
+    -- ปิด UI Car_Spawn และคืนค่า ProximityPrompt
+    CloseCarSpawnGui()
+    task.wait(0.2)
+end
+
+local function GetSpawnPointForBooth(boothPos)
+    local bestPt = nil
+    local bestDist = math.huge
+    local farmSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Farm")
+    if farmSys then
+        for _, farm in ipairs(farmSys:GetChildren()) do
+            local sp = farm:FindFirstChild("Prompt") and farm.Prompt:FindFirstChild("Spawn")
+            local ptFolder = sp and sp:FindFirstChild("Point")
+            if ptFolder then
+                for _, pt in ipairs(ptFolder:GetChildren()) do
+                    if pt:IsA("BasePart") then
+                        local d = (pt.Position - boothPos).Magnitude
+                        if d < bestDist then
+                            bestDist = d
+                            bestPt = pt
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if not bestPt then
+        local carSpawns = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Car_Spawn")
+        if carSpawns then
+            for _, sp in ipairs(carSpawns:GetChildren()) do
+                local pt = sp:FindFirstChild("Point") or sp:FindFirstChild("Spawn") or sp
+                local part = pt:IsA("BasePart") and pt or pt:FindFirstChildWhichIsA("BasePart", true)
+                if part then
+                    local d = (part.Position - boothPos).Magnitude
+                    if d < bestDist then
+                        bestDist = d
+                        bestPt = part
+                    end
+                end
+            end
+        end
+    end
+    return bestPt
+end
+
+local function FindCarSpawnOrPoundButton(group, preferredCarName)
+    preferredCarName = preferredCarName or GetPreferredCarName() or "Buggy"
+    
+    -- 1. ค้นหาใน Frame ของรถที่ต้องการ (เฉพาะปุ่มที่มองเห็น Visible = true)
+    local carFrame = group:FindFirstChild(preferredCarName, true)
+    if carFrame then
+        for _, desc in ipairs(carFrame:GetDescendants()) do
+            if desc:IsA("GuiButton") and desc.Visible then
+                local txt = (desc:IsA("TextButton") and desc.Text:lower()) or ""
+                local name = desc.Name:lower()
+                if name:find("spawn") or txt:find("spawn") or txt:find("เบิก") then
+                    return desc, "spawn", carFrame
+                elseif name:find("pound") or txt:find("pound") then
+                    return desc, "pound", carFrame
+                end
+            end
+        end
+    end
+
+    -- 2. ค้นหารถคันอื่นที่มีปุ่ม Spawn มองเห็นพร้อมเบิกทันที
+    for _, desc in ipairs(group:GetDescendants()) do
+        if desc:IsA("GuiButton") and desc.Visible then
+            local txt = (desc:IsA("TextButton") and desc.Text:lower()) or ""
+            local name = desc.Name:lower()
+            if name:find("spawn") or txt:find("spawn") or txt:find("เบิก") then
+                return desc, "spawn", desc.Parent
+            end
+        end
+    end
+
+    -- 3. ถ้าไม่มีปุ่ม Spawn ที่พร้อมกด ให้หาปุ่ม Pound ที่มองเห็น
+    for _, desc in ipairs(group:GetDescendants()) do
+        if desc:IsA("GuiButton") and desc.Visible then
+            local txt = (desc:IsA("TextButton") and desc.Text:lower()) or ""
+            local name = desc.Name:lower()
+            if name:find("pound") or txt:find("pound") then
+                return desc, "pound", desc.Parent
+            end
+        end
+    end
+
+    return nil, nil, nil
+end
+
+local function CloseCarSpawnGui()
+    pcall(function()
+        local cs = PlayerGui:FindFirstChild("Car_Spawn")
+        if cs and cs:FindFirstChild("Group") then
+            local exitBtn = cs.Group:FindFirstChild("Exit", true)
+            if exitBtn and exitBtn:IsA("GuiButton") then
+                ClickGuiButton(exitBtn)
+            end
+            cs.Group.Visible = false
+        end
+    end)
+end
+
+local function FindBlueSpawnButton(group)
+    if not group then return nil, nil end
+
+    -- 1. ค้นหาใน ScrollingFrame ของ Main (ตรวจสอบปุ่มสีฟ้า Spawn ของรถแต่ละคัน)
+    local sf = group:FindFirstChild("Main") and group.Main:FindFirstChild("Carlist") and group.Main.Carlist:FindFirstChild("ScrollingFrame")
+    if sf then
+        for _, carFrame in ipairs(sf:GetChildren()) do
+            if carFrame:IsA("GuiObject") then
+                local spBtn = carFrame:FindFirstChild("Spawn")
+                if spBtn and spBtn:IsA("GuiButton") and spBtn.Visible then
+                    return spBtn, carFrame.Name
+                end
+            end
+        end
+    end
+
+    -- 2. ค้นหาปุ่มสีฟ้า Spawn ทั่วทั้ง Group
+    for _, desc in ipairs(group:GetDescendants()) do
+        if desc:IsA("GuiButton") and desc.Visible then
+            local isSpawnName = desc.Name:lower():find("spawn")
+            local hasSpawnText = false
+            if desc:IsA("TextButton") and desc.Text:upper():find("SPAWN") then
+                hasSpawnText = true
+            end
+            for _, ch in ipairs(desc:GetChildren()) do
+                if ch:IsA("TextLabel") and ch.Text:upper():find("SPAWN") then
+                    hasSpawnText = true
+                    break
+                end
+            end
+            if isSpawnName or hasSpawnText then
+                return desc, desc.Parent and desc.Parent.Name or "Car"
+            end
+        end
+    end
+
+    return nil, nil
+end
+
+local function FindPoundButton(group)
+    if not group then return nil, nil end
+    local sf = group:FindFirstChild("Main") and group.Main:FindFirstChild("Carlist") and group.Main.Carlist:FindFirstChild("ScrollingFrame")
+    if sf then
+        for _, carFrame in ipairs(sf:GetChildren()) do
+            if carFrame:IsA("GuiObject") then
+                local pdBtn = carFrame:FindFirstChild("Pound")
+                if pdBtn and pdBtn:IsA("GuiButton") and pdBtn.Visible then
+                    return pdBtn, carFrame.Name
+                end
+            end
+        end
+    end
+    for _, desc in ipairs(group:GetDescendants()) do
+        if desc:IsA("GuiButton") and desc.Visible then
+            local isPoundName = desc.Name:lower():find("pound")
+            local hasPoundText = false
+            if desc:IsA("TextButton") and desc.Text:upper():find("POUND") then
+                hasPoundText = true
+            end
+            for _, ch in ipairs(desc:GetChildren()) do
+                if ch:IsA("TextLabel") and ch.Text:upper():find("POUND") then
+                    hasPoundText = true
+                    break
+                end
+            end
+            if isPoundName or hasPoundText then
+                return desc, desc.Parent and desc.Parent.Name or "Car"
+            end
+        end
+    end
+    return nil, nil
+end
+
+local function SpawnCarAtBooth(boothPos)
+    GrantAntiXGrace(40)
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root then return nil end
+
+    LAST_STORED_BOOTH = boothPos
+
+    -- ปลดล็อค ProximityPromptService เสมอเพื่อป้องกันบั๊ก UI ค้าง
+    pcall(function()
+        game:GetService("ProximityPromptService").Enabled = true
+    end)
+
+    -- 1. ย้ายตัวละครมาหน้าตู้เบิกรถอย่างราบรื่น
+    if boothPos then
+        local groundY = GetGroundLevel(boothPos.X, boothPos.Z, boothPos.Y)
+        root.CFrame = CFrame.new(boothPos.X, groundY + 1.2, boothPos.Z)
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+        task.wait(0.4)
+    end
+
+    -- 2. ค้นหา ProximityPrompt ตู้เบิกรถ
+    local boothPrompt = nil
+    for _, desc in ipairs(workspace:GetDescendants()) do
+        if desc:IsA("ProximityPrompt") then
+            local obj = (desc.ObjectText or ""):upper()
+            local act = (desc.ActionText or ""):upper()
+            if obj:find("SPAWN CAR") or obj:find("CAR") or act:find("SPAWN") or act:find("CAR") or act:find("เบิก") then
+                local prParent = desc.Parent
+                local pPos = (prParent:IsA("Attachment") and prParent.WorldPosition) or (prParent:IsA("BasePart") and prParent.Position)
+                if pPos and root and (pPos - root.Position).Magnitude <= 30 then
+                    boothPrompt = desc
+                    break
+                end
+            end
+        end
+    end
+    if not boothPrompt then
+        boothPrompt = FindPromptNear(root.Position, 25, nil)
+    end
+
+    -- 3. [เปิด UI ขึ้นมา]: กด ProximityPrompt ตู้เบิกรถ
+    pcall(function()
+        Fluent:Notify({
+            Title = "EASY HUB",
+            Content = "🚗 กำลังเปิดหน้าต่างเบิกรถ...",
+            Duration = 2.0
+        })
+    end)
+    if boothPrompt then
+        boothPrompt.Enabled = true
+        local holdTime = math.max((boothPrompt.HoldDuration or 0.1), 0.15) + 0.12
+        pcall(function() boothPrompt:InputHoldBegin() end)
+        task.wait(holdTime)
+        pcall(function() boothPrompt:InputHoldEnd() end)
+    end
+    task.wait(0.6)
+
+    -- 4. ตรวจสอบ UI Car_Spawn
+    local cs = PlayerGui:FindFirstChild("Car_Spawn")
+    local group = cs and cs:FindFirstChild("Group")
+
+    if (not group or not group.Visible) and boothPrompt then
+        boothPrompt.Enabled = true
+        pcall(function() boothPrompt:InputHoldBegin() end)
+        task.wait(0.25)
+        pcall(function() boothPrompt:InputHoldEnd() end)
+        task.wait(0.6)
+        cs = PlayerGui:FindFirstChild("Car_Spawn")
+        group = cs and cs:FindFirstChild("Group")
+    end
+
+    if group and group.Visible then
+        local sf = group:FindFirstChild("Main") and group.Main:FindFirstChild("Carlist") and group.Main.Carlist:FindFirstChild("ScrollingFrame")
+        local targetCard = nil
+        if sf then
+            targetCard = sf:FindFirstChild("Buggy")
+            if not targetCard then
+                for _, ch in ipairs(sf:GetChildren()) do
+                    if ch:IsA("GuiObject") and (ch:FindFirstChild("Spawn") or ch:FindFirstChild("Pound")) then
+                        targetCard = ch
+                        break
+                    end
+                end
+            end
+        end
+
+        local poundBtn = (targetCard and targetCard:FindFirstChild("Pound")) or FindPoundButton(group)
+        local spawnBtn = (targetCard and targetCard:FindFirstChild("Spawn")) or FindBlueSpawnButton(group)
+        local cName = (targetCard and targetCard.Name) or "Buggy"
+
+        -- [คำสั่งผู้ใช้]: ถ้ามาเบิกรถเเล้วขึ้นว่า pound กด 1 ทีเเล้วจะเปลี่ยนเป็น spawn
+        if poundBtn and poundBtn.Visible then
+            pcall(function()
+                Fluent:Notify({
+                    Title = "EASY HUB",
+                    Content = "📦 รถยังอยู่ข้างนอก กดปุ่ม POUND 1 ทีเพื่อดึงรถกลับ...",
+                    Duration = 2.0
+                })
+            end)
+
+            ClickGuiButton(poundBtn)
+            pcall(function()
+                local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
+                if remCore then
+                    local Remotes_m = require(remCore)
+                    Remotes_m.Fire("_carspawn", "Despawn", cName)
+                end
+            end)
+
+            -- รอให้ปุ่มเปลี่ยนเป็น spawn
+            local tWaitSpawn = os.clock()
+            while os.clock() - tWaitSpawn < 4.5 do
+                task.wait(0.2)
+                if (spawnBtn and spawnBtn.Visible) or (targetCard and targetCard:FindFirstChild("Spawn") and targetCard.Spawn.Visible) then
+                    break
+                end
+            end
+            if targetCard and targetCard:FindFirstChild("Spawn") then
+                spawnBtn = targetCard.Spawn
+            end
+        end
+
+        -- [คำสั่งผู้ใช้]: เเละกด spawn เเล้วรอให้รถลงมาเเล้วไปฟาม ถ้ามี spawn ก็เบิกรถไปฟามตามปกติ
+        if spawnBtn and spawnBtn.Visible then
+            pcall(function()
+                Fluent:Notify({
+                    Title = "EASY HUB",
+                    Content = "⚡ กดปุ่ม SPAWN เบิกรถ (" .. tostring(cName) .. ")...",
+                    Duration = 2.0
+                })
+            end)
+
+            ClickGuiButton(spawnBtn)
+            task.wait(1.0)
+
+            -- [ตามคำสั่งผู้ใช้]: ถ้าไม่มีรถเกิด ให้กดย้ำ 2 ที
+            local checkCar = GetNearbyPlayerVehicle(80) or GetPlayerVehicle()
+            if not checkCar or not checkCar.PrimaryPart then
+                for repeatIdx = 1, 2 do
+                    pcall(function()
+                        Fluent:Notify({
+                            Title = "EASY HUB",
+                            Content = "⚡ ยังไม่มีรถเกิด กดย้ำปุ่ม SPAWN ครั้งที่ " .. tostring(repeatIdx) .. "/2...",
+                            Duration = 1.5
+                        })
+                    end)
+                    ClickGuiButton(spawnBtn)
+                    task.wait(1.0)
+                    checkCar = GetNearbyPlayerVehicle(80) or GetPlayerVehicle()
+                    if checkCar and checkCar.PrimaryPart then
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    -- 5. [รอให้รถลงมา]: รอจนกว่ารถจะเบิกเสร็จและตกลงมาที่ลานจอด (ห้ามดึงรถมาเองเด็ดขาด ให้กด spawn ใน UI เท่านั้น)
+    pcall(function()
+        Fluent:Notify({
+            Title = "EASY HUB",
+            Content = "⏳ กำลังรอให้รถสปาวลงมาที่ลานจอดตามระบบเกม...",
+            Duration = 2.5
+        })
+    end)
+    local finalCar = nil
+    local tCar = os.clock()
+    while os.clock() - tCar < 6.0 do
+        finalCar = GetNearbyPlayerVehicle(80) or GetPlayerVehicle()
+        if finalCar and finalCar.PrimaryPart then
+            break
+        end
+        task.wait(0.2)
+    end
+
+    -- 6. เมื่อรถสปาวลงมาแล้ว ให้รอ 2 วินาทีตามที่ระบุ ก่อนขึ้นขับไปฟาร์ม
+    if finalCar then
+        for cd = 2, 1, -1 do
+            pcall(function()
+                Fluent:Notify({
+                    Title = "EASY HUB",
+                    Content = "⏳ รถลงมาเรียบร้อยแล้ว รอเวลา " .. tostring(cd) .. " วินาทีก่อนออกเดินทาง...",
+                    Duration = 1.0
+                })
+            end)
+            task.wait(1.0)
+        end
+
+        CloseCarSpawnGui()
+        task.wait(0.2)
+
+        -- ขึ้นนั่งบนเบาะคนขับ (ห้ามดึงรถมาหาคน ให้คนเดิน/ขึ้นนั่งที่รถปกติ)
+        EnsurePlayerSeatedInCar(finalCar)
+        task.wait(0.4)
+        return finalCar
+    else
+        CloseCarSpawnGui()
+    end
+
+    return finalCar
+end
+
+local function WarpToTownAndSpawnCar()
+    GrantAntiXGrace(45)
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return nil end
+
+    -- ลุกออกจากเก้าอี้เสมอ เพื่อเบิกรถคันใหม่
+    if hum and hum.Sit then
+        hum.Sit = false
+        task.wait(0.15)
+    end
+
+    pcall(function()
+        Fluent:Notify({
+            Title = "EASY HUB",
+            Content = "🚀 วาปไปจุดเบิกรถในเมืองเพื่อเบิกรถใหม่...",
+            Duration = 2.0
+        })
+    end)
+
+    pcall(function()
+        game:GetService("ProximityPromptService").Enabled = true
+    end)
+
+    pcall(function()
+        LocalPlayer:RequestStreamAroundAsync(TOWN_CAR_SPAWN, 45)
+    end)
+
+    -- วาปไปที่หน้าตู้เบิกรถในเมืองเท่านั้น
+    local groundY = GetGroundLevel(TOWN_CAR_SPAWN.X, TOWN_CAR_SPAWN.Z, TOWN_CAR_SPAWN.Y)
+    local townPos = Vector3.new(TOWN_CAR_SPAWN.X, groundY + 1.2, TOWN_CAR_SPAWN.Z)
+    root.CFrame = CFrame.new(townPos)
+    root.AssemblyLinearVelocity = Vector3.zero
+    root.AssemblyAngularVelocity = Vector3.zero
+    task.wait(0.4)
+
+    -- สั่งเบิกรถผ่านตู้ในเมืองตามสเต็ป POUND -> SPAWN
+    local car = SpawnCarAtBooth(TOWN_CAR_SPAWN)
+    if not car then
+        car = GetNearbyPlayerVehicle(80)
+    end
+    if car then
+        EnsurePlayerSeatedInCar(car)
+        CloseCarSpawnGui()
+    end
+    return car
+end
+
+local function SpawnCarInTown()
+    return WarpToTownAndSpawnCar()
+end
+
+local function EnsureCarAvailable(boothPos)
+    local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local targetBooth = boothPos or (root and GetNearestCarBooth(root.Position)) or TOWN_CAR_SPAWN
+
+    -- ตรวจสอบรถของตัวเองในระยะ 80 สตั๊ด
+    local nearbyCar = GetNearbyPlayerVehicle(80)
+    if nearbyCar and nearbyCar.PrimaryPart and IsMyVehicle(nearbyCar) then
+        EnsurePlayerSeatedInCar(nearbyCar)
+        return nearbyCar
+    end
+
+    -- เบิกรถของตัวเองผ่านตู้เบิกรถมาตรฐาน (POUND -> SPAWN -> รอรถลงมา -> ขึ้นรถตัวเอง)
+    local car = SpawnCarAtBooth(targetBooth)
+    if not car or not IsMyVehicle(car) then
+        car = SpawnCarAtBooth(TOWN_CAR_SPAWN)
+    end
+    if car and IsMyVehicle(car) then
+        EnsurePlayerSeatedInCar(car)
+    end
+    return car
+end
+
+local function SpawnCarAtNearestBooth(pos)
+    pos = pos or (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character.HumanoidRootPart.Position) or TOWN_CAR_SPAWN
+    local booth = GetNearestCarBooth(pos)
+    return EnsureCarAvailable(booth)
+end
+
+
+
+
+-- ==============================================================================
+-- 9. ระบบฟาร์มแบบสมบูรณ์แบบ
+-- ==============================================================================
+local function GetExactFarmPromptPosition(cropName)
+    local locData = TYPER_LOCATIONS[cropName]
+    local fallbackPos = locData and locData.Farm
+    local farmSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Farm")
+    local farmFolder = farmSys and farmSys:FindFirstChild(cropName)
+    if farmFolder then
+        for _, desc in ipairs(farmFolder:GetDescendants()) do
+            if desc:IsA("ProximityPrompt") and desc.Enabled then
+                local pName = desc.Parent and desc.Parent.Name:lower() or ""
+                local action = (desc.ActionText or ""):lower()
+                local obj = (desc.ObjectText or ""):lower()
+                if not pName:find("spawn") and not action:find("spawn") and not action:find("car") and not obj:find("car") then
+                    local prParent = desc.Parent
+                    local pPos = (prParent:IsA("Attachment") and prParent.WorldPosition) 
+                              or (prParent:IsA("BasePart") and prParent.Position) 
+                              or (prParent.Parent and prParent.Parent:IsA("BasePart") and prParent.Parent.Position)
+                    if pPos then return pPos end
+                end
+            end
+        end
+    end
+    return fallbackPos
+end
+
+local function GetFarmCenterPosition(cropName)
+    local locData = TYPER_LOCATIONS[cropName]
+    return (locData and locData.Farm) or GetExactFarmPromptPosition(cropName)
+end
+
+local function GetHumanLikeFarmStandingSpot(centerPos)
+    local farmRadius = 3.8 -- รัศมีวงแหวนรอบเสา (~3.8 สตั๊ด) ยืนชิดเสาบนเส้นวงแหวนพอดี อยู่ในระยะ Prompt 100% ไม่หลุดขอบ
+    local occupiedAngles = {}
+
+    local myChar = LocalPlayer.Character
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+            local hrp = plr.Character.HumanoidRootPart
+            local d = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(centerPos.X, 0, centerPos.Z)).Magnitude
+            if d <= 10 then -- ตรวจจับผู้เล่นอื่นที่ยืนอยู่ในโซนวงแหวนฟาร์ม
+                local angle = math.atan2(hrp.Position.Z - centerPos.Z, hrp.Position.X - centerPos.X)
+                table.insert(occupiedAngles, angle)
+            end
+        end
+    end
+
+    -- หาองศาว่างที่ไม่มีผู้เล่นอื่นยืนบัง/ยืนซ้อน (เลือกจุดที่ห่างจากคนอื่นมากที่สุด เพื่อความเนียนเป็นธรรมชาติ)
+    local bestAngle = nil
+    local maxMinDist = -1
+
+    for i = 0, 15 do
+        local testAngle = (i / 16) * math.pi * 2
+        local minDiff = math.pi
+        for _, occAngle in ipairs(occupiedAngles) do
+            local diff = math.abs(testAngle - occAngle)
+            if diff > math.pi then diff = (math.pi * 2) - diff end
+            if diff < minDiff then minDiff = diff end
+        end
+        if minDiff > maxMinDist then
+            maxMinDist = minDiff
+            bestAngle = testAngle
+        end
+    end
+
+    if not bestAngle then
+        bestAngle = math.random() * math.pi * 2
+    end
+
+    -- จุดยืนฟาร์ม (รัศมี ~5.0 สตั๊ด) ยืนรอบเสาบนวงแหวนสีฟ้าพอดี
+    local standX = centerPos.X + math.cos(bestAngle) * farmRadius
+    local standZ = centerPos.Z + math.sin(bestAngle) * farmRadius
+    local groundY = GetGroundLevel(standX, standZ, centerPos.Y)
+    local standPos = Vector3.new(standX, groundY + 2.2, standZ)
+
+    return standPos, bestAngle
+end
+
+
+local function TriggerFarmPromptDirectly(cropName)
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return false end
+
+    local farmSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Farm")
+    local farmFolder = farmSys and farmSys:FindFirstChild(cropName)
+    
+    local targetPrompt = nil
+
+    if farmFolder then
+        for _, desc in ipairs(farmFolder:GetDescendants()) do
+            if desc:IsA("ProximityPrompt") and desc.Enabled then
+                local pName = desc.Parent and desc.Parent.Name:lower() or ""
+                local action = (desc.ActionText or ""):lower()
+                local obj = (desc.ObjectText or ""):lower()
+                if not pName:find("spawn") and not action:find("spawn") and not action:find("car") and not obj:find("car") then
+                    targetPrompt = desc
+                    break
+                end
+            end
+        end
+    end
+
+    if not targetPrompt and farmSys then
+        for _, prompt in ipairs(farmSys:GetDescendants()) do
+            if prompt:IsA("ProximityPrompt") and prompt.Enabled then
+                local prParent = prompt.Parent
+                local pPos = (prParent:IsA("Attachment") and prParent.WorldPosition) or (prParent:IsA("BasePart") and prParent.Position)
+                if pPos and (pPos - root.Position).Magnitude <= 20 then
+                    local action = (prompt.ActionText or ""):lower()
+                    local obj = (prompt.ObjectText or ""):lower()
+                    if not action:find("spawn") and not action:find("car") and not obj:find("car") then
+                        targetPrompt = prompt
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    if targetPrompt then
+        -- กดปุ่ม ProximityPrompt เสมือนคนเล่นจริงๆ 100% ไม่ใช้ fireproximityprompt ป้องกันเซิร์ฟเวอร์ตรวจจับเวลา HoldDuration ใน Log แล้วเตะ
+        local holdTime = math.max((targetPrompt.HoldDuration or 0.1), 0.15) + 0.12
+        pcall(function()
+            targetPrompt:InputHoldBegin()
+        end)
+        task.wait(holdTime)
+        pcall(function()
+            targetPrompt:InputHoldEnd()
+        end)
+        return true
+    end
+    return false
+end
+
+local function HarvestSingleCrop(cropName, targetAmount, shouldContinueCheck)
+    targetAmount = 60
+    local curCount = GetPlayerInventoryCount(cropName)
+
+    if curCount >= targetAmount then
+        pcall(function()
+            Fluent:Notify({
+                Title = "EASY HUB",
+                Content = "✅ " .. cropName .. " เต็มกระเป๋าแล้ว (" .. tostring(curCount) .. "/60) ข้ามไม่ต้องฟาร์ม!",
+                Duration = 2.0
+            })
+        end)
+        return
+    end
+
+    local locData = TYPER_LOCATIONS[cropName]
+    if not locData then return end
+
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not root or not hum then return end
+
+    local myCar = GetNearbyPlayerVehicle(80)
+    if not myCar or not hum.Sit then
+        if myCar then
+            EnsurePlayerSeatedInCar(myCar)
+        else
+            myCar = EnsureCarAvailable(locData and locData.Booth)
+        end
+    end
+
+    -- 1. ขับรถเข้าไปจอดภายในวงฟาร์ม (Farm Circle) เยื้องจากเสากลาง ~4.5 สตั๊ด เพื่อให้อยู่ในวงพอดี ไม่พุ่งชนเสา
+    local farmPos = locData.Farm
+    local exactCenter = GetExactFarmPromptPosition(cropName) or farmPos
+    local boothPos = locData.Booth
+    local farmParkingPos = Vector3.new(exactCenter.X + 4.5, GetGroundLevel(exactCenter.X + 4.5, exactCenter.Z + 4.5, exactCenter.Y), exactCenter.Z + 4.5)
+
+    pcall(function()
+        Fluent:Notify({
+            Title = "EASY HUB",
+            Content = "🚗 ขับรถเข้าไปจอดในวงฟาร์ม " .. cropName .. "...",
+            Duration = 2.0
+        })
+    end)
+
+    DriveCarTo(farmParkingPos, shouldContinueCheck)
+    task.wait(0.1)
+    if shouldContinueCheck and not shouldContinueCheck() then return end
+
+    -- [คำสั่งผู้ใช้]: พอถึงฟาร์มรอ 2 วินาทีเพื่อลงจากรถ
+    pcall(function()
+        Fluent:Notify({
+            Title = "EASY HUB",
+            Content = "🚗 ถึงฟาร์มแล้ว! รอ 2 วินาทีเพื่อลงจากรถ...",
+            Duration = 2.0
+        })
+    end)
+    task.wait(2.0)
+
+    -- ลงจากรถอย่างเป็นธรรมชาติข้างประตูรถ (ไม่ยุ่งกับตัวรถ ไม่ลบรถ ให้รถจอดอยู่ปกติพร้อมขับต่อ)
+    ExitCarNaturally(myCar)
+    task.wait(0.3)
+
+    -- 5. เดินไปยืนในวงแหวนสีฟ้าของเสาฟาร์ม (หันหน้าเข้าหาเสากลาง)
+    local standPos, bestAngle = GetHumanLikeFarmStandingSpot(exactCenter)
+    SmoothWalkTo(standPos, 6, shouldContinueCheck, 1.2)
+    task.wait(0.2)
+
+    -- ยืนหันหน้าเข้าหาเสากลางฟาร์ม เท้าติดผิวดิน 100% (ตัวไม่ลอย ไม่ชนใคร เหมือนคนเล่นจริงๆ)
+    if root then
+        local finalGround = GetGroundLevel(standPos.X, standPos.Z, exactCenter.Y)
+        root.CFrame = CFrame.lookAt(
+            Vector3.new(standPos.X, finalGround + 2.2, standPos.Z),
+            Vector3.new(exactCenter.X, finalGround + 2.2, exactCenter.Z)
+        )
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+    end
+    task.wait(0.2)
+    if shouldContinueCheck and not shouldContinueCheck() then return end
+
+    task.wait(1.5)
+
+    -- 6. [กด E ฟาร์มอย่างปลอดภัยเสมือนคนเล่นจริง]: กดอย่างเป็นธรรมชาติ ไม่สแปมปุ่มเพื่อไม่ให้โดนเตะข้อหากันโปรฟาร์ม
+    local isFarming = false
+    TriggerFarmPromptDirectly(cropName)
+    task.wait(1.5)
+
+    local afGui = PlayerGui:FindFirstChild("Auto Farm") or PlayerGui:FindFirstChild("AutoFarm")
+    if afGui and ((afGui:FindFirstChild("Group") and afGui.Group.Visible) or afGui.Enabled) then
+        isFarming = true
+    end
+
+    -- หากสถานะฟาร์มยังไม่เริ่ม ให้กดย้ำอีกเพียง 1 ครั้งอย่างปลอดภัย
+    if not isFarming and GetPlayerInventoryCount(cropName) == curCount then
+        task.wait(0.5)
+        TriggerFarmPromptDirectly(cropName)
+        task.wait(1.5)
+    end
+
+    pcall(function()
+        Fluent:Notify({
+            Title = "EASY HUB",
+            Content = "⚡ เริ่มฟาร์ม " .. cropName .. " เรียบร้อย (โหมดปลอดภัย 100%)",
+            Duration = 2.0
+        })
+    end)
+
+    -- 7. ยืนฟาร์มจนครบ 60 ชิ้น (รอรับของอย่างเดียว ห้ามกด Prompt ซ้ำเด็ดขาด)
+    local farmTimeout = os.clock()
+    while curCount < targetAmount do
+        -- [คำสั่งผู้ใช้]: ออโต้กินข้าว + กาแฟ เมื่อหลอดอาหาร/น้ำลดเหลือ <= 75%
+        if isAutoEatAndDrinkEnabled and not isConsumingItem then
+            local h = GetPlayerHunger()
+            local e = GetPlayerEnergy()
+            if (h and h <= 75) or (e and e <= 75) then
+                CancelGameFarm()
+                task.wait(0.3)
+                if h and h <= 75 then CheckAndAutoEat() end
+                if e and e <= 75 then CheckAndAutoDrinkCoffee() end
+                task.wait(0.3)
+                TriggerFarmPromptDirectly(cropName)
+                task.wait(1.2)
+                farmTimeout = os.clock()
+            end
+        end
+
+        if shouldContinueCheck and not shouldContinueCheck() then break end
+        if os.clock() - farmTimeout > 180 then break end
+
+        GrantAntiXGrace(15)
+
+        local newCount = GetPlayerInventoryCount(cropName)
+        if newCount > curCount then
+            curCount = newCount
+            farmTimeout = os.clock()
+        elseif (os.clock() - farmTimeout > 15) and (newCount == curCount) then
+            -- หากผ่านไป 15 วินาทีของไม่ขึ้น แสดงว่าอาจหลุดสถานะ ให้กดกระตุ้น 1 ครั้ง
+            TriggerFarmPromptDirectly(cropName)
+            farmTimeout = os.clock()
+        end
+
+        task.wait(0.5)
+    end
+
+    pcall(function()        Fluent:Notify({
+            Title = "EASY HUB",
+            Content = "🎉 ฟาร์ม " .. cropName .. " ครบ " .. tostring(curCount) .. "/60 เรียบร้อย!",
+            Duration = 3.0
+        })
+    end)
+    task.wait(0.5)
+
+    -- [แก้ตามคำสั่ง: ฟาร์มครบแล้ว เบิกรถออกมาทันทีและขึ้นนั่ง เพื่อเตรียมพร้อมขับไปคราฟท์/แปรรูป/ขายต่อ]
+    pcall(function()
+        Fluent:Notify({
+            Title = "EASY HUB",
+            Content = "🚗 ฟาร์ม " .. cropName .. " ครบแล้ว กำลังเบิกรถเพื่อเดินทางต่อ...",
+            Duration = 2.5
+        })
+    end)
+
+    local targetBooth = (locData and locData.Booth) or GetNearestCarBooth(root.Position)
+    local car = SpawnCarAtBooth(targetBooth)
+    if not car then
+        car = EnsureCarAvailable(targetBooth)
+    end
+    if car then
+        EnsurePlayerSeatedInCar(car)
+    end
+    task.wait(0.3)
+end
+
+local function GetCraft3Prompt()
+    local craftSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Crafting")
+    local c3 = craftSys and craftSys:FindFirstChild("Craft_3")
+    if c3 then
+        local p = c3:FindFirstChildWhichIsA("ProximityPrompt", true)
+        if p and p.Enabled then return p end
+        if c3:FindFirstChild("Prompt") then
+            local pp = c3.Prompt:FindFirstChildWhichIsA("ProximityPrompt") or (c3.Prompt:IsA("ProximityPrompt") and c3.Prompt)
+            if pp and pp.Enabled then return pp end
+        end
+    end
+    if craftSys then
+        for _, desc in ipairs(craftSys:GetDescendants()) do
+            if desc:IsA("ProximityPrompt") and desc.Enabled then
+                local p = desc.Parent
+                while p and p ~= workspace do
+                    if p.Name == "Craft_3" then
+                        return desc
+                    end
+                    p = p.Parent
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function CraftFoodAtStation(recipeName, shouldContinueCheck)
+    local foodData = TYPER_LOCATIONS.Food
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not root or not hum then return end
+
+    -- ตรวจสอบและขึ้นรถเสมอเพื่อขับไปโต๊ะคราฟท์
+    local myCar = GetPlayerVehicle()
+    if not myCar or not hum.Sit then
+        myCar = EnsureCarAvailable()
+    end
+    if myCar then
+        EnsurePlayerSeatedInCar(myCar)
+    end
+
+    -- 1. ปิด UI ที่อาจค้างอยู่ (เช่น Process หรือ Economy) เพื่อป้องกันการเปิด UI ผิด
+    pcall(function()
+        local procGui = PlayerGui:FindFirstChild("Process")
+        if procGui and procGui:FindFirstChild("Group") then procGui.Group.Visible = false end
+        local ecoGui = PlayerGui:FindFirstChild("Economy")
+        if ecoGui and ecoGui:FindFirstChild("Group") then ecoGui.Group.Visible = false end
+    end)
+
+    -- 2. หาตำแหน่งที่แน่นอนของโต๊ะคราฟอาหาร Craft_3
+    local cPrompt = GetCraft3Prompt()
+    local exactCraftPos = nil
+    if cPrompt then
+        local pParent = cPrompt.Parent
+        exactCraftPos = (pParent:IsA("BasePart") and pParent.Position)
+                     or (pParent:IsA("Attachment") and pParent.WorldPosition)
+                     or (pParent.Parent and pParent.Parent:IsA("BasePart") and pParent.Parent.Position)
+    end
+    if not exactCraftPos then
+        local craftSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Crafting")
+        local c3 = craftSys and craftSys:FindFirstChild("Craft_3")
+        if c3 then
+            local anyPart = c3:FindFirstChildWhichIsA("BasePart", true)
+            if anyPart then exactCraftPos = anyPart.Position end
+        end
+    end
+    exactCraftPos = exactCraftPos or foodData.Crafting
+
+    -- 3. ขับรถไปจอดหน้าโต๊ะคราฟอาหาร Craft_3
+    DriveCarTo(exactCraftPos + Vector3.new(0, 0, 5.0), shouldContinueCheck)
+    task.wait(0.2)
+    if shouldContinueCheck and not shouldContinueCheck() then return end
+
+    -- 4. ลงจากรถและยืนหน้าโต๊ะคราฟ
+    if hum.Sit then
+        hum.Sit = false
+        task.wait(0.2)
+    end
+
+    local groundY = GetGroundLevel(exactCraftPos.X, exactCraftPos.Z, exactCraftPos.Y)
+    local standPos = Vector3.new(exactCraftPos.X, groundY + 3.0, exactCraftPos.Z + 2.5)
+    root.CFrame = CFrame.lookAt(standPos, exactCraftPos)
+    task.wait(0.15)
+
+    -- 5. กด ProximityPrompt เฉพาะของโต๊ะ Craft_3 เท่านั้น (ไม่กด Prompt อื่นมั่วเด็ดขาด)
+    cPrompt = cPrompt or GetCraft3Prompt()
+    if cPrompt then
+        TriggerPrompt(cPrompt)
+    end
+
+    -- 6. รอ UI Crafting เปิดขึ้นมา
+    local cg = PlayerGui:WaitForChild("Crafting", 4)
+    local tWaitUI = os.clock()
+    while os.clock() - tWaitUI < 3.0 do
+        if cg and cg:FindFirstChild("Group") and cg.Group.Visible then break end
+        if cPrompt then TriggerPrompt(cPrompt) end
+        task.wait(0.3)
+    end
+
+    if not cg or not cg:FindFirstChild("Group") or not cg.Group.Visible then
+        pcall(function()
+            if cg and cg:FindFirstChild("Group") then
+                cg.Group.Visible = true
+                cg.Group.GroupTransparency = 0
+            end
+        end)
+    end
+    task.wait(0.2)
+
+    -- 7. คำนวณจำนวนที่คราฟได้จริง
+    local function GetMaxCraftAmount()
+        local b = GetPlayerInventoryCount("Bread")
+        local c = GetPlayerInventoryCount("Catchup")
+        local p = GetPlayerInventoryCount("Pig")
+        local m = GetPlayerInventoryCount("Mango")
+        local r = GetPlayerInventoryCount("Rice")
+        if recipeName == "Sandwish" then
+            return math.min(math.floor(b / 3), math.floor(c / 2), math.floor(p / 2))
+        elseif recipeName == "MangoRice" then
+            return math.min(math.floor(m / 2), math.floor(r / 3))
+        elseif recipeName == "RiceKapaoMoo" then
+            return math.min(math.floor(p / 2), math.floor(r / 3))
+        elseif recipeName == "KangSom" then
+            local tom = GetPlayerInventoryCount("Tomato")
+            local cr = GetPlayerInventoryCount("Crab")
+            return math.min(math.floor(tom / 2), math.floor(cr / 2))
+        end
+        return 1
+    end
+
+    local toCraft = GetMaxCraftAmount()
+    if toCraft <= 0 then
+        pcall(function()
+            if cg and cg:FindFirstChild("Group") then cg.Group.Visible = false end
+        end)
+        -- นั่งรถคันเดิมหรือเบิกรถเพื่อเดินทางไปขายของในกระเป๋าต่อทันที
+        local myCar = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
+        if myCar then
+            EnsurePlayerSeatedInCar(myCar)
+        end
+        return
+    end
+
+    -- 8. เลือกหมวดหมู่ Sand (อาหาร) และเลือกเมนูใน UI Crafting
+    local mainFrame = cg and cg:FindFirstChild("Group") and cg.Group:FindFirstChild("Main")
+    if mainFrame then
+        local scroller = mainFrame:FindFirstChild("Left_Tab") and mainFrame.Left_Tab:FindFirstChild("ScrollingFrame")
+        if scroller then
+            -- กดแท็บหมวดหมู่ Sand / Food เพื่อแสดงเมนูอาหาร
+            local sandCatBtn = scroller:FindFirstChild("Sand") or scroller:FindFirstChild("Food") or scroller:FindFirstChild("อาหาร")
+            if sandCatBtn then
+                SafeClickGuiButton(sandCatBtn)
+                task.wait(0.2)
+            end
+
+            -- กดเลือกเมนูอาหาร (เช่น Sandwish หรือ MangoRice)
+            local recipeBtn = scroller:FindFirstChild(recipeName) or mainFrame:FindFirstChild(recipeName, true)
+            if recipeBtn then
+                local clickTarget = (recipeBtn:IsA("GuiButton") and recipeBtn) or recipeBtn:FindFirstChildWhichIsA("GuiButton", true) or recipeBtn
+                if clickTarget and clickTarget:IsA("GuiButton") then
+                    SafeClickGuiButton(clickTarget)
+                end
+                task.wait(0.2)
+            end
+        end
+
+        -- ใส่จำนวนลงใน Amount Box
+        local amtBox = mainFrame:FindFirstChild("Function") and mainFrame.Function:FindFirstChild("Amount") and mainFrame.Function.Amount:FindFirstChild("Amount")
+        if amtBox and amtBox:IsA("TextBox") then
+            amtBox.Text = tostring(toCraft)
+            task.wait(0.1)
+        end
+
+        -- กดปุ่ม Craft บน UI
+        local craftBtn = mainFrame:FindFirstChild("Button") and mainFrame.Button:FindFirstChild("Craft")
+        if craftBtn and craftBtn:IsA("GuiButton") then
+            SafeClickGuiButton(craftBtn)
+        end
+    end
+
+    -- 9. ยิง Remote Request เพื่อสั่งคราฟกับเซิร์ฟเวอร์โดยตรง
+    pcall(function()
+        local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
+        if remCore then
+            local Remotes_m = require(remCore)
+            Remotes_m.Fire("_crafting", "Request", "Craft_3", recipeName, toCraft, false)
+        else
+            local rem = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Remotes")
+            if rem and rem:FindFirstChild("_crafting") then
+                rem._crafting:FireServer("Request", "Craft_3", recipeName, toCraft, false)
+            end
+        end
+    end)
+
+    pcall(function()
+        Fluent:Notify({
+            Title = "EASY HUB",
+            Content = "🍳 กำลังคราฟ " .. recipeName .. " x" .. tostring(toCraft) .. "... (รอ 10 วิ)",
+            Duration = 3.0
+        })
+    end)
+
+    -- รอระยะเวลาคราฟ 10.5 วินาที
+    local tStart = os.clock()
+    while (os.clock() - tStart < 10.5) do
+        if shouldContinueCheck and not shouldContinueCheck() then break end
+        GrantAntiXGrace(15)
+        task.wait(0.5)
+    end
+    task.wait(0.2)
+
+    -- 10. ยิง Remote Complete เพื่อรับไอเทมอาหารสำเร็จ
+    pcall(function()
+        local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
+        if remCore then
+            local Remotes_m = require(remCore)
+            Remotes_m.Fire("_crafting", "Complete", "Craft_3", recipeName, toCraft, false)
+        else
+            local rem = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Remotes")
+            if rem and rem:FindFirstChild("_crafting") then
+                rem._crafting:FireServer("Complete", "Craft_3", recipeName, toCraft, false)
+            end
+        end
+    end)
+    task.wait(0.3)
+
+    -- 11. ปิดหน้าต่าง UI คราฟ
+    pcall(function()
+        if mainFrame and mainFrame:FindFirstChild("Exit") then
+            if firesignal then firesignal(mainFrame.Exit.MouseButton1Click) end
+        end
+        if cg and cg:FindFirstChild("Group") then
+            cg.Group.Visible = false
+        end
+    end)
+    task.wait(0.2)
+
+    -- 12. นั่งรถคันเดิมเตรียมเดินทางไปขาย (หากไม่มีรถให้เบิกใหม่ทันที)
+    local myCar = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
+    if myCar then
+        EnsurePlayerSeatedInCar(myCar)
+    end
+    task.wait(0.3)
+end
+
+local function ProcessBananaAtStation(shouldContinueCheck)
+    local foodData = TYPER_LOCATIONS.Food
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not root or not hum then return end
+
+    -- ตรวจสอบและขึ้นรถเสมอเพื่อขับไปที่แปรรูปกล้วย
+    local myCar = GetPlayerVehicle()
+    if not myCar or not hum.Sit then
+        myCar = EnsureCarAvailable()
+    end
+    if myCar then
+        EnsurePlayerSeatedInCar(myCar)
+    end
+
+    local pBan = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Process") and workspace.Systems.Process:FindFirstChild("Banana")
+    local pPrompt = pBan and pBan:FindFirstChild("Prompt")
+    local bPos = nil
+    if pPrompt then
+        bPos = (pPrompt:IsA("Attachment") and pPrompt.WorldPosition) or (pPrompt:IsA("BasePart") and pPrompt.Position) or (pPrompt:FindFirstChildWhichIsA("BasePart") and pPrompt:FindFirstChildWhichIsA("BasePart").Position)
+    end
+    if not bPos and pBan then
+        local anyPart = pBan:FindFirstChildWhichIsA("BasePart", true)
+        if anyPart then bPos = anyPart.Position end
+    end
+    local exactBanPos = bPos or foodData.BananaProcess
+
+    DriveCarTo(exactBanPos + Vector3.new(0, 0, 5.0), shouldContinueCheck)
+    task.wait(0.1)
+    if shouldContinueCheck and not shouldContinueCheck() then return end
+
+    if hum.Sit then
+        hum.Sit = false
+        task.wait(0.1)
+    end
+
+    local standPos = exactBanPos + Vector3.new(0, 0, 2.5)
+    local groundY = GetGroundLevel(standPos.X, standPos.Z, standPos.Y)
+    root.CFrame = CFrame.lookAt(Vector3.new(standPos.X, groundY + 3.0, standPos.Z), exactBanPos)
+    task.wait(0.1)
+
+    local procPrompt = pBan and pBan:FindFirstChildWhichIsA("ProximityPrompt", true)
+    if not procPrompt then
+        procPrompt = FindPromptNear(root.Position, 15, nil)
+    end
+    if procPrompt then
+        TriggerPrompt(procPrompt)
+    end
+    task.wait(0.3)
+
+    pcall(function()
+        Fluent:Notify({
+            Title = "EASY HUB",
+            Content = "🍌 กำลังแปรรูปกล้วยเป็น BananaPack อัตโนมัติ...",
+            Duration = 3.0
+        })
+    end)
+
+    local tProc = os.clock()
+    while (GetPlayerInventoryCount("Banana") >= 2) and (os.clock() - tProc < 120) do
+        if shouldContinueCheck and not shouldContinueCheck() then break end
+        GrantAntiXGrace(15)
+        task.wait(3.2)
+    end
+
+    pcall(function()
+        local procGui = PlayerGui:FindFirstChild("Process")
+        if procGui and procGui:FindFirstChild("Group") then
+            local mainFrame = procGui.Group:FindFirstChild("Main")
+            if mainFrame and mainFrame:FindFirstChild("Exit") and firesignal then
+                firesignal(mainFrame.Exit.MouseButton1Click)
+            end
+            procGui.Group.Visible = false
+        end
+    end)
+    task.wait(0.2)
+
+    local myCar = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
+    if myCar then
+        EnsurePlayerSeatedInCar(myCar)
+    end
+    task.wait(0.3)
+end
+
+local VAULT_COORDS = Vector3.new(-1.98, 26.54, 8632.61)
+
+local function DepositAllToVault(shouldContinueCheck)
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not root or not hum then return end
+
+    pcall(function()
+        Fluent:Notify({
+            Title = "EASY HUB",
+            Content = "🏦 กำลังเดินทางไปเก็บของเข้าตู้เซฟ (Safe Vault)...",
+            Duration = 3.0
+        })
+    end)
+
+    local myCar = GetPlayerVehicle()
+    if not myCar or not hum.Sit then
+        EnsureCarAvailable()
+    end
+
+    -- ขับรถไปตู้เซฟ
+    DriveCarTo(VAULT_COORDS + Vector3.new(0, 0, 8.0), shouldContinueCheck)
+    task.wait(0.2)
+    if shouldContinueCheck and not shouldContinueCheck() then return end
+
+    -- ฝากไอเทมทั้งหมดที่มีในกระเป๋าเข้าตู้เซฟผ่าน Remote
+    local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
+    if remCore then
+        local Remotes_m = require(remCore)
+        local pData = LocalPlayer:FindFirstChild("PlayerData")
+        if pData then
+            for attrName, _ in pairs(pData:GetAttributes()) do
+                local count = GetPlayerInventoryCount(attrName)
+                if count > 0 then
+                    pcall(function()
+                        Remotes_m.Invoke("_vault_tx", "Deposit", attrName, count)
+                    end)
+                    task.wait(0.15)
+                end
+            end
+        end
+    end
+
+    pcall(function()        Fluent:Notify({
+            Title = "EASY HUB",
+            Content = "✅ เก็บของเข้าตู้เซฟเรียบร้อย!",
+            Duration = 3.0
+        })
+    end)
+    task.wait(0.3)
+
+    -- ขึ้นรถทันทีหลังเก็บตู้เสร็จ
+    local carAfterVault = GetPlayerVehicle()
+    if not carAfterVault then
+        carAfterVault = EnsureCarAvailable(TOWN_CAR_SPAWN)
+    end
+    if carAfterVault then
+        EnsurePlayerSeatedInCar(carAfterVault)
+    end
+    task.wait(0.2)
+end
+
+local function GetEconomyMarketPosition()
+    -- 1. ค้นหาจาก ProximityPrompt ของ Economy หรือ Ecconomy ใน Workspace โดยตรง
+    local systems = workspace:FindFirstChild("Systems")
+    local containers = systems and {systems, workspace} or {workspace}
+    for _, container in ipairs(containers) do
+        for _, p in ipairs(container:GetDescendants()) do
+            if p:IsA("ProximityPrompt") and p.Enabled then
+                local act = (p.ActionText or ""):lower()
+                local obj = (p.ObjectText or ""):lower()
+                local pName = p.Name:lower()
+                local parentName = p.Parent and p.Parent.Name:lower() or ""
+                if act:find("econ") or obj:find("econ") or pName:find("econ") or parentName:find("econ") then
+                    local par = p.Parent
+                    local pPos = (par:IsA("Attachment") and par.WorldPosition)
+                              or (par:IsA("BasePart") and par.Position)
+                              or (par.Parent and par.Parent:IsA("BasePart") and par.Parent.Position)
+                    if pPos then
+                        return pPos, p
+                    end
+                end
+            end
+        end
+    end
+
+    -- 2. ค้นหา Model/NPC ชื่อ Economy หรือ Ecconomy ในเมือง
+    local ecoModel = (workspace:FindFirstChild("Systems") and (workspace.Systems:FindFirstChild("Economy") or workspace.Systems:FindFirstChild("Ecconomy"))) 
+                  or workspace:FindFirstChild("Economy") or workspace:FindFirstChild("Ecconomy")
+    if ecoModel then
+        local p = ecoModel:FindFirstChildWhichIsA("ProximityPrompt", true)
+        if p then
+            local par = p.Parent
+            local pPos = (par:IsA("Attachment") and par.WorldPosition) or (par:IsA("BasePart") and par.Position)
+            if pPos then return pPos, p end
+        end
+        local part = ecoModel:FindFirstChildWhichIsA("BasePart", true)
+        if part then return part.Position, nil end
+    end
+
+    -- 3. ใช้พิกัดมาตรฐานจุดขายในเมืองจาก MapLocations: X = -462.0, Z = 5324.7 (ไม่ใช่บนหลังคาเด็ดขาด 100%)
+    local townX, townZ = -462.0, 5324.7
+    local townY = GetGroundLevel(townX, townZ, 17.5)
+    return Vector3.new(townX, townY + 1.2, townZ), nil
+end
+
+local function SellAtEconomyMarket(shouldContinueCheck)
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not root or not hum then return end
+
+    local marketPos, directPrompt = GetEconomyMarketPosition()
+    marketPos = marketPos or TYPER_LOCATIONS.Economy.Market
+
+    pcall(function()
+        Fluent:Notify({
+            Title = "EASY HUB",
+            Content = "🚗 ขับรถไปขายของที่จุดขายในเมือง (Economy Market)...",
+            Duration = 3.0
+        })
+    end)
+
+    -- ตรวจสอบและขึ้นรถเสมอ ขับรถไปขายทุกกรณี ไม่เดินเด็ดขาด (เฉพาะรถตัวเอง 100%)
+    local myCar = GetPlayerVehicle()
+    if not myCar or not (hum and hum.Sit) then
+        if not myCar then
+            myCar = EnsureCarAvailable(TOWN_CAR_SPAWN)
+        end
+        if myCar then
+            EnsurePlayerSeatedInCar(myCar)
+        end
+    end
+
+    if not myCar then
+        myCar = EnsureCarAvailable(TOWN_CAR_SPAWN)
+    end
+    if myCar then
+        EnsurePlayerSeatedInCar(myCar)
+    end
+
+    -- ขับรถตรงมายังจุดขายในเมือง (Economy)
+    DriveCarTo(marketPos, shouldContinueCheck)
+    task.wait(0.3)
+    if shouldContinueCheck and not shouldContinueCheck() then return end
+
+    -- ถึงจุดขายในเมืองแล้ว ลงจากรถอย่างเป็นธรรมชาติข้างประตูรถ
+    ExitCarNaturally(myCar)
+
+    -- เดินมายืนหน้า NPC ในระยะ 3 สตั๊ด
+    local finalMarketPos, promptFound = GetEconomyMarketPosition()
+    local targetPos = finalMarketPos or marketPos
+    if root then
+        local gY = GetGroundLevel(targetPos.X, targetPos.Z, targetPos.Y)
+        root.CFrame = CFrame.lookAt(Vector3.new(targetPos.X + 2.5, gY + 2.2, targetPos.Z), targetPos)
+        root.AssemblyLinearVelocity = Vector3.zero
+    end
+    task.wait(0.2)
+
+    -- กด ProximityPrompt ของ Economy NPC
+    local econPrompt = promptFound or directPrompt or FindPromptNear(root.Position, 25, "econ") or FindPromptNear(targetPos, 25, nil)
+    if econPrompt then
+        local holdTime = math.max((econPrompt.HoldDuration or 0.1), 0.15) + 0.1
+        pcall(function() econPrompt:InputHoldBegin() end)
+        task.wait(holdTime)
+        pcall(function() econPrompt:InputHoldEnd() end)
+    end
+    task.wait(0.4)
+
+    -- สั่งขายสินค้าทั้งหมดผ่าน Remote
+    pcall(function()
+        local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
+        if remCore then
+            local Remotes_m = require(remCore)
+            Remotes_m.Invoke("_economy", "SellAll")
+            Remotes_m.Fire("_economy", "SellAll")
+        else
+            local rem = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Remotes")
+            if rem and rem:FindFirstChild("_economy") then
+                rem._economy:FireServer("SellAll")
+            end
+        end
+    end)
+
+    -- กดปุ่ม SellAll / SELL ALL ในหน้าต่าง UI Economy หากเปิดขึ้นมา
+    pcall(function()
+        local eg = PlayerGui:FindFirstChild("Economy") or PlayerGui:FindFirstChild("Ecconomy")
+        if eg and eg:FindFirstChild("Group") then
+            local main = eg.Group:FindFirstChild("Main") or eg.Group
+            local sellBtn = main:FindFirstChild("Sell_All", true) 
+                         or main:FindFirstChild("SellAll", true) 
+                         or main:FindFirstChild("Sell", true)
+            if not sellBtn then
+                for _, b in ipairs(main:GetDescendants()) do
+                    if b:IsA("GuiButton") and (b.Name:lower():find("sell") or (b:IsA("TextButton") and b.Text:lower():find("sell"))) then
+                        sellBtn = b
+                        break
+                    end
+                end
+            end
+            if sellBtn and sellBtn:IsA("GuiButton") then
+                SafeClickGuiButton(sellBtn)
+            end
+        end
+    end)
+    task.wait(1.0)
+
+    -- ปิดหน้าต่าง UI Economy
+    pcall(function()
+        local eg = PlayerGui:FindFirstChild("Economy") or PlayerGui:FindFirstChild("Ecconomy")
+        if eg and eg:FindFirstChild("Group") then
+            local main = eg.Group:FindFirstChild("Main")
+            local exitBtn = main and (main:FindFirstChild("Exit", true) or main:FindFirstChild("Close", true))
+            if exitBtn and exitBtn:IsA("GuiButton") then
+                SafeClickGuiButton(exitBtn)
+            end
+            eg.Group.Visible = false
+        end
+    end)
+
+    pcall(function()
+        Fluent:Notify({
+            Title = "EASY HUB",
+            Content = "💰 ขายสินค้าทั้งหมดที่จุดขายในเมืองเรียบร้อย!",
+            Duration = 3.0
+        })
+    end)
+    task.wait(0.3)
+
+    -- ตรวจสอบและออโต้กินข้าว+กาแฟจนเต็มหลอดก่อนขึ้นรถถ้าค่าต่ำกว่า 75%
+    if isAutoEatAndDrinkEnabled then
+        local h = GetPlayerHunger()
+        local e = GetPlayerEnergy()
+        if (h and h <= 75) or (e and e <= 75) then
+            AutoEatThenDrink(95)
+        end
+    end
+
+    -- [คำสั่งผู้ใช้]: พอขายเสร็จให้มัน กด F ขึ้นรถคนขับปกติ
+    local carAfterSell = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
+    if carAfterSell then
+        PressFToEnterCar(carAfterSell)
+    end
+    task.wait(0.2)
+end
+
+-- ==============================================================================
+-- 11. การสร้าง UI FLUENT & เมนูการตั้งค่า
+-- ==============================================================================
+
+
+-- =============================================================================
+-- TYPER TOWN FUNCTIONS INSIDE RELWX UI (Fluent UI removed)
+-- =============================================================================
+-- Additional RELWX categories; all actions below are rendered by RELWX components.
+Category("Typer ฟาร์ม", "TyperFarm", "leaf")
+local TyperFarmPage = MakePage("TyperFarm", "Typer Town • ฟาร์ม", "ลูปฟาร์ม คราฟต์ ขาย และดูแลตัวละคร")
+Category("Typer เลือกฟาร์ม", "TyperIndividual", "grid")
+local TyperIndividualPage = MakePage("TyperIndividual", "ฟาร์มเดี่ยว", "เลือกวัตถุดิบและเริ่มฟาร์มเป็นรอบ")
+
+local function AddRELWXAction(page, title, description, callback)
+    local row = Panel(page, UDim2.new(1, 0, 0, 64), "TextButton")
+    HoverRow(row)
+    Register(row, title .. " " .. (description or ""))
+    local t = Text(row, title, 13, FNT.M, "Text")
+    t.Position = UDim2.fromOffset(16, 9)
+    t.Size = UDim2.new(1, -32, 0, 20)
+    local d = Text(row, description or "กดเพื่อทำงาน", 11, FNT.R, "Sub")
+    d.Position = UDim2.fromOffset(16, 33)
+    d.Size = UDim2.new(1, -32, 0, 18)
+    row.MouseButton1Click:Connect(function()
+        if callback then task.spawn(callback) end
+    end)
+    return { SetDesc = function(_, value) d.Text = tostring(value) end,
+             SetTitle = function(_, value) t.Text = tostring(value) end }
+end
+
+-- Existing farm logic expects Fluent-style notifications and control handles.
+SetFloatingButtonVisible = function(_) end
+Fluent = {
+    Options = {},
+    Notify = function(_, item)
+        pcall(function() Toast(tostring(item.Content or item.Text or item.Title or "Typer Town")) end)
+    end,
+    Destroy = function() end,
+}
+local SaveManager = setmetatable({}, { __index = function() return function() end end })
+local InterfaceManager = setmetatable({}, { __index = function() return function() end end })
+local Window = {
+    SelectTab = function() end,
+    Destroy = function()
+        pcall(function() Screen:Destroy() end)
+        pcall(function() ToggleGui:Destroy() end)
+    end,
+}
+local Tabs = {
+    Main = {}, Individual = {}, Settings = {},
+}
+local FarmToggleControls
+local function MakeFarmHandle(raw)
+    local h = {}
+    function h:SetValue(v) raw.Set(v) end
+    return setmetatable(h, { __index = function(_, key)
+        if key == "Value" then return raw.Get() end
+        return nil
+    end })
+end
+local function RelwxToggle(page, opts, farmHandle)
+    local key = "Typer_" .. opts.Key
+    if Config[key] == nil then Config[key] = opts.Default == true end
+    local raw = Toggle(page, {
+        key = key,
+        title = opts.Title or opts.title,
+        desc = opts.Desc or opts.Description or "ระบบอัตโนมัติ Typer Town",
+        callback = opts.Callback or opts.callback,
+    })
+    if farmHandle then return MakeFarmHandle(raw) end
+    return raw
+end
+function Tabs.Main:AddToggle(key, opts)
+    opts.Key = key
+    Section(TyperFarmPage, "ระบบอัตโนมัติ")
+    return RelwxToggle(TyperFarmPage, opts, false)
+end
+function Tabs.Individual:AddToggle(key, opts)
+    opts.Key = key
+    Section(TyperIndividualPage, "ควบคุมฟาร์มเดี่ยว")
+    return RelwxToggle(TyperIndividualPage, opts, true)
+end
+function Tabs.Main:AddFarmToggle(storageKey, key, opts)
+    opts.Key = key
+    Section(TyperFarmPage, "ลูปฟาร์มครบวงจร")
+    return MakeFarmHandle(RelwxToggle(TyperFarmPage, opts, false))
+end
+-- Individual crop chooser: one RELWX row cycles through all supported crops.
+function Tabs.Individual:AddDropdown(key, opts)
+    local values = opts.Values or {}
+    local index = 1
+    local wantedCrop = Config.Typer_Crop or "Bread"
+    for i, label in ipairs(values) do
+        if label:match("^(%a+)") == wantedCrop then index = i break end
+    end
+    local current = values[index] or "Bread (ขนมปัง)"
+    local row
+    row = AddRELWXAction(TyperIndividualPage, opts.Title or "เลือกวัตถุดิบ", "แตะเพื่อเปลี่ยนรายการ: " .. current, function()
+        index = index % #values + 1
+        current = values[index]
+        row:SetDesc("แตะเพื่อเปลี่ยนรายการ: " .. current)
+        if opts.Callback then opts.Callback(current) end
+    end)
+    if opts.Callback then opts.Callback(current) end
+    return row
+end
+function Tabs.Settings:AddSection(title)
+    Section(Settings, title)
+end
+function Tabs.Settings:AddParagraph(opts)
+    Section(Settings, "สถานะและพิกัด")
+    return AddRELWXAction(Settings, opts.Title or "สถานะ", opts.Content or "", function() end)
+end
+function Tabs.Settings:AddButton(opts)
+    Section(Settings, "เครื่องมือ Typer Town")
+    return AddRELWXAction(Settings, opts.Title or "ปุ่ม", opts.Description or "", opts.Callback)
+end
+function Tabs.Settings:AddSlider(key, opts)
+    Section(Settings, "การปรับค่า Typer Town")
+    local cfgKey = "Typer_VehicleSpeed"
+    if Config[cfgKey] == nil then Config[cfgKey] = opts.Default or 200 end
+    VehicleDriveSpeed = Config[cfgKey]
+    return Slider(Settings, {
+        key = cfgKey, title = opts.Title or "ความเร็วรถ",
+        desc = opts.Description or "", min = opts.Min or 10,
+        max = opts.Max or 500, step = opts.Rounding == 0 and 1 or (opts.Rounding or 1),
+        suffix = " studs/s", callback = function(value)
+            VehicleDriveSpeed = math.clamp(math.round(value), opts.Min or 10, opts.Max or 500)
+            _G.VehicleDriveSpeed = VehicleDriveSpeed
+        end,
+    })
+end
+-- ==============================================================================
+-- 13. ลูปฟาร์มทั้ง 4 สาย & ตัวเลือก Auto Eat
+-- ==============================================================================
+local isSandwichActive = false
+local isMangoRiceActive = false
+local isBananaPackActive = false
+local isKangSomActive = false
+
+-- ==============================================================================
+-- 13. ระบบจัดการฟังก์ชันแบบแยกเดี่ยว (ห้ามเปิดทับซ้อนกัน 100%)
+-- ==============================================================================
+local CurrentFarmSessionId = 0
+local CurrentActiveFarmKey = nil
+local FarmToggleControls = {}
+
+local function RequestFarmSession(farmKey)
+    SetFloatingButtonVisible(true)
+    CurrentFarmSessionId = CurrentFarmSessionId + 1
+    local thisSession = CurrentFarmSessionId
+    CurrentActiveFarmKey = farmKey
+
+    -- สั่งปิดสวิตช์ฟังก์ชันอื่นทั้งหมดในหน้าต่าง UI อัตโนมัติทันที
+    task.spawn(function()
+        for key, toggleObj in pairs(FarmToggleControls) do
+            if key ~= farmKey and toggleObj and toggleObj.SetValue then
+                pcall(function()
+                    toggleObj:SetValue(false)
+                end)
+            end
+        end
+    end)
+
+    pcall(function()
+        Fluent:Notify({
+            Title = "EASY HUB",
+            Content = "🔒 สลับไปทำงาน: " .. tostring(farmKey) .. " (ปิดฟังก์ชันอื่นอัตโนมัติ)",
+            Duration = 2.0
+        })
+    end)
+
+    return function()
+        return CurrentFarmSessionId == thisSession and CurrentActiveFarmKey == farmKey
+    end
+end
+
+local function StopFarmSession(farmKey)
+    if CurrentActiveFarmKey == farmKey then
+        CurrentFarmSessionId = CurrentFarmSessionId + 1
+        CurrentActiveFarmKey = nil
+    end
+    task.spawn(function()
+        task.wait(0.2)
+        local anyActive = false
+        for _, tObj in pairs(FarmToggleControls) do
+            if tObj and tObj.Value then
+                anyActive = true
+                break
+            end
+        end
+        -- ปุ่มลอยแสดงตลอดเวลา จะหายเฉพาะตอนกดปิดสคริปต์เท่านั้น
+    end)
+end
+
+-- [คำสั่งผู้ใช้]: ออโต้กินข้าว + กาแฟ (กดถือก่อนแล้วกดกินเมื่อหลอดอาหาร <= 75%)
+isAutoEatAndDrinkEnabled = true
+isAutoEatEnabled = true
+isAutoCoffeeEnabled = true
+
+Tabs.Main:AddToggle("ToggleAutoEatAndDrink", {
+    Title = "🍱 ออโต้กินข้าว + กินกาแฟ (ถือก่อนกินเมื่อ <= 75%)",
+    Default = true,
+    Callback = function(v)
+        isAutoEatAndDrinkEnabled = v
+        isAutoEatEnabled = v
+        isAutoCoffeeEnabled = v
+    end
+})
+
+task.spawn(function()
+    while true do
+        task.wait(3.0)
+        if isAutoEatAndDrinkEnabled and not isConsumingItem then
+            local char = LocalPlayer.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if hum and not hum.Sit then
+                CheckAndAutoEat()
+                task.wait(0.5)
+                CheckAndAutoDrinkCoffee()
+            end
+        end
+    end
+end)
+
+-- 1. ลูปแซนวิช
+FarmToggleControls["Sandwich"] = Tabs.Main:AddFarmToggle("Sandwich", "ToggleSandwichLoop", {
+    Title = "เปิดลูป แซนวิช (ครบวงจร)",
+    Default = false,
+    Callback = function(Value)
+        if Value then
+            local check = RequestFarmSession("Sandwich")
+            task.spawn(function()
+                local isFirstRun = true
+                while check() do
+                    local countBread = GetPlayerInventoryCount("Bread")
+                    local countCatchup = GetPlayerInventoryCount("Catchup")
+                    local countPig = GetPlayerInventoryCount("Pig")
+
+                    local needFarm = (countBread < 60) or (countCatchup < 60) or (countPig < 60)
+
+                    if needFarm then
+                        if isFirstRun then
+                            WarpToTownAndSpawnCar()
+                            isFirstRun = false
+                        else
+                            local myCar = GetPlayerVehicle()
+                            if not myCar then
+                                local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                                if root then
+                                    local nearestBooth = GetNearestCarBooth(root.Position)
+                                    EnsureCarAvailable(nearestBooth)
+                                end
+                            else
+                                EnsurePlayerSeatedInCar(myCar)
+                            end
+                        end
+                        if not check() then break end
+
+                        if GetPlayerInventoryCount("Bread") < 60 then
+                            HarvestSingleCrop("Bread", 60, check)
+                        end
+                        if not check() then break end
+
+                        if GetPlayerInventoryCount("Catchup") < 60 then
+                            HarvestSingleCrop("Catchup", 60, check)
+                        end
+                        if not check() then break end
+
+                        if GetPlayerInventoryCount("Pig") < 60 then
+                            HarvestSingleCrop("Pig", 60, check)
+                        end
+                        if not check() then break end
+                    end
+
+                    CraftFoodAtStation("Sandwish", check)
+                    if not check() then break end
+
+                    SellAtEconomyMarket(check)
+                    if not check() then break end
+
+                    -- พอขายเสร็จ ขับรถกลับไปฟาร์มขนมปังเพื่อเริ่มลูปแซนวิชใหม่ วนลูปต่อเนื่อง
+                    pcall(function()
+                        Fluent:Notify({
+                            Title = "EASY HUB",
+                            Content = "🚗 ขายเสร็จแล้ว กำลังขับรถกลับไปเริ่มลูปแซนวิชใหม่...",
+                            Duration = 3.0
+                        })
+                    end)
+                    local returnCar = GetPlayerVehicle() or EnsureCarAvailable(TOWN_CAR_SPAWN)
+                    if returnCar then
+                        EnsurePlayerSeatedInCar(returnCar)
+                        DriveCarTo(TYPER_LOCATIONS.Bread.Farm, check)
+                    end
+                    task.wait(1.0)
+                end
+            end)
+        else
+            StopFarmSession("Sandwich")
+        end
+    end
+})
+
+-- 2. ลูปข้าวมันมะม่วง
+FarmToggleControls["MangoRice"] = Tabs.Main:AddFarmToggle("MangoRice", "ToggleMangoRiceLoop", {
+    Title = "เปิดลูป ข้าวมันมะม่วง (ครบวงจร)",
+    Default = false,
+    Callback = function(Value)
+        if Value then
+            local check = RequestFarmSession("MangoRice")
+            task.spawn(function()
+                local isFirstRun = true
+                while check() do
+                    local countMango = GetPlayerInventoryCount("Mango")
+                    local countRice = GetPlayerInventoryCount("Rice")
+
+                    local needFarm = (countMango < 60) or (countRice < 60)
+
+                    if needFarm then
+                        if isFirstRun then
+                            WarpToTownAndSpawnCar()
+                            isFirstRun = false
+                        else
+                            local myCar = GetPlayerVehicle()
+                            if not myCar then
+                                local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                                if root then
+                                    local nearestBooth = GetNearestCarBooth(root.Position)
+                                    EnsureCarAvailable(nearestBooth)
+                                end
+                            else
+                                EnsurePlayerSeatedInCar(myCar)
+                            end
+                        end
+                        if not check() then break end
+
+                        if GetPlayerInventoryCount("Mango") < 60 then
+                            HarvestSingleCrop("Mango", 60, check)
+                        end
+                        if not check() then break end
+
+                        if GetPlayerInventoryCount("Rice") < 60 then
+                            HarvestSingleCrop("Rice", 60, check)
+                        end
+                        if not check() then break end
+                    end
+
+                    CraftFoodAtStation("MangoRice", check)
+                    if not check() then break end
+
+                    SellAtEconomyMarket(check)
+                    if not check() then break end
+
+                    -- พอขายเสร็จ ขับรถกลับไปฟาร์มมะม่วงเพื่อเริ่มลูปข้าวมันมะม่วงใหม่ วนลูปต่อเนื่อง
+                    pcall(function()
+                        Fluent:Notify({
+                            Title = "EASY HUB",
+                            Content = "🚗 ขายเสร็จแล้ว กำลังขับรถกลับไปเริ่มลูปข้าวมันมะม่วงใหม่...",
+                            Duration = 3.0
+                        })
+                    end)
+                    local returnCar = GetPlayerVehicle() or EnsureCarAvailable(TOWN_CAR_SPAWN)
+                    if returnCar then
+                        EnsurePlayerSeatedInCar(returnCar)
+                        DriveCarTo(TYPER_LOCATIONS.Mango.Farm, check)
+                    end
+                    task.wait(1.0)
+                end
+            end)
+        else
+            StopFarmSession("MangoRice")
+        end
+    end
+})
+
+-- 3. ลูปกล้วยแพ็ค
+FarmToggleControls["BananaPack"] = Tabs.Main:AddFarmToggle("BananaPack", "ToggleBananaPackLoop", {
+    Title = "เปิดลูป กล้วยแพ็ค (ครบวงจร)",
+    Default = false,
+    Callback = function(Value)
+        if Value then
+            local check = RequestFarmSession("BananaPack")
+            task.spawn(function()
+                local isFirstRun = true
+                while check() do
+                    local countBanana = GetPlayerInventoryCount("Banana")
+                    local needFarm = (countBanana < 60)
+
+                    if needFarm then
+                        if isFirstRun then
+                            WarpToTownAndSpawnCar()
+                            isFirstRun = false
+                        else
+                            local myCar = GetPlayerVehicle()
+                            if not myCar then
+                                local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                                if root then
+                                    local nearestBooth = GetNearestCarBooth(root.Position)
+                                    EnsureCarAvailable(nearestBooth)
+                                end
+                            else
+                                EnsurePlayerSeatedInCar(myCar)
+                            end
+                        end
+                        if not check() then break end
+
+                        if GetPlayerInventoryCount("Banana") < 60 then
+                            HarvestSingleCrop("Banana", 60, check)
+                        end
+                        if not check() then break end
+                    end
+
+                    ProcessBananaAtStation(check)
+                    if not check() then break end
+
+                    SellAtEconomyMarket(check)
+                    if not check() then break end
+
+                    -- พอขายเสร็จ ขับรถกลับไปฟาร์มกล้วยเพื่อเริ่มลูปกล้วยแพ็คใหม่ วนลูปต่อเนื่อง
+                    pcall(function()
+                        Fluent:Notify({
+                            Title = "EASY HUB",
+                            Content = "🚗 ขายเสร็จแล้ว กำลังขับรถกลับไปเริ่มลูปกล้วยแพ็คใหม่...",
+                            Duration = 3.0
+                        })
+                    end)
+                    local returnCar = GetPlayerVehicle() or EnsureCarAvailable(TOWN_CAR_SPAWN)
+                    if returnCar then
+                        EnsurePlayerSeatedInCar(returnCar)
+                        DriveCarTo(TYPER_LOCATIONS.Banana.Farm, check)
+                    end
+                    task.wait(1.0)
+                end
+            end)
+        else
+            StopFarmSession("BananaPack")
+        end
+    end
+})
+
+-- 4. ลูปแกงส้ม
+FarmToggleControls["KangSom"] = Tabs.Main:AddFarmToggle("KangSom", "ToggleKangSomLoop", {
+    Title = "เปิดลูป แกงส้ม (ครบวงจร)",
+    Default = false,
+    Callback = function(Value)
+        if Value then
+            local check = RequestFarmSession("KangSom")
+            task.spawn(function()
+                local isFirstRun = true
+                while check() do
+                    local countTomato = GetPlayerInventoryCount("Tomato")
+                    local countCrab = GetPlayerInventoryCount("Crab")
+
+                    local needFarm = (countTomato < 60) or (countCrab < 60)
+
+                    if needFarm then
+                        if isFirstRun then
+                            WarpToTownAndSpawnCar()
+                            isFirstRun = false
+                        else
+                            local myCar = GetPlayerVehicle()
+                            if not myCar then
+                                local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                                if root then
+                                    local nearestBooth = GetNearestCarBooth(root.Position)
+                                    EnsureCarAvailable(nearestBooth)
+                                end
+                            else
+                                EnsurePlayerSeatedInCar(myCar)
+                            end
+                        end
+                        if not check() then break end
+
+                        if GetPlayerInventoryCount("Tomato") < 60 then
+                            HarvestSingleCrop("Tomato", 60, check)
+                        end
+                        if not check() then break end
+
+                        if GetPlayerInventoryCount("Crab") < 60 then
+                            HarvestSingleCrop("Crab", 60, check)
+                        end
+                        if not check() then break end
+                    end
+
+                    CraftFoodAtStation("KangSom", check)
+                    if not check() then break end
+
+                    SellAtEconomyMarket(check)
+                    if not check() then break end
+
+                    -- พอขายเสร็จ ขับรถกลับไปฟาร์มมะเขือเทศเพื่อเริ่มลูปแกงส้มใหม่ วนลูปต่อเนื่อง
+                    pcall(function()
+                        Fluent:Notify({
+                            Title = "EASY HUB",
+                            Content = "🚗 ขายเสร็จแล้ว กำลังขับรถกลับไปเริ่มลูปแกงส้มใหม่...",
+                            Duration = 3.0
+                        })
+                    end)
+                    local returnCar = GetPlayerVehicle() or EnsureCarAvailable(TOWN_CAR_SPAWN)
+                    if returnCar then
+                        EnsurePlayerSeatedInCar(returnCar)
+                        DriveCarTo(TYPER_LOCATIONS.Tomato.Farm, check)
+                    end
+                    task.wait(1.0)
+                end
+            end)
+        else
+            StopFarmSession("KangSom")
+        end
+    end
+})
+
+-- ==============================================================================
+-- 14. ฟาร์มเดี่ยว (Individual Farm Selection & Loop):
+-- มี Dropdown ให้เลือกพืช/ไอเทมที่ต้องการฟาร์ม และ 1 สวิตช์เปิด/ปิด
+-- โฟลว์การทำงาน:
+-- 1. เริ่มเปิดฟังก์ชัน: วาร์ปไปเบิกรถที่จุดในเมือง (WarpToTownAndSpawnCar)
+-- 2. ขับรถไปจุดฟาร์มเหมือนคนปกติ รอ 2 วินาที เก็บรถเข้าตู้ เดินเข้าเสาฟาร์ม (HarvestSingleCrop)
+-- 3. พอครบ 60 ชิ้น: เดินไปเบิกรถที่จุดฟาร์ม ขับไปขายที่ตลาดในเมือง (SellAtEconomyMarket) แล้ววนลูป
+-- ==============================================================================
+local selectedIndividualCrop = "Bread"
+
+local cropDisplayNames = {
+    Bread = "Bread (ขนมปัง)",
+    Catchup = "Catchup (ซอสมะเขือเทศ)",
+    Pig = "Pig (หมู)",
+    Mango = "Mango (มะม่วง)",
+    Rice = "Rice (ข้าว)",
+    Tomato = "Tomato (มะเขือเทศ)",
+    Banana = "Banana (กล้วย)",
+    Crab = "Crab (ปู)",
+    Coconut = "Coconut (มะพร้าว)",
+    Corn = "Corn (ข้าวโพด)",
+    Egg = "Egg (ไข่)",
+    Milk = "Milk (นม)",
+    Sugarcane = "Sugarcane (อ้อย)"
+}
+
+local cropDropdownList = {
+    "Bread (ขนมปัง)",
+    "Catchup (ซอสมะเขือเทศ)",
+    "Pig (หมู)",
+    "Mango (มะม่วง)",
+    "Rice (ข้าว)",
+    "Tomato (มะเขือเทศ)",
+    "Banana (กล้วย)",
+    "Crab (ปู)",
+    "Coconut (มะพร้าว)",
+    "Corn (ข้าวโพด)",
+    "Egg (ไข่)",
+    "Milk (นม)",
+    "Sugarcane (อ้อย)"
+}
+
+Tabs.Individual:AddDropdown("DropdownSelectCrop", {
+    Title = "🌾 เลือกพืช/ไอเทมที่จะฟาร์ม (Select Crop)",
+    Values = cropDropdownList,
+    Default = "Bread (ขนมปัง)",
+    Callback = function(val)
+        local key = string.match(val, "^(%a+)")
+        if key and TYPER_LOCATIONS[key] then
+            selectedIndividualCrop = key
+            Config.Typer_Crop = key
+            SetConfig("Typer_Crop", key)
+            pcall(function()
+                Fluent:Notify({
+                    Title = "EASY HUB",
+                    Content = "✅ เลือกฟาร์ม: " .. tostring(cropDisplayNames[key] or key),
+                    Duration = 2.0
+                })
+            end)
+        end
+    end
+})
+
+FarmToggleControls["IndividualMaster"] = Tabs.Individual:AddToggle("ToggleIndividualMaster", {
+    Title = "🚀 เริ่มออโต้ฟาร์ม",
+    Default = false,
+    Callback = function(val)
+        if val then
+            local currentCrop = selectedIndividualCrop
+            local check = RequestFarmSession("IndividualMaster")
+            task.spawn(function()
+                local isFirstRun = true
+                while check() do
+                    currentCrop = selectedIndividualCrop
+                    local locData = TYPER_LOCATIONS[currentCrop]
+                    if not locData then break end
+
+                    -- 1. เริ่มเปิดฟังก์ชัน: วาปไปเบิกรถที่จุดในเมืองเสมอตามคำสั่ง
+                    if isFirstRun then
+                        pcall(function()
+                            Fluent:Notify({
+                                Title = "EASY HUB",
+                                Content = "🚗 เริ่มเปิดฟาร์ม " .. currentCrop .. ": กำลังไปเบิกรถที่จุดในเมือง...",
+                                Duration = 3.0
+                            })
+                        end)
+                        local carInTown = WarpToTownAndSpawnCar()
+                        if not carInTown then
+                            carInTown = SpawnCarAtBooth(TOWN_CAR_SPAWN) or EnsureCarAvailable(TOWN_CAR_SPAWN)
+                        end
+                        if carInTown then
+                            EnsurePlayerSeatedInCar(carInTown)
+                        end
+                        isFirstRun = false
+                    else
+                        local myCar = GetPlayerVehicle()
+                        if not myCar then
+                            myCar = EnsureCarAvailable(TOWN_CAR_SPAWN)
+                        end
+                        if myCar then
+                            EnsurePlayerSeatedInCar(myCar)
+                        end
+                    end
+
+                    if not check() then break end
+
+                    -- 2. ขับรถไปฟาร์มเหมือนคนปกติ รอ 2 วินาที เก็บรถเข้าตู้ เดินเข้าแปลงฟาร์มจนครบ 60 ชิ้น
+                    pcall(function()
+                        Fluent:Notify({
+                            Title = "EASY HUB",
+                            Content = "🌾 ขับรถไปฟาร์ม " .. currentCrop .. "...",
+                            Duration = 2.5
+                        })
+                    end)
+                    HarvestSingleCrop(currentCrop, 60, check)
+
+                    if not check() then break end
+
+                    -- 3. พอฟาร์มครบ 60: เดินไปตู้เบิกรถที่จุดฟาร์ม เพื่อขับไปขายที่ตลาดในเมือง
+                    pcall(function()
+                        Fluent:Notify({
+                            Title = "EASY HUB",
+                            Content = "🚗 ฟาร์ม " .. currentCrop .. " ครบ 60 แล้ว! เบิกรถที่ตู้ฟาร์มไปขายที่ตลาด...",
+                            Duration = 3.0
+                        })
+                    end)
+
+                    local carAtFarm = GetNearbyPlayerVehicle(80)
+                    if not carAtFarm then
+                        SmoothWalkTo(locData.Booth, 25, check, 1.2)
+                        carAtFarm = SpawnCarAtBooth(locData.Booth) or EnsureCarAvailable(locData.Booth)
+                    end
+                    if carAtFarm then
+                        EnsurePlayerSeatedInCar(carAtFarm)
+                    end
+
+                    -- ขับรถจากฟาร์มไปขายที่จุดขายในเมือง (Economy Market)
+                    SellAtEconomyMarket(check)
+
+                    if not check() then break end
+                    task.wait(1.0)
+                end
+            end)
+        else
+            StopFarmSession("IndividualMaster")
+        end
+    end
+})
+
+Tabs.Settings:AddSection("พิกัดตำแหน่งปัจจุบัน (Current Position)")
+
+local PosParagraph = Tabs.Settings:AddParagraph({
+    Title = "📍 พิกัดปัจจุบันของคุณ (Live Position)",
+    Content = "กำลังอ่านพิกัดตำแหน่ง..."
+})
+
+Tabs.Settings:AddButton({
+    Title = "📋 คัดลอกพิกัด Vector3",
+    Description = "คัดลอกตำแหน่ง X, Y, Z ปัจจุบันลงใน Clipboard",
+    Callback = function()
+        local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if root then
+            local p = root.Position
+            local str = string.format("Vector3.new(%.2f, %.2f, %.2f)", p.X, p.Y, p.Z)
+            if setclipboard then
+                setclipboard(str)
+            end
+            pcall(function()
+                Fluent:Notify({
+                    Title = "EASY HUB",
+                    Content = "📋 คัดลอกพิกัดสำเร็จ: " .. str,
+                    Duration = 2.5
+                })
+            end)
+        end
+    end
+})
+
+Tabs.Settings:AddButton({
+    Title = "📋 คัดลอกพิกัด CFrame",
+    Description = "คัดลอก CFrame ปัจจุบันลงใน Clipboard",
+    Callback = function()
+        local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if root then
+            local cf = root.CFrame
+            local str = string.format("CFrame.new(%.2f, %.2f, %.2f)", cf.Position.X, cf.Position.Y, cf.Position.Z)
+            if setclipboard then
+                setclipboard(str)
+            end
+            pcall(function()
+                Fluent:Notify({
+                    Title = "EASY HUB",
+                    Content = "📋 คัดลอก CFrame สำเร็จ!",
+                    Duration = 2.5
+                })
+            end)
+        end
+    end
+})
+
+task.spawn(function()
+    while true do
+        task.wait(0.4)
+        pcall(function()
+            local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if root and PosParagraph then
+                local p = root.Position
+                local text = string.format("X: %.2f | Y: %.2f | Z: %.2f\nVector3.new(%.2f, %.2f, %.2f)", p.X, p.Y, p.Z, p.X, p.Y, p.Z)
+                if PosParagraph.SetDesc then
+                    PosParagraph:SetDesc(text)
+                elseif PosParagraph.SetTitle then
+                    PosParagraph:SetTitle("📍 พิกัด: " .. string.format("%.1f, %.1f, %.1f", p.X, p.Y, p.Z))
+                end
+            end
+        end)
+    end
+end)
+
+Tabs.Settings:AddSection("การตั้งค่าความเร็วรถ (Vehicle Speed Settings)")
+
+Tabs.Settings:AddSlider("VehicleSpeedSlider", {
+    Title = "🚗 ความเร็วขับรถ (Vehicle Drive Speed)",
+    Description = "ปรับความเร็วการขับรถอัตโนมัติ (10 - 500 studs/s) ปรับได้ทันทีแบบเรียลไทม์",
+    Default = 200,
+    Min = 10,
+    Max = 500,
+    Rounding = 0,
+    Callback = function(Value)
+        local val = math.clamp(math.round(Value), 10, 500)
+        VehicleDriveSpeed = val
+        _G.VehicleDriveSpeed = val
+    end
+})
+
+
+Tabs.Settings:AddSection("ปิดสคริปต์ (Unload Script)")
+Tabs.Settings:AddButton({
+    Title = "🔴 ปิดสคริปต์และลบ UI ทั้งหมด (Unload Script)",
+    Description = "หยุดฟาร์มทั้งหมด ลบหน้าต่าง UI และปุ่มลอยทั้งหมดออกจากหน้าจอทันที",
+    Callback = function()
+        CurrentFarmSessionId = CurrentFarmSessionId + 1
+        CurrentActiveFarmKey = nil
+        if FloatingButtonGui then FloatingButtonGui:Destroy() end
+        if Window and Window.Destroy then Window:Destroy() end
+        if Fluent and Fluent.Destroy then Fluent:Destroy() end
+        pcall(function()
+            local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum:SetStateEnabled(Enum.HumanoidStateType.Swimming, true)
+                hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+                hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
+                hum:SetStateEnabled(Enum.HumanoidStateType.Freefall, true)
+            end
+        end)
+    end
+})
+
+Window:SelectTab(1)
+Fluent:Notify({
+    Title = "EASY HUB V4.0 READY",
+    Content = "ระบบเบิกรถอัตโนมัติ | 3 แท็บกระชับ | พร้อมใช้งาน 100%!",
+    Duration = 5
+})
