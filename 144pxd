@@ -3395,6 +3395,14 @@ if not LoadedFromFile then
 end
 
 print("[RELWX] UI Loaded" .. (LoadedFromFile and " (Config loaded)" or " (new Config)"))
+
+
+do -- isolated Typer Town module scope
+local Fluent = { Options = {} }
+function Fluent:Notify(item)
+    pcall(function() Toast(tostring(item.Content or item.Text or item.Title or "Typer Town")) end)
+end
+local function SetFloatingButtonVisible(_) end
 -- [NEXUS_AUTH_SUCCESS]
 pcall(function()
     game:GetService("StarterGui"):SetCore("SendNotification", {
@@ -6072,14 +6080,8 @@ local function AddRELWXAction(page, title, description, callback)
 end
 
 -- Existing farm logic expects Fluent-style notifications and control handles.
-SetFloatingButtonVisible = function(_) end
-Fluent = {
-    Options = {},
-    Notify = function(_, item)
-        pcall(function() Toast(tostring(item.Content or item.Text or item.Title or "Typer Town")) end)
-    end,
-    Destroy = function() end,
-}
+Fluent.Options = {}
+Fluent.Destroy = function() end
 local SaveManager = setmetatable({}, { __index = function() return function() end end })
 local InterfaceManager = setmetatable({}, { __index = function() return function() end end })
 local Window = {
@@ -6816,3 +6818,5 @@ Fluent:Notify({
     Content = "ระบบเบิกรถอัตโนมัติ | 3 แท็บกระชับ | พร้อมใช้งาน 100%!",
     Duration = 5
 })
+
+end -- isolated Typer Town module scope
