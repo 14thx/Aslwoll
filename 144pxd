@@ -4348,10 +4348,7 @@ local function DriveCarTo(destination, shouldContinueCheck)
 
     EnsurePlayerSeatedInCar(myCar)
     task.wait(0.1)
-    pcall(function()
-        game:GetService("ProximityPromptService").Enabled = false
-    end)
-
+    -- อย่าปิด ProximityPromptService แบบ global: ถ้าฟาร์มหยุดกลางทางจะทำให้ผู้เล่นกด prompt ไม่ได้
     local currentPos = seat.Position
     local startY = currentPos.Y
 
@@ -4364,16 +4361,20 @@ local function DriveCarTo(destination, shouldContinueCheck)
     -- [คำสั่งผู้ใช้]: ปรับความเร็วได้จริง ดึงค่าจาก Slider หรือตัวแปร VehicleDriveSpeed แบบเรียลไทม์
     local traveled = 0
     local lastTick = os.clock()
+    local lastGraceRefresh = 0
+    local lastGroundRefresh = 0
+    local cachedGroundY = initialGround
 
     while traveled < distTotal do
         if shouldContinueCheck and not shouldContinueCheck() then
             return false
         end
-        GrantAntiXGrace(15)
 
-        pcall(function()
-            game:GetService("ProximityPromptService").Enabled = false
-        end)
+        local now = os.clock()
+        if now - lastGraceRefresh >= 5 then
+            GrantAntiXGrace(15)
+            lastGraceRefresh = now
+        end
 
         if not hum.Sit or hum.SeatPart ~= seat then
             pcall(function()
@@ -4386,7 +4387,6 @@ local function DriveCarTo(destination, shouldContinueCheck)
         local currentSpeed = tonumber(VehicleDriveSpeed) or 200
         currentSpeed = math.clamp(currentSpeed, 10, 500)
 
-        local now = os.clock()
         local dt = math.min(now - lastTick, 0.1)
         lastTick = now
 
@@ -4396,8 +4396,11 @@ local function DriveCarTo(destination, shouldContinueCheck)
         local targetX = currentPos.X + (destination.X - currentPos.X) * alpha
         local targetZ = currentPos.Z + (destination.Z - currentPos.Z) * alpha
 
-        local groundY = GetGroundLevel(targetX, targetZ, startY)
-        local surfaceY = math.max(groundY + naturalRideHeight, 6.0)
+        if now - lastGroundRefresh >= 0.12 then
+            cachedGroundY = GetGroundLevel(targetX, targetZ, startY)
+            lastGroundRefresh = now
+        end
+        local surfaceY = math.max(cachedGroundY + naturalRideHeight, 6.0)
 
         local dir = Vector3.new(destination.X - targetX, 0, destination.Z - targetZ)
         local lookCFrame = CFrame.new(targetX, surfaceY, targetZ)
@@ -4406,7 +4409,8 @@ local function DriveCarTo(destination, shouldContinueCheck)
         end
 
         myCar:PivotTo(lookCFrame)
-        RunService.Heartbeat:Wait()
+        -- ลดงานขับจากทุก Heartbeat เหลือราว 30 ครั้ง/วินาที เพื่อไม่ให้ UI/มือถือกระตุก
+        task.wait(0.03)
     end
 
     -- จอดที่จุดหมายในฟาร์มอย่างนุ่มนวล
