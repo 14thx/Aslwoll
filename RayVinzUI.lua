@@ -132,14 +132,11 @@ local function tween(i, t, props)
 end
 
 local function draggable(handle, target)
-	local dragging, startPosition, startInput, startAbsPosition, startAbsSize
+	local dragging, lastInput
 	handle.InputBegan:Connect(function(inp)
 		if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
 			dragging = true
-			startPosition = target.Position
-			startInput = inp.Position
-			startAbsPosition = target.AbsolutePosition
-			startAbsSize = target.AbsoluteSize
+			lastInput = inp.Position
 			inp.Changed:Connect(function()
 				if inp.UserInputState == Enum.UserInputState.End then dragging = false end
 			end)
@@ -147,19 +144,11 @@ local function draggable(handle, target)
 	end)
 	UserInputService.InputChanged:Connect(function(inp)
 		if not dragging or (inp.UserInputType ~= Enum.UserInputType.MouseMovement and inp.UserInputType ~= Enum.UserInputType.Touch) then return end
-		local delta = inp.Position - startInput
-		local cam = workspace and workspace.CurrentCamera
-		local vp = cam and cam.ViewportSize or Vector2.new(1280, 720)
-		local desiredX = startAbsPosition.X + delta.X
-		local desiredY = startAbsPosition.Y + delta.Y
-		local minX, maxX = math.min(0, -startAbsSize.X + 40), math.max(math.min(0, -startAbsSize.X + 40), vp.X - 40)
-		local minY, maxY = 0, math.max(0, vp.Y - 40)
-		local clampedX = clamp(desiredX, minX, maxX)
-		local clampedY = clamp(desiredY, minY, maxY)
-		target.Position = UDim2.new(
-			startPosition.X.Scale, startPosition.X.Offset + clampedX - startAbsPosition.X,
-			startPosition.Y.Scale, startPosition.Y.Offset + clampedY - startAbsPosition.Y
-		)
+		local delta = inp.Position - lastInput
+		lastInput = inp.Position
+		local pos = target.Position
+		target.Position = UDim2.new(pos.X.Scale, pos.X.Offset + delta.X,
+			pos.Y.Scale, pos.Y.Offset + delta.Y)
 	end)
 end
 
@@ -355,15 +344,6 @@ function RayVinzUI:CreateWindow(opts)
 		if not cam then return end
 		local vp = cam.ViewportSize
 		uiScale.Scale = clamp(math.min(1, (vp.X - 24) / W, (vp.Y - 24) / H), 0.45, 1)
-		task.defer(function()
-			if not holder.Visible then return end
-			local abs = holder.AbsoluteSize
-			local pos = holder.AbsolutePosition
-			local halfW, halfH = abs.X / 2, abs.Y / 2
-			local cx = clamp(pos.X + halfW, halfW + 4, vp.X - halfW - 4)
-			local cy = clamp(pos.Y + halfH, halfH + 4, vp.Y - halfH - 4)
-			holder.Position = UDim2.fromOffset(cx, cy)
-		end)
 	end
 	pcall(fitScale)
 	pcall(function() workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fitScale) end)
@@ -381,10 +361,7 @@ function RayVinzUI:CreateWindow(opts)
 			W, H = math.floor(vp.X * 0.9), math.floor(vp.Y * 0.88)
 			uiScale.Scale = 1
 			holder.Size = UDim2.fromOffset(W, H)
-			local halfW, halfH = W / 2, H / 2
-			local cx = clamp(holder.AbsolutePosition.X + holder.AbsoluteSize.X / 2, halfW + 4, vp.X - halfW - 4)
-			local cy = clamp(holder.AbsolutePosition.Y + holder.AbsoluteSize.Y / 2, halfH + 4, vp.Y - halfH - 4)
-			tween(holder, 0.3, { Position = UDim2.fromOffset(cx, cy) })
+			tween(holder, 0.3, { Position = UDim2.fromScale(0.5, 0.5) })
 		else
 			local r = restore or { W = opts.Width or 620, H = opts.Height or 430, Pos = UDim2.fromScale(0.5, 0.5) }
 			W, H = r.W, r.H
@@ -440,31 +417,32 @@ function RayVinzUI:CreateWindow(opts)
 		local arcStroke = new("UIStroke", { Color = Color3.fromRGB(235, 235, 245), Transparency = 0.15, Thickness = 4.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, ring)
 		grip.MouseEnter:Connect(function() tween(arcStroke, 0.15, { Color = Theme.Accent, Transparency = 0 }) end)
 		grip.MouseLeave:Connect(function() tween(arcStroke, 0.15, { Color = Color3.fromRGB(235, 235, 245), Transparency = 0.15 }) end)
-		local resizing, startInput, startSize, startAbsPos
-		grip.InputBegan:Connect(function(inp)
-			if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
-				resizing = true; startInput = inp.Position; startSize = holder.AbsoluteSize / uiScale.Scale; startAbsPos = holder.AbsolutePosition
-			end
-		end)
-		self._track(UserInputService.InputChanged:Connect(function(inp)
-			if resizing and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
-				local s = uiScale.Scale
-				local d = (inp.Position - startInput) / s
-				local vp = workspace.CurrentCamera.ViewportSize
-				local capW = math.max(minW, math.min(maxW, (vp.X - startAbsPos.X - 8) / s))
-				local capH = math.max(minH, math.min(maxH, (vp.Y - startAbsPos.Y - 8) / s))
-				local newW = math.floor(clamp(startSize.X + d.X, minW, capW))
-				local newH = math.floor(clamp(startSize.Y + d.Y, minH, capH))
-				W, H = newW, newH
-				maximized = false
-				holder.Size = UDim2.fromOffset(newW, newH)
-				local halfW, halfH = newW * s / 2, newH * s / 2
-				local cx = clamp(startAbsPos.X + halfW, halfW + 4, vp.X - halfW - 4)
-				local cy = clamp(startAbsPos.Y + halfH, halfH + 4, vp.Y - halfH - 4)
-				holder.Position = UDim2.fromOffset(cx, cy)
-			end
-		end))
-		self._track(UserInputService.InputEnded:Connect(function(inp)
+		local resizing, startInput, startSize, startAbsSize, startPosition
+			grip.InputBegan:Connect(function(inp)
+				if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+					resizing = true
+					startInput = inp.Position
+					startSize = Vector2.new(W, H)
+					startAbsSize = holder.AbsoluteSize
+					startPosition = holder.Position
+				end
+			end)
+			self._track(UserInputService.InputChanged:Connect(function(inp)
+				if resizing and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
+					local scale = uiScale.Scale
+					local delta = (inp.Position - startInput) / scale
+					local newW = math.floor(clamp(startSize.X + delta.X, minW, maxW))
+					local newH = math.floor(clamp(startSize.Y + delta.Y, minH, maxH))
+					W, H = newW, newH
+					maximized = false
+					holder.Size = UDim2.fromOffset(newW, newH)
+					local shiftX = (newW * scale - startAbsSize.X) / 2
+					local shiftY = (newH * scale - startAbsSize.Y) / 2
+					holder.Position = UDim2.new(startPosition.X.Scale, startPosition.X.Offset + shiftX,
+						startPosition.Y.Scale, startPosition.Y.Offset + shiftY)
+				end
+			end))
+			self._track(UserInputService.InputEnded:Connect(function(inp)
 			if resizing and (inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch) then
 				resizing = false
 				self._queueSave()
@@ -583,26 +561,22 @@ function RayVinzUI:_mountMobile(logo)
 	local btn = new("TextButton", { Name = "MobileToggle", Text = "", Size = UDim2.fromOffset(52, 52), Position = UDim2.new(0, 22, 0.5, -26), BackgroundColor3 = Color3.fromRGB(26, 26, 30), BackgroundTransparency = 0.28, AutoButtonColor = false }, self.Gui)
 	corner(btn, 16); stroke(btn, Theme.White, 0.62, 1.2); glassSheen(btn, 16, 0)
 	iconImage(btn, logo, UDim2.fromOffset(36, 36), Theme.White, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
-	local dragging, moved, startPosition, startInput, startAbsPosition
+	local dragging, moved, startInput, lastInput
 	btn.InputBegan:Connect(function(inp)
 		if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
 			dragging = true; moved = false
-			startPosition = btn.Position; startInput = inp.Position; startAbsPosition = btn.AbsolutePosition
+			startInput = inp.Position; lastInput = inp.Position
 		end
 	end)
 	self._track(UserInputService.InputChanged:Connect(function(inp)
 		if dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
-			local delta = inp.Position - startInput
-			if math.abs(delta.X) > 4 or math.abs(delta.Y) > 4 then moved = true end
-			local cam = workspace and workspace.CurrentCamera
-			local vp = cam and cam.ViewportSize or Vector2.new(1280, 720)
-			local size = btn.AbsoluteSize
-			local x = clamp(startAbsPosition.X + delta.X, 0, math.max(0, vp.X - size.X))
-			local y = clamp(startAbsPosition.Y + delta.Y, 0, math.max(0, vp.Y - size.Y))
-			btn.Position = UDim2.new(
-				startPosition.X.Scale, startPosition.X.Offset + x - startAbsPosition.X,
-				startPosition.Y.Scale, startPosition.Y.Offset + y - startAbsPosition.Y
-			)
+			local totalDelta = inp.Position - startInput
+			local delta = inp.Position - lastInput
+			lastInput = inp.Position
+			if math.abs(totalDelta.X) > 4 or math.abs(totalDelta.Y) > 4 then moved = true end
+			local pos = btn.Position
+			btn.Position = UDim2.new(pos.X.Scale, pos.X.Offset + delta.X,
+				pos.Y.Scale, pos.Y.Offset + delta.Y)
 		end
 	end))
 	self._track(UserInputService.InputEnded:Connect(function(inp)
