@@ -28,15 +28,14 @@ local Theme = {
 	Error      = Color3.fromRGB(255, 69, 58),
 	White      = Color3.fromRGB(255, 255, 255),
 }
-local F  = Enum.Font.GothamMedium -- body (was Gotham) — fatter overall
-local FM = Enum.Font.GothamBold   -- labels (was GothamMedium)
-local FB = Enum.Font.GothamBold   -- titles / values
+local F  = Enum.Font.GothamMedium
+local FM = Enum.Font.GothamBold
+local FB = Enum.Font.GothamBold
 
 -- ================= helpers =================
 local function clamp(x, a, b) if x < a then return a elseif x > b then return b else return x end end
 local function round(n, d) if d == nil then return math.floor(n + 0.5) end local m = 10 ^ d return math.floor(n * m + 0.5) / m end
 local function indexOf(t, v) for i, x in ipairs(t) do if x == v then return i end end return nil end
--- base64 (for shareable config / theme "profile codes" — no executor funcs needed)
 local b64c = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 local function b64encode(data)
 	return ((data:gsub(".", function(x)
@@ -65,14 +64,8 @@ local function b64decode(data)
 end
 
 -- ================= live retheme registry =================
--- Instead of scanning the tree later and guessing which elements used to be
--- which color (fragile: breaks the moment anything is mid-tween, and drifts
--- further every time it's called), every themed property is bound to its
--- Theme key *once*, at creation, by identity. SetTheme/SetAccent then just
--- set the live value straight from the registry -- no comparisons, so it's
--- correct no matter how many times or how fast you switch themes.
-local ThemeRegistry = {} -- { {inst=Instance, prop="BackgroundColor3", role="Card"}, ... }
-local ThemeGradients = {} -- { {inst=UIGradient, role1="Accent", role2="Accent2"}, ... }
+local ThemeRegistry = {}
+local ThemeGradients = {}
 local function roleOfColor(value)
 	if typeof(value) ~= "Color3" then return nil end
 	for key, v in pairs(Theme) do
@@ -102,9 +95,6 @@ local function new(class, props, parent)
 	if parent then i.Parent = parent end
 	return i
 end
--- call after SetTheme/SetAccent change Theme[...]: replays every binding directly, no guessing
--- only = optional set of roles to update (e.g. { Accent = true }); rainbow mode calls this
--- 10x a second, so skipping every non-accent element matters
 local function applyThemeRegistry(only)
 	for idx = #ThemeRegistry, 1, -1 do
 		local e = ThemeRegistry[idx]
@@ -129,15 +119,12 @@ local function grad(p, c1, c2, rot) return new("UIGradient", { Color = ColorSequ
 local function pad(p, t, r, b, l) return new("UIPadding", { PaddingTop = UDim.new(0, t), PaddingRight = UDim.new(0, r or t), PaddingBottom = UDim.new(0, b or t), PaddingLeft = UDim.new(0, l or r or t) }, p) end
 local function vlist(p, gap, pad2) return new("UIListLayout", { FillDirection = Enum.FillDirection.Vertical, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, gap or 0), HorizontalAlignment = pad2 or Enum.HorizontalAlignment.Left }, p) end
 
--- left-aligned text that vertically centers and truncates
 local function ltext(parent, text, size, color, font, xAlign)
 	return new("TextLabel", { BackgroundTransparency = 1, Text = text, TextSize = size, TextColor3 = color or Theme.Text,
 		Font = font or FM, TextXAlignment = xAlign or Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center,
 		TextTruncate = Enum.TextTruncate.AtEnd, RichText = true }, parent)
 end
 
--- MotionScale multiplies every tween duration. 0 = apply instantly (ReduceMotion /
--- PerformanceGuard pause animations when the game is lagging). 1 = normal speed.
 local MotionScale = 1
 local function tween(i, t, props)
 	if MotionScale <= 0 then for k, v in pairs(props) do pcall(function() i[k] = v end) end return { Cancel = function() end, Play = function() end } end
@@ -155,7 +142,19 @@ local function draggable(handle, target)
 	UserInputService.InputChanged:Connect(function(inp)
 		if dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
 			local d = inp.Position - si
-			target.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
+			local cam = workspace and workspace.CurrentCamera
+			local vp = cam and cam.ViewportSize or Vector2.new(1280, 720)
+			local absSize = target.AbsoluteSize
+			local absPos = target.AbsolutePosition
+			local newAbsX = absPos.X + d.X
+			local newAbsY = absPos.Y + d.Y
+			local minX, maxX = -absSize.X + 40, vp.X - 40
+			local minY, maxY = 0, vp.Y - 40
+			local clampedX = clamp(newAbsX, minX, maxX)
+			local clampedY = clamp(newAbsY, minY, maxY)
+			local realDX = clampedX - absPos.X
+			local realDY = clampedY - absPos.Y
+			target.Position = UDim2.new(sp.X.Scale, sp.X.Offset + realDX, sp.Y.Scale, sp.Y.Offset + realDY)
 		end
 	end)
 end
@@ -167,7 +166,6 @@ local function guiParent()
 	if ok2 and cg then return cg end
 	return LocalPlayer:WaitForChild("PlayerGui")
 end
--- remove any previous RayVinzUI instances (so re-running the script doesn't stack GUIs)
 local function cleanupOld()
 	local spots = {}
 	pcall(function() table.insert(spots, gethui()) end)
@@ -180,7 +178,6 @@ local function cleanupOld()
 			end
 		end
 	end
-	-- remove any leftover blur effect (it lives in Lighting, not under the GUI)
 	pcall(function()
 		for _, e in ipairs(game:GetService("Lighting"):GetChildren()) do
 			if e.Name == "RayVinzBlur" then e:Destroy() end
@@ -195,7 +192,6 @@ local function shadow(parent, tr, extra)
 		Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = 0 }, parent)
 end
 
--- liquid-glass sheen: bright highlight at the top that fades down (glassy top edge)
 local function glassSheen(frame, r, zi)
 	local o = new("Frame", { Name = "Sheen", BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0, Size = UDim2.new(1, 0, 1, 0), ZIndex = zi or 1 }, frame)
 	corner(o, r or 12)
@@ -203,7 +199,6 @@ local function glassSheen(frame, r, zi)
 		NumberSequenceKeypoint.new(0, 0.8), NumberSequenceKeypoint.new(0.42, 0.965), NumberSequenceKeypoint.new(1, 1) }) }, o)
 	return o
 end
--- soft neon glow (accent) behind an element
 local function glow(parent, color, tr, scale, zi)
 	return new("ImageLabel", { Name = "Glow", BackgroundTransparency = 1, Image = "rbxassetid://5028857084",
 		ImageColor3 = color or Theme.Accent, ImageTransparency = tr or 0.55, Size = UDim2.fromScale(scale or 1.6, scale or 1.6),
@@ -214,7 +209,7 @@ end
 local IconPack = nil
 local ActiveGui = nil
 local ActiveFlags = nil
-local ActiveWindow = nil -- last CreateWindow (so UI:Spotlight()/UI:Command() find tabs/controls)
+local ActiveWindow = nil
 local function resolveIcon(icon)
 	if not icon or icon == "" then return nil end
 	if type(icon) == "number" then return { Image = "rbxassetid://" .. icon } end
@@ -255,9 +250,6 @@ function RayVinzUI:LoadLucide(url)
 	if ok and p then self:SetIcons(p) return true end
 	return false
 end
--- one-call loader: Lucide (for built-in UI icons) + Craft 6000-icon pack, merged.
--- Lucide handles UI chrome (search/chevron/close), Craft handles everything else.
--- Craft names win; Lucide names fall back. Call ONCE before CreateWindow.
 RayVinzUI.CraftURL = "https://raw.githubusercontent.com/RayVinz/library/refs/heads/main/craft_pack.lua"
 function RayVinzUI:LoadIcons(craftUrl)
 	craftUrl = craftUrl or RayVinzUI.CraftURL
@@ -279,16 +271,14 @@ function RayVinzUI:CreateWindow(opts)
 	opts = opts or {}
 	if opts.Folder then RayVinzUI.SetFolder(self, opts.Folder) end
 	if opts.KeySystem and opts.Folder and opts.KeySystem.Folder == nil then opts.KeySystem.Folder = opts.Folder end
-	-- WindUI-style: CreateWindow({ KeySystem = { API = {...} } }) gates the window behind a key
 	if opts.KeySystem then
 		local ks = opts.KeySystem
 		if ks.Title == nil then ks.Title = opts.Title end
 		if ks.Logo == nil then ks.Logo = opts.Logo end
 		if not RayVinzUI.KeySystem(self, ks) then error("[RayVinzUI] key system closed without a valid key", 0) end
 	end
-	opts.Logo = opts.Logo or "sparkles" -- default hub icon (needs UI:LoadLucide())
+	opts.Logo = opts.Logo or "sparkles"
 	opts.Version = opts.Version or opts.SubTitle or "v1.0.0"
-	-- no Title given -> auto-pull the current game's name
 	if not opts.Title then
 		local ok, info = pcall(function() return game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId) end)
 		opts.Title = (ok and type(info) == "table" and info.Name) or "RayVinz Hub"
@@ -297,8 +287,8 @@ function RayVinzUI:CreateWindow(opts)
 	self._track = function(c) table.insert(self._conns, c); return c end
 	self._configName = opts.ConfigName or "default"; ActiveFlags = self._flags
 	self._autoSave = opts.ConfigAutoSave and true or false
-	self._autoFlag = opts.AutoFlag ~= false -- auto-generate a Flag for every element (so config saves everything)
-	self._loading = self._autoSave -- block auto-save until the first auto-load finishes
+	self._autoFlag = opts.AutoFlag ~= false
+	self._loading = self._autoSave
 	do
 		local pending = false
 		self._queueSave = function()
@@ -307,25 +297,20 @@ function RayVinzUI:CreateWindow(opts)
 			task.delay(0.6, function() pending = false; if not self._loading then pcall(function() self:SaveConfig() end) end end)
 		end
 	end
-	cleanupOld() -- destroy any previous RayVinzUI so re-running never stacks windows/buttons
+	cleanupOld()
 	local gui = new("ScreenGui", { Name = "RayVinzUI", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true }, guiParent())
 	self.Gui = gui; ActiveGui = gui; ActiveWindow = self
 	local W, H = opts.Width or 660, opts.Height or 460
 
-	-- holder (positioned/dragged) -> shadow + rounded window inside
-	-- frosted-glass backdrop: blur the 3D scene behind the UI (iOS "liquid glass" look)
 	local blur = nil
 	pcall(function() blur = new("BlurEffect", { Name = "RayVinzBlur", Size = 0, Enabled = true }, game:GetService("Lighting")) end)
 	self._blur = blur
-	-- opts.Blur = false turns the background blur off, a number sets its strength (default 24)
 	self._blurSize = opts.Blur == false and 0 or (type(opts.Blur) == "number" and opts.Blur or 24)
 	local holder = new("Frame", { Name = "Window", Visible = false, Size = UDim2.fromOffset(W, H), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1 }, gui)
 	self.Window = holder
 	local sh = shadow(holder, 1, 48)
-	-- CanvasGroup lets us fade the whole window (GroupTransparency) in one tween
 	local win = new("CanvasGroup", { Name = "Main", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Background, BackgroundTransparency = 0.24, GroupTransparency = 1, ClipsDescendants = true, ZIndex = 1 }, holder)
 	corner(win, 16); stroke(win, Theme.White, 0.72, 1.4); glassSheen(win, 16, 1)
-	-- animated shimmering edge: a slowly-rotating accent gradient along the window border
 	do
 		local edgeStroke = new("UIStroke", { Thickness = 1.2, Transparency = 0.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, win)
 		local edgeGrad = new("UIGradient", {
@@ -339,7 +324,6 @@ function RayVinzUI:CreateWindow(opts)
 			if holder.Visible then edgeGrad.Rotation = (edgeGrad.Rotation + dt * 30) % 360 end
 		end))
 	end
-	-- smooth open / close / minimize (scale + fade together, from the window's own center)
 	local function showWin(animate)
 		holder.Visible = true
 		if blur then tween(blur, 0.34, { Size = self._blurSize }) end
@@ -361,24 +345,28 @@ function RayVinzUI:CreateWindow(opts)
 		task.delay(0.26, function() holder.Visible = false end)
 	end
 	self._show, self._hide = showWin, hideWin
-	-- responsive: shrink the window to fit small screens / mobile
 	local uiScale = new("UIScale", { Scale = 1 }, holder)
 	local function fitScale()
 		local cam = workspace and workspace.CurrentCamera
 		if not cam then return end
 		local vp = cam.ViewportSize
 		uiScale.Scale = clamp(math.min(1, (vp.X - 24) / W, (vp.Y - 24) / H), 0.45, 1)
+		task.defer(function()
+			if not holder.Visible then return end
+			local abs = holder.AbsoluteSize
+			local pos = holder.AbsolutePosition
+			local halfW, halfH = abs.X / 2, abs.Y / 2
+			local cx = clamp(pos.X + halfW, halfW + 4, vp.X - halfW - 4)
+			local cy = clamp(pos.Y + halfH, halfH + 4, vp.Y - halfH - 4)
+			holder.Position = UDim2.fromOffset(cx, cy)
+		end)
 	end
 	pcall(fitScale)
 	pcall(function() workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fitScale) end)
 
-	-- title bar
 	local title = new("Frame", { Name = "TitleBar", Size = UDim2.new(1, 0, 0, 48), BackgroundTransparency = 1 }, win)
 	local lights = new("Frame", { Size = UDim2.fromOffset(52, 14), Position = UDim2.new(0, 16, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundTransparency = 1 }, title)
 	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8), VerticalAlignment = Enum.VerticalAlignment.Center }, lights)
-	-- maximize toggle (green): swap between normal and a larger size
-	-- maximize centers the window (it may have been dragged/resized off to one side) and
-	-- restore puts back the exact size + position from before
 	local maximized, restore = false, nil
 	local function maximize()
 		local cam = workspace.CurrentCamera
@@ -388,7 +376,11 @@ function RayVinzUI:CreateWindow(opts)
 			restore = { W = W, H = H, Pos = holder.Position }
 			W, H = math.floor(vp.X * 0.9), math.floor(vp.Y * 0.88)
 			uiScale.Scale = 1
-			tween(holder, 0.3, { Size = UDim2.fromOffset(W, H), Position = UDim2.fromScale(0.5, 0.5) })
+			holder.Size = UDim2.fromOffset(W, H)
+			local halfW, halfH = W / 2, H / 2
+			local cx = clamp(holder.AbsolutePosition.X + holder.AbsoluteSize.X / 2, halfW + 4, vp.X - halfW - 4)
+			local cy = clamp(holder.AbsolutePosition.Y + holder.AbsoluteSize.Y / 2, halfH + 4, vp.Y - halfH - 4)
+			tween(holder, 0.3, { Position = UDim2.fromOffset(cx, cy) })
 		else
 			local r = restore or { W = opts.Width or 660, H = opts.Height or 460, Pos = UDim2.fromScale(0.5, 0.5) }
 			W, H = r.W, r.H
@@ -396,12 +388,11 @@ function RayVinzUI:CreateWindow(opts)
 			tween(holder, 0.3, { Size = UDim2.fromOffset(W, H), Position = r.Pos })
 		end
 	end
-	local glyphs = { "x", "minus", "maximize-2" } -- lucide icons: close / minimize / expand
+	local glyphs = { "x", "minus", "maximize-2" }
 	local marks = {}
 	for i, c in ipairs({ Color3.fromRGB(255, 95, 87), Color3.fromRGB(254, 188, 46), Color3.fromRGB(40, 200, 64) }) do
 		local d = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(13, 13), BackgroundColor3 = c, LayoutOrder = i }, lights); corner(d, 7)
 		local m = iconImage(d, glyphs[i], UDim2.fromOffset(9, 9), Color3.fromRGB(60, 30, 10), UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5)); m.ImageTransparency = 1; marks[i] = m
-		-- red = destroy (confirm first, then fully unload); yellow = hide/minimize; green = maximize
 		if i == 1 then d.MouseButton1Click:Connect(function()
 			self:Dialog({ Title = "Close " .. (opts.Title or "UI") .. "?", Content = "This will fully close and unload the UI. You'll need to re-execute the script to open it again.",
 				Buttons = { { Title = "Cancel" }, { Title = "Close", Variant = "Primary", Callback = function() self:Unload() end } } })
@@ -409,25 +400,19 @@ function RayVinzUI:CreateWindow(opts)
 		if i == 2 then d.MouseButton1Click:Connect(function() hideWin() end) end
 		if i == 3 then d.MouseButton1Click:Connect(function() maximize() end) end
 	end
-	-- reveal all three glyphs while hovering the cluster (macOS behavior)
 	lights.MouseEnter:Connect(function() for _, m in ipairs(marks) do tween(m, 0.12, { ImageTransparency = 0 }) end end)
 	lights.MouseLeave:Connect(function() for _, m in ipairs(marks) do tween(m, 0.12, { ImageTransparency = 1 }) end end)
-	-- left-aligned brand: logo + (map name + faint "By author") + version/tags row
 	local brand = new("Frame", { Size = UDim2.new(1, -92, 1, 0), Position = UDim2.new(0, 80, 0, 0), BackgroundTransparency = 1 }, title)
 	local blogo = new("Frame", { Size = UDim2.fromOffset(38, 38), Position = UDim2.new(0, 0, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundTransparency = 1 }, brand)
-	-- a real logo image (rbxassetid/number) keeps its own colors on every theme -- only a
-	-- named vector icon (e.g. "sparkles") gets tinted, since those are flat single-tone glyphs
 	local logoIsCustomImage = type(opts.Logo) == "number"
 		or (type(opts.Logo) == "string" and string.find(opts.Logo, "rbxassetid://") == 1)
 	local blogoIcon = iconImage(blogo, opts.Logo, UDim2.fromOffset(38, 38),
 		logoIsCustomImage and Theme.White or Theme.Text, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
 	self._logoIcon = blogoIcon
-	-- row 1: map name + "By author" (faint, thin, small)
 	local r1 = new("Frame", { Size = UDim2.new(1, -48, 0, 16), Position = UDim2.new(0, 48, 0, 7), BackgroundTransparency = 1 }, brand)
 	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 7), VerticalAlignment = Enum.VerticalAlignment.Bottom }, r1)
 	local tt = ltext(r1, opts.Title or "RayVinz Hub", 14, Theme.Text, FB); tt.Size = UDim2.fromOffset(0, 16); tt.AutomaticSize = Enum.AutomaticSize.X; tt.LayoutOrder = 1
 	if opts.Author then local au = ltext(r1, "By " .. opts.Author, 10, Theme.Muted, F); au.Size = UDim2.fromOffset(0, 13); au.AutomaticSize = Enum.AutomaticSize.X; au.LayoutOrder = 2 end
-	-- row 2: version tag (+ extra tags)
 	local r2 = new("Frame", { Size = UDim2.new(1, -48, 0, 15), Position = UDim2.new(0, 48, 0, 25), BackgroundTransparency = 1 }, brand)
 	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 5), VerticalAlignment = Enum.VerticalAlignment.Center }, r2)
 	local function titleTag(txt, col, i)
@@ -439,14 +424,9 @@ function RayVinzUI:CreateWindow(opts)
 	draggable(title, holder)
 	new("Frame", { Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 0, 48), BackgroundColor3 = Theme.White, BackgroundTransparency = 0.92, BorderSizePixel = 0 }, win)
 
-	-- resize grip (bottom-right corner, iPadOS floating-window style): drag to resize,
-	-- top-left corner stays put. opts.Resizable = false to disable, opts.MinSize/MaxSize = {w, h}
 	if opts.Resizable ~= false then
 		local minW, minH = (opts.MinSize and opts.MinSize[1]) or 480, (opts.MinSize and opts.MinSize[2]) or 340
 		local maxW, maxH = (opts.MaxSize and opts.MaxSize[1]) or 1200, (opts.MaxSize and opts.MaxSize[2]) or 860
-		-- iPad-style handle: a short thick arc just outside the window's rounded corner, sharing
-		-- its center. A CanvasGroup does the clipping because ClipsDescendants doesn't clip
-		-- UIStroke (the whole circle showed through before).
 		local grip = new("TextButton", { Name = "ResizeHandle", Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(36, 36),
 			Position = UDim2.new(1, 8, 1, 8), AnchorPoint = Vector2.new(1, 1), BackgroundTransparency = 1, ZIndex = 10 }, holder)
 		local arcView = new("CanvasGroup", { Name = "ResizeArc", Size = UDim2.fromOffset(22, 22), Position = UDim2.new(1, -10, 1, -10),
@@ -459,7 +439,6 @@ function RayVinzUI:CreateWindow(opts)
 		local resizing, startInput, startSize, startAbsPos
 		grip.InputBegan:Connect(function(inp)
 			if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
-				-- AbsoluteSize includes the mobile UIScale; Size offsets don't, so divide it out
 				resizing = true; startInput = inp.Position; startSize = holder.AbsoluteSize / uiScale.Scale; startAbsPos = holder.AbsolutePosition
 			end
 		end)
@@ -467,16 +446,18 @@ function RayVinzUI:CreateWindow(opts)
 			if resizing and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
 				local s = uiScale.Scale
 				local d = (inp.Position - startInput) / s
-				-- never let the bottom-right corner go past the screen edge
 				local vp = workspace.CurrentCamera.ViewportSize
 				local capW = math.max(minW, math.min(maxW, (vp.X - startAbsPos.X - 8) / s))
 				local capH = math.max(minH, math.min(maxH, (vp.Y - startAbsPos.Y - 8) / s))
 				local newW = math.floor(clamp(startSize.X + d.X, minW, capW))
 				local newH = math.floor(clamp(startSize.Y + d.Y, minH, capH))
-				W, H = newW, newH -- so hide/show and restore keep the new size
+				W, H = newW, newH
 				maximized = false
 				holder.Size = UDim2.fromOffset(newW, newH)
-				holder.Position = UDim2.fromOffset(startAbsPos.X + newW * s / 2, startAbsPos.Y + newH * s / 2)
+				local halfW, halfH = newW * s / 2, newH * s / 2
+				local cx = clamp(startAbsPos.X + halfW, halfW + 4, vp.X - halfW - 4)
+				local cy = clamp(startAbsPos.Y + halfH, halfH + 4, vp.Y - halfH - 4)
+				holder.Position = UDim2.fromOffset(cx, cy)
 			end
 		end))
 		self._track(UserInputService.InputEnded:Connect(function(inp)
@@ -487,14 +468,10 @@ function RayVinzUI:CreateWindow(opts)
 		end))
 	end
 
-	-- body: sidebar + content (glassy translucent sidebar)
 	local sidebar = new("ScrollingFrame", { Name = "Sidebar", Size = UDim2.new(0, 190, 1, -49), Position = UDim2.new(0, 0, 0, 49), BackgroundColor3 = Theme.Sidebar, BackgroundTransparency = 0.25,
 		BorderSizePixel = 0, ScrollBarThickness = 0, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y }, win)
 	pad(sidebar, 14, 12, 12, 12); vlist(sidebar, 3)
 	self.Sidebar = sidebar
-	-- sidebar deep search: matches tab titles AND every setting/label inside every
-	-- tab's page, so a buried toggle three tabs away is findable, not just tab names.
-	-- opts.Search = false to disable.
 	if opts.Search ~= false then
 		local sb = new("Frame", { Name = "Search", Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Theme.Field, BackgroundTransparency = 0.15, LayoutOrder = -3 }, sidebar); corner(sb, 8); stroke(sb, Theme.White, 0.85, 1)
 		iconImage(sb, "search", UDim2.fromOffset(13, 13), Theme.Muted, UDim2.new(0, 10, 0.5, 0), Vector2.new(0, 0.5))
@@ -566,28 +543,23 @@ function RayVinzUI:CreateWindow(opts)
 	if opts.AntiAFK then self:AntiAFK(true) end
 	if opts.ReExecute then self:ReExecuteOnTeleport(opts.ReExecute) end
 
-	-- hotkey to toggle the window (animated, with blur) — opts.ToggleKey = Enum.KeyCode.RightShift
 	if opts.ToggleKey then
 		self._track(UserInputService.InputBegan:Connect(function(inp, gpe)
 			if not gpe and inp.KeyCode == opts.ToggleKey then self:Toggle() end
 		end))
 	end
 
-	-- auto-load saved config a frame after build (so every element exists first)
-	-- load on start only when the user picked an auto-load config; auto-save still runs either way
 	if opts.ConfigAutoSave then task.defer(function()
 		local auto = self:GetAutoLoadConfig()
 		if auto then pcall(function() self:LoadConfig(auto) end) else self._loading = false end
 	end) end
 
-	-- auto re-inject: if the GUI is externally un-parented (not destroyed), put it back
 	if opts.Protect then
 		self._track(gui.AncestryChanged:Connect(function(_, parent)
 			if not parent then task.defer(function() pcall(function() gui.Parent = guiParent() end) end) end
 		end))
 	end
 
-	-- intro: loading screen -> reveal window -> (optional) changelog. opts.Changelog = { Version=, Changes={} }
 	local function afterReady()
 		if opts.Changelog then task.wait(0.45); pcall(function() self:Changelog(opts.Changelog) end) end
 		if opts.OnReady then task.spawn(opts.OnReady) end
@@ -606,9 +578,7 @@ end
 function RayVinzUI:_mountMobile(logo)
 	local btn = new("TextButton", { Name = "MobileToggle", Text = "", Size = UDim2.fromOffset(56, 56), Position = UDim2.new(0, 22, 0.5, -28), BackgroundColor3 = Color3.fromRGB(26, 26, 30), BackgroundTransparency = 0.28, AutoButtonColor = false }, self.Gui)
 	corner(btn, 17); stroke(btn, Theme.White, 0.62, 1.2); glassSheen(btn, 17, 0)
-	-- big logo, no pink box/glow
 	iconImage(btn, logo, UDim2.fromOffset(40, 40), Theme.White, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
-	-- draggable, and a tap (no real drag) toggles the window
 	local dragging, moved, sp, si
 	btn.InputBegan:Connect(function(inp)
 		if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
@@ -647,15 +617,12 @@ function RayVinzUI:Tab(opts)
 
     local item = new("TextButton", { Name = "Tab", Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 34), BackgroundColor3 = Theme.Accent, BackgroundTransparency = 1, LayoutOrder = layoutOrderCount }, self.Sidebar)
     corner(item, 8)
-    
     local tbar = new("Frame", { Size = UDim2.fromOffset(3, 0), Position = UDim2.new(0, 2, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = Theme.Accent, BorderSizePixel = 0, ZIndex = 2 }, item); corner(tbar, 2)
     local ic = iconImage(item, opts.Icon, UDim2.fromOffset(16, 16), Theme.SubText, UDim2.new(0, 12, 0.5, 0), Vector2.new(0, 0.5)); ic.ZIndex = 2
     local lb = ltext(item, opts.Title or "Tab", 13, Theme.SubText, FM); lb.Position = UDim2.new(0, 38, 0, 0); lb.Size = UDim2.new(1, -48, 1, 0); lb.ZIndex = 2
     local dot = new("Frame", { Name = "Dot", Size = UDim2.fromOffset(7, 7), Position = UDim2.new(1, -10, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), BackgroundColor3 = Theme.Error, BorderSizePixel = 0, Visible = false, ZIndex = 3 }, item); corner(dot, 4)
-    
     local badge = new("Frame", { Name = "Badge", Size = UDim2.fromOffset(18, 16), Position = UDim2.new(1, -8, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), BackgroundColor3 = Theme.Accent, Visible = false, ZIndex = 3 }, item); corner(badge, 8)
     local badgeTxt = ltext(badge, "", 10, Theme.AccentText, FB, Enum.TextXAlignment.Center); badgeTxt.Size = UDim2.fromScale(1, 1); badgeTxt.ZIndex = 4
-    
     tab._bar = tbar; tab._dot = dot; tab._badge = badge
     function tab:SetDot(on) self._dot.Visible = on and true or false end
     function tab:SetBadge(v)
@@ -663,15 +630,12 @@ function RayVinzUI:Tab(opts)
         badgeTxt.Text = tostring(v); self._badge.Visible = true
         self._badge.Size = UDim2.fromOffset(math.max(18, #tostring(v) * 7 + 10), 16)
     end
-    
     local page = new("ScrollingFrame", { Name = "Page", Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false,
         ScrollBarThickness = 3, ScrollBarImageColor3 = Theme.Muted, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y }, self.Content)
     pad(page, 18, 18, 18, 18); vlist(page, 16)
-    
     tab._item, tab._icon, tab._label, tab._page, tab._window = item, ic, lb, page, self
     function tab:Section(s) return self._window:_section(self._page, s) end
     function tab:Select() self._window:_select(self) end
-    
     item.MouseButton1Click:Connect(function() self:_select(tab) end)
     table.insert(self._tabs, tab)
     if #self._tabs == 1 or opts.Default then self:_select(tab) end
@@ -686,7 +650,7 @@ function RayVinzUI:_select(tab)
 		t._label.Font = on and FB or FM
 		t._icon.ImageColor3 = on and Theme.Accent or Theme.SubText
 		if t._bar then tween(t._bar, 0.18, { Size = UDim2.fromOffset(3, on and 18 or 0) }) end
-		if on and t._dot then t._dot.Visible = false end -- clear the dot once opened
+		if on and t._dot then t._dot.Visible = false end
 	end
 end
 
@@ -697,9 +661,7 @@ function RayVinzUI:_section(page, opts)
 	local trackConn = self._track or function(c) return c end
 	local win = self
 	local autoN = 0
-	-- register an element for Config. Uses o.Flag, or auto-generates "Section/Title" so
-	-- EVERY element is saved by default (set opts.AutoFlag = false to require explicit Flags).
-	local attachMenu, attachDepends -- forward-declared (defined after tip)
+	local attachMenu, attachDepends
 	local function registerFlag(o, ctl, kind)
 		autoN = autoN + 1
 		local flag = o.Flag
@@ -712,12 +674,11 @@ function RayVinzUI:_section(page, opts)
 		win._flagByO = win._flagByO or setmetatable({}, { __mode = "k" })
 		win._flagByO[o] = entry
 		pcall(function() entry.value = ctl.Get() end)
-		win._controls = win._controls or {}; table.insert(win._controls, entry) -- for Spotlight
-		if attachMenu then attachMenu(entry) end        -- right-click: Reset / Copy
+		win._controls = win._controls or {}; table.insert(win._controls, entry)
+		if attachMenu then attachMenu(entry) end
 		if o.DependsOn and attachDepends then attachDepends(o, entry) end
 		return entry
 	end
-	-- wrap a callback: auto-save on change + catch errors (Error Inspector) + record Undo history
 	local function autoCb(o)
 		local cb = o.Callback
 		o.Callback = function(...)
@@ -731,7 +692,6 @@ function RayVinzUI:_section(page, opts)
 			if ent and not win._applyingHistory then pcall(function() win:_pushHistory(ent, first) end) end
 		end
 	end
-	-- hover tooltip (parented to the ScreenGui so it escapes the card's clip)
 	local function tip(guiObj, text)
 		if not text or text == "" then return end
 		local box
@@ -743,7 +703,6 @@ function RayVinzUI:_section(page, opts)
 		end)
 		guiObj.MouseLeave:Connect(function() if box then box:Destroy(); box = nil end end)
 	end
-	-- right-click / long-press context menu on a saved control row: Reset to default + Copy value
 	attachMenu = function(entry)
 		local r = entry.inst
 		if not r then return end
@@ -783,10 +742,6 @@ function RayVinzUI:_section(page, opts)
 			end
 		end)
 	end
-	-- DependsOn: grey-out (or hide) a control until a master control's value matches.
-	--   o.DependsOn = "OtherFlag"                         -- enabled while that flag is truthy
-	--   o.DependsOn = { Flag = "aim", Value = true }      -- enabled only when aim == true
-	--   o.DependsOn = { Flag = "mode", Predicate = fn, Hide = true }
 	attachDepends = function(o, entry)
 		local d = o.DependsOn
 		if type(d) == "string" then d = { Flag = d } end
@@ -842,7 +797,6 @@ function RayVinzUI:_section(page, opts)
 	corner(card, 12); stroke(card, Theme.White, 0.82, 1.2); grad(card, Color3.new(1, 1, 1), Color3.fromRGB(205, 205, 210), 90); vlist(card, 0)
 	section._card = card
 
-	-- base row (adds a divider only BETWEEN rows, never above the first one)
 	local rowCount = 0
 	local function row(h)
 		if rowCount > 0 then
@@ -853,7 +807,6 @@ function RayVinzUI:_section(page, opts)
 		section._lastRow = f
 		return f
 	end
-	-- left label (vertically centered); with a description it stacks title + grey subtext
 	local function placeLabel(r, text, reserve, desc)
 		if desc and desc ~= "" then
 			local l = ltext(r, text, 13, Theme.Text, FM); l.Position = UDim2.new(0, 14, 0, 9); l.Size = UDim2.new(1, -(reserve + 28), 0, 16)
@@ -866,11 +819,9 @@ function RayVinzUI:_section(page, opts)
 	end
 	section._row = row
 
-	-- Toggle
 	function section:Toggle(o)
 		o = o or {}; autoCb(o); local state = o.Default or false
 		local r = row(o.Description and 58 or 48); placeLabel(r, o.Title or "Toggle", 46, o.Description)
-		-- glassy switch: translucent track, soft white edge, floating knob (no clipped glow halo)
 		local sw = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(46, 28), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), BackgroundColor3 = state and Theme.Green or Theme.Select, BackgroundTransparency = 0.35 }, r); corner(sw, 14); stroke(sw, Theme.White, 0.7, 1)
 		local knob = new("Frame", { Size = UDim2.fromOffset(22, 22), AnchorPoint = Vector2.new(0, 0.5), Position = state and UDim2.new(1, -24, 0.5, 0) or UDim2.new(0, 3, 0.5, 0), BackgroundColor3 = Theme.White, ZIndex = 2 }, sw); corner(knob, 11)
 		local offToken = 0
@@ -878,7 +829,6 @@ function RayVinzUI:_section(page, opts)
 			state = v
 			tween(sw, 0.18, { BackgroundColor3 = v and Theme.Green or Theme.Select })
 			tween(knob, 0.18, { Position = v and UDim2.new(1, -24, 0.5, 0) or UDim2.new(0, 3, 0.5, 0) })
-			-- AutoOff = seconds: auto-switch back off after a delay (timer), cancelled if toggled again
 			if o.AutoOff then offToken = offToken + 1; if v then local my = offToken; task.delay(o.AutoOff, function() if my == offToken and state then set(false) end end) end end
 			if fire ~= false and o.Callback then task.spawn(o.Callback, v) end
 		end
@@ -889,10 +839,8 @@ function RayVinzUI:_section(page, opts)
 		registerFlag(o, ctl); return ctl
 	end
 
-	-- Button
 	function section:Button(o)
 		o = o or {}
-		-- WindUI row-style button: label left, icon right, whole row clickable (when Icon/Style given)
 		if o.Icon or o.Style == "Row" then
 			local r = row(o.Description and 58 or 46)
 			local lbl = placeLabel(r, o.Title or "Button", 40, o.Description)
@@ -903,7 +851,6 @@ function RayVinzUI:_section(page, opts)
 			btn.MouseButton1Click:Connect(function() if o.Callback then task.spawn(o.Callback) end end)
 			return btn
 		end
-		-- full-width accent button (hover scale + ripple + gradient)
 		local r = row(50)
 		local b = new("TextButton", { Text = o.Title or "Button", Font = FB, TextSize = 13, TextColor3 = Theme.AccentText, AutoButtonColor = false,
 			Size = UDim2.new(1, -28, 0, 38), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), BackgroundColor3 = Theme.Accent, ClipsDescendants = true }, r); corner(b, 9); grad(b, Theme.Accent, Theme.Accent2, 25)
@@ -911,7 +858,6 @@ function RayVinzUI:_section(page, opts)
 		b.MouseEnter:Connect(function() tween(sc, 0.12, { Scale = 1.015 }) end)
 		b.MouseLeave:Connect(function() tween(sc, 0.12, { Scale = 1 }) end)
 		b.MouseButton1Click:Connect(function()
-			-- true circular ripple (square size + full corner, so it never stretches into a bar)
 			local d = math.max(b.AbsoluteSize.X, b.AbsoluteSize.Y, 60) * 2.2
 			local rip = new("Frame", { BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.6, Size = UDim2.fromOffset(0, 0), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = 5 }, b); corner(rip, 999)
 			tween(rip, 0.45, { Size = UDim2.fromOffset(d, d), BackgroundTransparency = 1 })
@@ -922,7 +868,6 @@ function RayVinzUI:_section(page, opts)
 		return b
 	end
 
-	-- Slider
 	function section:Slider(o)
 		o = o or {}; autoCb(o); local min = o.Min or 0; local max = o.Max or 100; local val = o.Default or min
 		local r = row(o.Description and 66 or 54)
@@ -949,7 +894,6 @@ function RayVinzUI:_section(page, opts)
 		registerFlag(o, ctl); return ctl
 	end
 
-	-- Dropdown
 	function section:Dropdown(o)
 		o = o or {}; autoCb(o); local options = o.Options or {}; local multi = o.Multi; local selected = multi and (o.Default or {}) or o.Default
 		local r = row(o.Description and 58 or 48); placeLabel(r, o.Title or "Dropdown", 150, o.Description)
@@ -964,9 +908,7 @@ function RayVinzUI:_section(page, opts)
 			rb.MouseButton1Click:Connect(function() if doRefresh then doRefresh() end end)
 			valTxt.Size = UDim2.new(1, -46, 1, 0)
 		end
-		-- CanvasGroup so we can fade the whole list on open/close
 		local list = new("CanvasGroup", { Visible = false, BackgroundColor3 = Theme.Elevated, BackgroundTransparency = 0.08, Size = UDim2.fromOffset(160, 0), AutomaticSize = Enum.AutomaticSize.Y, GroupTransparency = 1, ClipsDescendants = true, ZIndex = 50 }, self._gui); corner(list, 11); stroke(list, Theme.White, 0.78, 1); pad(list, 6, 6, 6, 6); vlist(list, 2)
-		-- fullscreen click-catcher: closes the list when you click/drag anywhere else
 		local catcher = new("TextButton", { Name = "DropCatcher", Text = "", AutoButtonColor = false, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 49 }, self._gui)
 		local tx, ty = 0, 0
 		local searchQuery = ""
@@ -996,7 +938,6 @@ function RayVinzUI:_section(page, opts)
 				if searchQuery == "" or string.find(string.lower(tostring(opt)), searchQuery, 1, true) then
 					local chosen = multi and (indexOf(selected, opt) ~= nil) or (selected == opt)
 					local ob = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Theme.Accent, BackgroundTransparency = chosen and 0.82 or 1, LayoutOrder = i + 1 }, list); corner(ob, 7)
-					-- optional per-option icon: o.Icons = { [optionText] = "iconName"/rbxassetid }
 					local ico = o.Icons and o.Icons[opt]
 					local tx = 10
 					if ico then iconImage(ob, ico, UDim2.fromOffset(16, 16), chosen and Theme.Text or Theme.SubText, UDim2.new(0, 9, 0.5, 0), Vector2.new(0, 0.5)); tx = 33 end
@@ -1008,7 +949,6 @@ function RayVinzUI:_section(page, opts)
 				end
 			end
 		end
-		-- search box for long lists (auto when > 6 options, or Search = true)
 		if o.Search or #options > 6 then
 			local sf = new("Frame", { BackgroundColor3 = Theme.Field, BackgroundTransparency = 0.3, Size = UDim2.new(1, 0, 0, 28), LayoutOrder = 0 }, list); corner(sf, 7); stroke(sf, Theme.White, 0.85, 1)
 			local sbox = new("TextBox", { BackgroundTransparency = 1, Size = UDim2.new(1, -16, 1, 0), Position = UDim2.new(0, 8, 0, 0), PlaceholderText = "Search...", PlaceholderColor3 = Theme.Muted, Text = "", TextColor3 = Theme.Text, Font = FM, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false }, sf)
@@ -1025,11 +965,10 @@ function RayVinzUI:_section(page, opts)
 			task.delay(0.15, function() if list.GroupTransparency > 0.9 then list.Visible = false end end)
 		end
 		local function openList()
-			-- re-fetch options every open (e.g. eggs that appeared/disappeared in workspace)
 			if o.Refresh then local ok, nw = pcall(o.Refresh); if ok and type(nw) == "table" then options = nw end end
 			reposition(); rebuild()
 			list.GroupTransparency = 1; list.Position = UDim2.fromOffset(tx, ty - 6); list.Visible = true; catcher.Visible = true
-			tween(list, 0.16, { GroupTransparency = 0, Position = UDim2.fromOffset(tx, ty) }) -- fade + slide down
+			tween(list, 0.16, { GroupTransparency = 0, Position = UDim2.fromOffset(tx, ty) })
 		end
 		box.MouseButton1Click:Connect(function() if list.Visible and list.GroupTransparency < 0.5 then closeList() else openList() end end)
 		catcher.MouseButton1Click:Connect(closeList)
@@ -1045,12 +984,11 @@ function RayVinzUI:_section(page, opts)
 		local ctl = {
 			Set = function(v) selected = v display() rebuild() if o.Callback then task.spawn(o.Callback, selected) end end,
 			Get = function() return selected end,
-			Refresh = doRefresh, -- Refresh(newOptions) or Refresh() to re-pull via o.Refresh
+			Refresh = doRefresh,
 		}
 		registerFlag(o, ctl); return ctl
 	end
 
-	-- Textbox
 	function section:Textbox(o)
 		o = o or {}; autoCb(o)
 		local r = row(o.Description and 58 or 48); placeLabel(r, o.Title or "Input", 150, o.Description)
@@ -1061,7 +999,6 @@ function RayVinzUI:_section(page, opts)
 		registerFlag(o, ctl); return ctl
 	end
 
-	-- Textarea (multi-line input: label on top, big box below)
 	function section:Textarea(o)
 		o = o or {}; autoCb(o)
 		local r = row(0); pad(r, 12, 14, 14, 14); vlist(r, 8)
@@ -1073,7 +1010,6 @@ function RayVinzUI:_section(page, opts)
 		registerFlag(o, ctl); return ctl
 	end
 
-	-- Keybind
 	function section:Keybind(o)
 		o = o or {}; autoCb(o); local key = o.Default
 		local r = row(o.Description and 58 or 48); placeLabel(r, o.Title or "Keybind", 90, o.Description)
@@ -1088,7 +1024,6 @@ function RayVinzUI:_section(page, opts)
 		registerFlag(o, ctl, "keybind"); return ctl
 	end
 
-	-- ColorPicker
 	function section:ColorPicker(o)
 		o = o or {}; autoCb(o); local color = o.Default or Theme.Accent; local h, s, v = color:ToHSV()
 		local r = row(o.Description and 58 or 48); placeLabel(r, o.Title or "Color", 44, o.Description)
@@ -1119,7 +1054,6 @@ function RayVinzUI:_section(page, opts)
 		registerFlag(o, ctl, "color"); return ctl
 	end
 
-	-- Label
 	function section:Label(text)
 		local r = row(0)
 		local l = ltext(r, text, 13, Theme.SubText, F); l.Position = UDim2.new(0, 14, 0, 0); l.Size = UDim2.new(1, -28, 0, 0); l.AutomaticSize = Enum.AutomaticSize.Y; l.TextWrapped = true; l.TextYAlignment = Enum.TextYAlignment.Top
@@ -1127,14 +1061,12 @@ function RayVinzUI:_section(page, opts)
 		return r
 	end
 
-	-- UserInfo (profile card): avatar + name + tag, auto-filled from the player on join
 	function section:UserInfo(o)
 		o = o or {}
 		local name = o.Name or (LocalPlayer and (LocalPlayer.DisplayName or LocalPlayer.Name)) or "Player"
 		local sub  = o.Tag or (LocalPlayer and ("@" .. LocalPlayer.Name)) or ""
 		local r = row(60)
 		local av = new("ImageLabel", { Size = UDim2.fromOffset(42, 42), Position = UDim2.new(0, 14, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = Theme.Field, ScaleType = Enum.ScaleType.Crop }, r); corner(av, 21); stroke(av, Theme.Accent, 0.4, 1)
-		-- avatar: custom image/asset, or the player's headshot
 		local ic = o.Avatar and resolveIcon(o.Avatar)
 		if ic then av.Image = ic.Image
 		elseif LocalPlayer then av.Image = "rbxthumb://type=AvatarHeadShot&id=" .. tostring(LocalPlayer.UserId) .. "&w=150&h=150" end
@@ -1143,17 +1075,13 @@ function RayVinzUI:_section(page, opts)
 		return { Set = function(n, t) if n then tl.Text = n end if t then sl.Text = t end end }
 	end
 
-	-- Banner (gradient / image hero for the Home page)
 	function section:Banner(o)
 		o = o or {}
 		local r = row(0)
-		-- CanvasGroup masks children to the rounded corners (a plain Frame + ClipsDescendants
-		-- only clips to the rectangle, so fill children show square corners)
 		local b = new("CanvasGroup", { Size = UDim2.new(1, 0, 0, o.Height or 96), BackgroundColor3 = o.Color or Theme.Accent, ClipsDescendants = true }, r); corner(b, 12)
 		grad(b, o.Color or Theme.Accent, o.Color2 or Theme.Accent2, o.Rotation or 35)
 		if o.Image then new("ImageLabel", { BackgroundTransparency = 1, Image = o.Image, Size = UDim2.fromScale(1, 1), ImageTransparency = o.ImageTransparency or 0.15, ScaleType = Enum.ScaleType.Crop }, b) end
-		new("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.45, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, b) -- readability overlay
-		-- big hub logo on the right (not touching the edge)
+		new("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.45, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, b)
 		if o.Logo then
 			local ls = o.LogoSize or math.floor((o.Height or 96) * 0.62)
 			iconImage(b, o.Logo, UDim2.fromOffset(ls, ls), Theme.White, UDim2.new(1, -18, 0.5, 0), Vector2.new(1, 0.5)).ZIndex = 4
@@ -1163,7 +1091,6 @@ function RayVinzUI:_section(page, opts)
 		return r
 	end
 
-	-- Paragraph
 	function section:Paragraph(o)
 		o = o or {}
 		local r = row(0); pad(r, 13, 14, 15, 14); vlist(r, 6)
@@ -1172,7 +1099,6 @@ function RayVinzUI:_section(page, opts)
 		return r
 	end
 
-	-- Tags
 	function section:Tags(tags)
 		local r = row(44)
 		local wrap = new("Frame", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 14, 0.5, 0), Size = UDim2.new(1, -28, 0, 24) }, r)
@@ -1184,7 +1110,6 @@ function RayVinzUI:_section(page, opts)
 		return r
 	end
 
-	-- StatGrid
 	function section:StatGrid(items)
 		local r = row(0); pad(r, 13, 14, 13, 14); vlist(r, 10)
 		local grid, rowN = {}, nil
@@ -1200,9 +1125,6 @@ function RayVinzUI:_section(page, opts)
 		return { Set = function(label, value) if grid[label] then grid[label].Text = tostring(value) end end }
 	end
 
-	-- Stats: live stat cards (money, level, anything). Each item reads from Source (an
-	-- IntValue/NumberValue/StringValue like leaderstats.Money), Source + Attribute, or a Get
-	-- function polled every Interval seconds. Rate = true adds a "+1.2K/min" line.
 	function section:Stats(o)
 		o = o or {}
 		local interval = o.Interval or 1
@@ -1281,7 +1203,6 @@ function RayVinzUI:_section(page, opts)
 			local card = { it = it, val = val, rate = rate, samples = {}, last = nil }
 			table.insert(cards, card)
 			if it.Label then byLabel[it.Label] = card end
-			-- value objects / attributes update instantly instead of waiting for the next poll
 			if it.Source and not it.Get then
 				pcall(function()
 					local sig = it.Attribute and it.Source:GetAttributeChangedSignal(it.Attribute) or it.Source.Changed
@@ -1305,7 +1226,6 @@ function RayVinzUI:_section(page, opts)
 		}
 	end
 
-	-- SystemInfo (live FPS / Ping / Players / Game / Time)
 	function section:SystemInfo(o)
 		o = o or {}; local ic = o.Icons or {}
 		local exec = "Unknown"; pcall(function() if identifyexecutor then exec = (identifyexecutor()) or "Unknown" end end)
@@ -1332,7 +1252,6 @@ function RayVinzUI:_section(page, opts)
 		return g
 	end
 
-	-- Image
 	function section:Image(o)
 		o = o or {}
 		local h = o.Height or 120
@@ -1342,7 +1261,6 @@ function RayVinzUI:_section(page, opts)
 		return { Set = function(v) local r2 = resolveIcon(v); img.Image = (r2 and r2.Image) or v or "" end }
 	end
 
-	-- Progress bar
 	function section:Progress(o)
 		o = o or {}
 		local r = row(o.Title and 46 or 24)
@@ -1353,7 +1271,6 @@ function RayVinzUI:_section(page, opts)
 		return { Set = function(p) tween(fill, 0.25, { Size = UDim2.new(clamp(p, 0, 1), 0, 1, 0) }) end }
 	end
 
-	-- Divider (optional centered label)
 	function section:Divider(text)
 		local r = row(text and 26 or 14)
 		new("Frame", { Size = UDim2.new(1, -28, 0, 1), Position = UDim2.new(0, 14, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = Theme.White, BackgroundTransparency = 0.9, BorderSizePixel = 0 }, r)
@@ -1363,7 +1280,6 @@ function RayVinzUI:_section(page, opts)
 		return r
 	end
 
-	-- Button group (several buttons in one row)
 	function section:ButtonGroup(o)
 		o = o or {}
 		local btns = o.Buttons or o
@@ -1380,7 +1296,6 @@ function RayVinzUI:_section(page, opts)
 		return r
 	end
 
-	-- Number input (+/- stepper)
 	function section:NumberInput(o)
 		o = o or {}; autoCb(o)
 		local val = o.Default or 0; local step = o.Step or 1; local mn, mx = o.Min, o.Max
@@ -1400,7 +1315,6 @@ function RayVinzUI:_section(page, opts)
 		registerFlag(o, ctl); return ctl
 	end
 
-	-- ConfigManager: create (named) / select / load / delete / auto-load  (one call builds the whole UI)
 	function section:ConfigManager()
 		local UI = self._window
 		local nameBox = self:Textbox({ Title = "New config name", Placeholder = "my_config" })
@@ -1411,7 +1325,7 @@ function RayVinzUI:_section(page, opts)
 				if n ~= "" then UI:SaveConfig(n); dd.Refresh(UI:ListConfigs()); UI:Notify({ Title = "Config created", Content = n, Type = "Success", Icon = "check" })
 				else UI:Notify({ Title = "Enter a name first", Type = "Warning", Icon = "alert-triangle" }) end
 			end },
-			{ Title = "Save", Callback = function() -- overwrite the selected config
+			{ Title = "Save", Callback = function()
 				local n = dd.Get()
 				if n then UI:SaveConfig(n); UI:Notify({ Title = "Saved (overwrite)", Content = n, Type = "Success", Icon = "save" })
 				else UI:Notify({ Title = "Select a config first", Type = "Warning", Icon = "alert-triangle" }) end
@@ -1430,7 +1344,6 @@ function RayVinzUI:_section(page, opts)
 		return { Refresh = function() dd.Refresh(UI:ListConfigs()) end }
 	end
 
-	-- HWID: show + copy + reload (no rejoin). o.Callback(id) fires on reload (e.g. re-verify a key)
 	function section:HWID(o)
 		o = o or {}
 		local UI = self._window
@@ -1445,7 +1358,6 @@ function RayVinzUI:_section(page, opts)
 		return { Get = get, Reload = function() val.Text = get() return get() end }
 	end
 
-	-- Checkbox (square check, distinct from the switch-style Toggle)
 	function section:Checkbox(o)
 		o = o or {}; autoCb(o); local state = o.Default or false
 		local r = row(o.Description and 58 or 46); placeLabel(r, o.Title or "Checkbox", 30, o.Description)
@@ -1462,7 +1374,6 @@ function RayVinzUI:_section(page, opts)
 		registerFlag(o, ctl); return ctl
 	end
 
-	-- Radio group (choose one from a list; stacked rows, filled dot on the selected)
 	function section:Radio(o)
 		o = o or {}; autoCb(o); local opts2 = o.Options or {}; local selected = o.Default
 		local r = row(0); pad(r, 10, 14, 10, 14); vlist(r, 6)
@@ -1490,7 +1401,6 @@ function RayVinzUI:_section(page, opts)
 		registerFlag(o, ctl); return ctl
 	end
 
-	-- Segmented control (horizontal pill group, single select)
 	function section:Segmented(o)
 		o = o or {}; autoCb(o); local opts2 = o.Options or {}; local selected = o.Default or opts2[1]
 		local r = row(o.Title and 58 or 44)
@@ -1517,10 +1427,8 @@ function RayVinzUI:_section(page, opts)
 		registerFlag(o, ctl); return ctl
 	end
 
-	-- Stepper (+/- number) — alias of NumberInput
 	function section:Stepper(o) return self:NumberInput(o) end
 
-	-- CodeBlock (monospace text block + Copy button)
 	function section:CodeBlock(o)
 		o = o or {}; local code = o.Code or o.Content or ""
 		local r = row(0); pad(r, 12, 14, 14, 14); vlist(r, 8)
@@ -1533,7 +1441,6 @@ function RayVinzUI:_section(page, opts)
 		return { Set = function(v) txt.Text = tostring(v) end, Get = function() return txt.Text end }
 	end
 
-	-- Graph: a live sparkline. ctl.Push(v) adds a point; or pass o.Update (polled every o.Interval s)
 	function section:Graph(o)
 		o = o or {}; local maxPts = o.Points or 40; local h = o.Height or 90
 		local r = row(h + (o.Title and 28 or 14))
@@ -1575,7 +1482,6 @@ function RayVinzUI:_section(page, opts)
 		return { Push = push, Set = push, Clear = function() data = {}; redraw() end }
 	end
 
-	-- Table: columns + rows, click a header to sort, click a row to select
 	function section:Table(o)
 		o = o or {}; local cols = o.Columns or {}
 		local r = row(0); pad(r, 10, 12, 12, 12); vlist(r, 6)
@@ -1621,7 +1527,6 @@ function RayVinzUI:_section(page, opts)
 		}
 	end
 
-	-- PlayerDropdown: a dropdown auto-populated with the current players (live on join/leave)
 	function section:PlayerDropdown(o)
 		o = o or {}
 		local function names()
@@ -1641,7 +1546,6 @@ function RayVinzUI:_section(page, opts)
 		return ctl
 	end
 
-	-- TeamDropdown: a dropdown of the game's Teams
 	function section:TeamDropdown(o)
 		o = o or {}
 		local function names()
@@ -1654,7 +1558,6 @@ function RayVinzUI:_section(page, opts)
 		return self:Dropdown(o)
 	end
 
-	-- ThemeEditor: live color pickers for the main theme + accent, with a shareable theme code
 	function section:ThemeEditor()
 		local UI = self._window
 		self:ColorPicker({ Title = "Accent", Default = Theme.Accent, Callback = function(c) UI:SetAccent(c, Theme.Accent2) end })
@@ -1680,22 +1583,17 @@ function RayVinzUI:Notify(o)
 	local gui = self.Gui or ActiveGui
 	local holder = gui:FindFirstChild("NotifHolder")
 	if not holder then
-		-- bottom-right stack (where notifications usually live), newest at the bottom
 		holder = new("Frame", { Name = "NotifHolder", BackgroundTransparency = 1, Size = UDim2.new(0, 310, 1, -40), Position = UDim2.new(1, -20, 1, -20), AnchorPoint = Vector2.new(1, 1) }, gui)
 		new("UIListLayout", { FillDirection = Enum.FillDirection.Vertical, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder, VerticalAlignment = Enum.VerticalAlignment.Bottom, HorizontalAlignment = Enum.HorizontalAlignment.Right }, holder)
 	end
-	-- max-visible queue: drop the oldest when the stack is full
 	local maxV = o.MaxVisible or 5
 	local cgs = {}
 	for _, c in ipairs(holder:GetChildren()) do if c.ClassName == "CanvasGroup" then table.insert(cgs, c) end end
 	if #cgs >= maxV then table.sort(cgs, function(a, b) return a.LayoutOrder < b.LayoutOrder end); pcall(function() cgs[1]:Destroy() end) end
-	-- Figma style: [colored icon square] [title + message]. The card height is DRIVEN from the
-	-- measured text height (never AutomaticSize on the card + a scale child — that ballooned it).
 	local card = new("CanvasGroup", { Size = UDim2.new(1, 0, 0, 58), BackgroundColor3 = Color3.fromRGB(26, 26, 30), BackgroundTransparency = 0.22, GroupTransparency = 1, ClipsDescendants = true, LayoutOrder = math.floor(tick() % 1e7) }, holder)
 	corner(card, 14); stroke(card, Theme.White, 0.66, 1.2); glassSheen(card, 14, 1)
 	local iconBox = new("Frame", { Size = UDim2.fromOffset(34, 34), Position = UDim2.new(0, 12, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = color, BackgroundTransparency = 0.72 }, card); corner(iconBox, 9)
 	iconImage(iconBox, o.Icon or defIcons[o.Type or "Info"], UDim2.fromOffset(18, 18), Theme.White, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
-	-- dismiss (X)
 	local closeBtn = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(16, 16), Position = UDim2.new(1, -9, 0, 9), AnchorPoint = Vector2.new(1, 0), BackgroundTransparency = 1, ZIndex = 4 }, card)
 	iconImage(closeBtn, "x", UDim2.fromOffset(12, 12), Theme.Muted, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
 	local col = new("Frame", { Size = UDim2.new(1, -88, 0, 0), Position = UDim2.new(0, 56, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1 }, card); vlist(col, 2)
@@ -1705,10 +1603,9 @@ function RayVinzUI:Notify(o)
 	end
 	local function sync() local h = col.AbsoluteSize.Y or 0 if h < 34 then h = 34 end card.Size = UDim2.new(1, 0, 0, h + 22) end
 	col:GetPropertyChangedSignal("AbsoluteSize"):Connect(sync); task.defer(sync)
-	tween(card, 0.28, { GroupTransparency = 0 }) -- fade in
+	tween(card, 0.28, { GroupTransparency = 0 })
 	local dismissed = false
 	local function dismiss() if dismissed then return end dismissed = true tween(card, 0.22, { GroupTransparency = 1 }) task.wait(0.24) pcall(function() card:Destroy() end) end
-	-- action buttons (e.g. { { Title = "Undo", Callback = fn } }); Close = false keeps the toast open
 	if o.Actions and #o.Actions > 0 then
 		local arow = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26), LayoutOrder = 3 }, col)
 		new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 6), VerticalAlignment = Enum.VerticalAlignment.Center }, arow)
@@ -1739,7 +1636,6 @@ function RayVinzUI:Dialog(o)
 	return overlay
 end
 
--- input dialog (modal with a textbox). o.Callback(text) on confirm
 function RayVinzUI:Prompt(o)
 	o = o or {}
 	local gui = self.Gui or ActiveGui
@@ -1761,11 +1657,9 @@ function RayVinzUI:Prompt(o)
 	return overlay
 end
 
--- floating watermark (draggable glass pill, auto FPS/ping/time). returns { Set, SetVisible, Destroy }
 function RayVinzUI:Watermark(o)
 	o = o or {}
 	local gui = self.Gui or ActiveGui
-	-- default below the Roblox topbar + performance-stats bar (y=120); override with o.Position
 	local wm = new("CanvasGroup", { Name = "Watermark", Size = UDim2.fromOffset(0, 30), AutomaticSize = Enum.AutomaticSize.X, Position = o.Position or UDim2.new(0, 16, 0, 120), BackgroundColor3 = Color3.fromRGB(26, 26, 30), BackgroundTransparency = 0.18, ZIndex = 85 }, gui); corner(wm, 9); stroke(wm, Theme.White, 0.58, 1.2); glassSheen(wm, 9, 0); pad(wm, 0, 13, 0, 13)
 	local lbl = ltext(wm, o.Text or "RayVinz Hub", 12, Theme.Text, FB); lbl.Size = UDim2.new(0, 0, 1, 0); lbl.AutomaticSize = Enum.AutomaticSize.X; lbl.ZIndex = 2
 	draggable(wm, wm)
@@ -1784,7 +1678,6 @@ function RayVinzUI:Watermark(o)
 	return { Set = function(t) lbl.Text = t end, SetVisible = function(v) wm.Visible = v and true or false end, Destroy = function() pcall(function() wm:Destroy() end) end }
 end
 
--- update checker: fetch a remote version string and compare. o = { VersionUrl, Current, OnUpdate }
 function RayVinzUI:CheckUpdate(o)
 	o = o or {}
 	task.spawn(function()
@@ -1802,7 +1695,6 @@ end
 function RayVinzUI:Loading(o)
 	o = o or {}
 	local gui = self.Gui or ActiveGui
-	-- frosted glass loader: blur the scene + a translucent glass card
 	local lblur = nil
 	if o.Blur ~= false then
 		pcall(function() lblur = new("BlurEffect", { Name = "RayVinzBlur", Size = 0, Enabled = true }, game:GetService("Lighting")) end)
@@ -1812,13 +1704,10 @@ function RayVinzUI:Loading(o)
 	tween(overlay, 0.25, { BackgroundTransparency = 0.35 })
 	local card = new("CanvasGroup", { Size = UDim2.fromOffset(292, 74), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = Color3.fromRGB(26, 26, 30), BackgroundTransparency = 0.28, GroupTransparency = 1, ClipsDescendants = true, ZIndex = 91 }, overlay); corner(card, 16); stroke(card, Theme.White, 0.68, 1.2); glassSheen(card, 16, 1)
 	tween(card, 0.3, { GroupTransparency = 0 })
-	-- progress bar along the very top edge
 	local track = new("Frame", { Size = UDim2.new(1, 0, 0, 3), Position = UDim2.new(0, 0, 0, 0), BackgroundColor3 = Theme.White, BackgroundTransparency = 0.9, BorderSizePixel = 0 }, card)
 	local fb = new("Frame", { Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Theme.Accent, BorderSizePixel = 0 }, track); grad(fb, Theme.Accent, Theme.Accent2, 0)
-	tween(fb, 2.2, { Size = UDim2.new(0.92, 0, 1, 0) }) -- auto loading animation
-	-- logo (big, no pink box)
+	tween(fb, 2.2, { Size = UDim2.new(0.92, 0, 1, 0) })
 	iconImage(card, o.Logo, UDim2.fromOffset(44, 44), Theme.White, UDim2.new(0, 14, 0.5, 2), Vector2.new(0, 0.5))
-	-- title + subtitle (left of logo)
 	local t1 = ltext(card, o.Title or "RayVinz Hub", 14, Theme.Text, FB); t1.Position = UDim2.new(0, 66, 0, 17); t1.Size = UDim2.new(1, -80, 0, 18)
 	local t2 = ltext(card, o.SubTitle or "Loading...", 11, Theme.SubText, F); t2.Position = UDim2.new(0, 66, 0, 38); t2.Size = UDim2.new(1, -80, 0, 14)
 	return { Set = function(p) tween(fb, 0.3, { Size = UDim2.new(clamp(p, 0, 1), 0, 1, 0) }) end, Close = function() tween(card, 0.25, { GroupTransparency = 1 }) tween(overlay, 0.3, { BackgroundTransparency = 1 }) if lblur then tween(lblur, 0.3, { Size = 0 }) end task.wait(0.32) overlay:Destroy() if lblur then pcall(function() lblur:Destroy() end) end end }
@@ -1833,7 +1722,6 @@ RayVinzUI.AccentPresets = {
 	Red    = { Color3.fromRGB(255, 69, 58),   Color3.fromRGB(255, 130, 120) },
 	Orange = { Color3.fromRGB(255, 159, 10),  Color3.fromRGB(255, 196, 90) },
 }
--- change the accent live (recolors existing accent-colored instances in the window)
 function RayVinzUI:SetAccent(color, color2)
 	if type(color) == "string" then local p = RayVinzUI.AccentPresets[color]; if p then color, color2 = p[1], p[2] end end
 	Theme.Accent = color or Theme.Accent
@@ -1841,7 +1729,6 @@ function RayVinzUI:SetAccent(color, color2)
 	applyThemeRegistry({ Accent = true, Accent2 = true })
 	return self
 end
--- full theme presets + live theme swap (not just accent)
 RayVinzUI.ThemePresets = {
 	Dark     = { Background = Color3.fromRGB(28, 28, 30), Sidebar = Color3.fromRGB(36, 36, 39), Card = Color3.fromRGB(44, 44, 46), Elevated = Color3.fromRGB(50, 50, 53), Select = Color3.fromRGB(60, 60, 63), Field = Color3.fromRGB(58, 58, 60), Text = Color3.fromRGB(245, 245, 247), SubText = Color3.fromRGB(152, 152, 157) },
 	Midnight = { Background = Color3.fromRGB(16, 18, 27), Sidebar = Color3.fromRGB(22, 25, 37), Card = Color3.fromRGB(28, 32, 46), Elevated = Color3.fromRGB(34, 39, 56), Select = Color3.fromRGB(44, 50, 70), Field = Color3.fromRGB(40, 45, 64), Text = Color3.fromRGB(235, 238, 250), SubText = Color3.fromRGB(140, 148, 170) },
@@ -1853,14 +1740,13 @@ function RayVinzUI:SetTheme(t)
 	for _, k in ipairs({ "Background", "Sidebar", "Card", "Elevated", "Select", "Field", "Text", "SubText", "Muted" }) do
 		if t[k] then Theme[k] = t[k] end
 	end
-	applyThemeRegistry() -- direct role -> instance replay; safe to call back-to-back as many times as you want
+	applyThemeRegistry()
 	return self
 end
--- animated rainbow accent (opt-in). UI:RainbowAccent(true) / UI:RainbowAccent(false)
 function RayVinzUI:RainbowAccent(enable, speed)
 	if self._rainbow then pcall(function() self._rainbow:Disconnect() end); self._rainbow = nil end
 	if enable == false then return self end
-	speed = speed or 0.012 -- hue step per 0.1s (~8s per full cycle); pass a bigger number for faster
+	speed = speed or 0.012
 	local hue, acc = 0, 0
 	local track = self._track or function(c) return c end
 	self._rainbow = track(game:GetService("RunService").Heartbeat:Connect(function(dt)
@@ -1871,7 +1757,6 @@ function RayVinzUI:RainbowAccent(enable, speed)
 	end))
 	return self
 end
--- one-shot changelog dialog: UI:Changelog({ Title=, Version=, Changes = { "line", ... } })
 function RayVinzUI:Changelog(o)
 	o = o or {}
 	local body = type(o.Changes) == "table" and ("• " .. table.concat(o.Changes, "\n• ")) or tostring(o.Content or o.Changes or "")
@@ -1883,8 +1768,6 @@ function RayVinzUI:Changelog(o)
 end
 
 -- ================= Hub folder (configs + saved key) =================
--- Every file the library writes goes in workspace/<HubFolder>/. Set it with
--- CreateWindow({ Folder = "MyHub" }), KeySystem({ Folder = "MyHub" }) or UI:SetFolder("MyHub").
 local HubFolder = "RayVinz"
 local function ensureFolder()
 	if makefolder and isfolder and not isfolder(HubFolder) then makefolder(HubFolder) end
@@ -1898,9 +1781,8 @@ end
 function RayVinzUI:GetFolder() return HubFolder end
 
 -- ================= Config (save / load element values by Flag) =================
--- Give elements a Flag = "unique_name", then UI:SaveConfig() / UI:LoadConfig()
 function RayVinzUI:SaveConfig(name)
-	name = name or self:GetAutoLoadConfig() or self._configName or "default" -- auto-save writes to the auto-load config
+	name = name or self:GetAutoLoadConfig() or self._configName or "default"
 	if type(writefile) ~= "function" then return false, "executor has no writefile" end
 	local data = {}
 	for flag, e in pairs(self._flags or ActiveFlags or {}) do
@@ -1919,7 +1801,7 @@ function RayVinzUI:SaveConfig(name)
 end
 function RayVinzUI:LoadConfig(name)
 	name = name or self:GetAutoLoadConfig() or self._configName or "default"
-	self._loading = true -- suppress auto-save while applying values (so it can't overwrite with defaults)
+	self._loading = true
 	task.delay(0.8, function() self._loading = false end)
 	if type(readfile) ~= "function" or type(isfile) ~= "function" then return false end
 	local path = HubFolder .. "/" .. name .. ".json"
@@ -1936,7 +1818,6 @@ function RayVinzUI:LoadConfig(name)
 	end
 	return true
 end
--- list saved config names (files in the hub folder)
 function RayVinzUI:ListConfigs()
 	local out = {}
 	pcall(function()
@@ -1974,11 +1855,9 @@ function RayVinzUI:Toggle(show)
 	if show then if self._show then self._show(true) end else if self._hide then self._hide() end end
 	return self
 end
--- fully remove the UI: disconnect tracked connections, destroy GUI + blur (no leaks on re-run)
 function RayVinzUI:Unload()
 	for _, c in ipairs(self._conns or {}) do pcall(function() c:Disconnect() end) end
 	self._conns = {}
-	-- destroyed descendants keep their Parent, so drop the theme bindings explicitly
 	table.clear(ThemeRegistry); table.clear(ThemeGradients)
 	if self._blur then pcall(function() self._blur:Destroy() end) end
 	pcall(function() if self.Gui then self.Gui:Destroy() end end)
@@ -1987,7 +1866,6 @@ function RayVinzUI:Unload()
 	end)
 end
 
--- Window:SetBlur(false) / SetBlur(true) / SetBlur(12): change the background blur live
 function RayVinzUI:SetBlur(v)
 	self._blurSize = v == false and 0 or (type(v) == "number" and v or 24)
 	if self._blur and self.Window and self.Window.Visible then tween(self._blur, 0.25, { Size = self._blurSize }) end
@@ -1995,7 +1873,6 @@ function RayVinzUI:SetBlur(v)
 end
 
 -- ================= Anti-AFK / reopen after teleport =================
--- UI:AntiAFK(true) stops the 20-minute idle kick; UI:AntiAFK(false) turns it off
 function RayVinzUI:AntiAFK(enable)
 	if self._antiAfk then pcall(function() self._antiAfk:Disconnect() end); self._antiAfk = nil end
 	if enable == false then return self end
@@ -2006,8 +1883,6 @@ function RayVinzUI:AntiAFK(enable)
 	end))
 	return self
 end
--- Runs `code` again in the next server after a teleport / in-game rejoin (needs queue_on_teleport).
--- A full leave + join from the website starts a new client, which only an autoexec folder covers.
 function RayVinzUI:ReExecuteOnTeleport(code)
 	local queue = queue_on_teleport or queueonteleport or (syn and syn.queue_on_teleport) or (fluxus and fluxus.queue_on_teleport)
 	if type(code) ~= "string" or code == "" or not queue then return false end
@@ -2023,27 +1898,6 @@ function RayVinzUI:ReExecuteOnTeleport(code)
 end
 
 -- ================= Key System =================
--- Glass key gate shown before the hub. Yields until the user is done; returns true when a
--- key was accepted, false if they closed it.
---   local ok = UI:KeySystem({
---       Title = "RayVinz Hub", SubTitle = "Key System", Logo = "rbxassetid://...",
---       Verify = function(key) return key == "abc" end, -- or Keys = { "abc", "def" }
---       KeyLink = "https://your.site/getkey",           -- "Get a key" copies this
---       SupportedGames = { [1234567] = true },          -- optional, by PlaceId
---       Links = { { Title = "Discord", Content = "discord.gg/xxx", Icon = "message-circle" } },
---       SaveKey = true,                                 -- remember a working key
---       Folder = "MyHub", FileName = "key",             -- saves to workspace/MyHub/key.txt
---       API = {                                         -- or let a key service check it:
---           { Type = "luarmor", ScriptId = "...", KeyLink = "https://...", LoadScript = true },
---           { Type = "luaprot", ScriptId = "...", KeyLink = "https://luaprot.net/ad/...", LoadScript = true },
---           { Type = "pandadevelopment", ServiceId = "..." },
---           { Type = "junkiedevelopment", ServiceId = "...", ApiKey = "...", Provider = "..." },
---           { Type = "custom", Name = "LuaProt", Verify = function(key) ... end, Link = "https://..." },
---       },
---   })
---   if not ok then return end
-
--- Key services. Each returns { Name, Verify(key) -> valid, message, Link() -> url, OnValid(key)? }
 local KeyServices = {}
 local function hwid()
 	local ok, h = pcall(function() return gethwid and gethwid() end)
@@ -2062,7 +1916,6 @@ KeyServices.luarmor = function(cfg)
 			return false, tostring(res.message or res.code)
 		end,
 		Link = function() return cfg.KeyLink or cfg.Discord end,
-		-- Luarmor reads the key from the script_key global
 		OnValid = function(key)
 			script_key = key
 			pcall(function() getgenv().script_key = key end)
@@ -2088,8 +1941,6 @@ KeyServices.pandadevelopment = function(cfg)
 		Link = function() return "https://pandadevelopment.net/getkey?service=" .. service .. "&hwid=" .. http:UrlEncode(hwid()) end,
 	}
 end
--- LuaProt key-check SDK (docs.luaprot.net -> Key Check Library). checkKey binds an unassigned key
--- to the current HWID. ScriptId must be a string: 20-digit ids don't fit in a Lua number.
 KeyServices.luaprot = function(cfg)
 	if type(cfg.ScriptId) ~= "string" then error("LuaProt ScriptId must be a string in quotes") end
 	local sdk = loadstring(game:HttpGet("https://sdk.luaprot.net/"))()
@@ -2106,7 +1957,6 @@ KeyServices.luaprot = function(cfg)
 		OnValid = function() if cfg.LoadScript then sdk:loadScript() end end,
 	}
 end
--- Junkie's own SDK must be loaded first; it provides the JunkieProtected global
 KeyServices.junkiedevelopment = function(cfg)
 	local jp = JunkieProtected or (getgenv and getgenv().JunkieProtected)
 	if not jp then error("load the Junkie SDK before KeySystem") end
@@ -2134,7 +1984,6 @@ end
 function RayVinzUI:KeySystem(o)
 	o = o or {}
 	if o.Folder then RayVinzUI.SetFolder(self, o.Folder) end
-	-- key file: <Folder>/<FileName>.txt. A FileName containing "/" is used as a full path.
 	local fname = o.FileName or "key"
 	local saveFile = (string.find(fname, "/", 1, true) and fname or (HubFolder .. "/" .. fname)) .. ".txt"
 	local function trim(s) return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")) end
@@ -2149,7 +1998,6 @@ function RayVinzUI:KeySystem(o)
 			else warn("[RayVinzUI] key service '" .. tostring(cfg.Type) .. "' failed to start: " .. tostring(svc)) end
 		end
 	end
-	-- returns valid, message, service. Verify may return (valid, message); message goes to Status
 	local function check(key)
 		if key == "" then return false, "Enter a key" end
 		if #services > 0 then
@@ -2198,7 +2046,6 @@ function RayVinzUI:KeySystem(o)
 	local sh = shadow(holder, 1, 60)
 	local card = new("CanvasGroup", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Background, BackgroundTransparency = 0.18, GroupTransparency = 1 }, holder)
 	corner(card, 18); stroke(card, Theme.White, 0.75, 1.2); glassSheen(card, 18, 1)
-	-- soft accent light from the bottom-left corner (a gradient, no image asset to show hard edges)
 	local glowF = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Accent, BorderSizePixel = 0 }, card); corner(glowF, 18)
 	new("UIGradient", { Rotation = -45, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.7), NumberSequenceKeypoint.new(0.3, 0.95), NumberSequenceKeypoint.new(1, 1) }) }, glowF)
 
@@ -2216,7 +2063,6 @@ function RayVinzUI:KeySystem(o)
 		return b, lb
 	end
 
-	-- ---------- left column ----------
 	local left = new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(26, 24), Size = UDim2.new(0, 330, 1, -48) }, card)
 	local brand = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 48) }, left)
 	local logo = o.Logo or "sparkles"
@@ -2249,7 +2095,6 @@ function RayVinzUI:KeySystem(o)
 
 	new("Frame", { Position = UDim2.fromOffset(376, 24), Size = UDim2.new(0, 1, 1, -48), BackgroundColor3 = Theme.White, BackgroundTransparency = 0.9, BorderSizePixel = 0 }, card)
 
-	-- ---------- right column ----------
 	local right = new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(396, 22), Size = UDim2.new(0, 220, 1, -44) }, card)
 	local dg = ltext(right, "Detected game", 12, Theme.SubText, F); dg.Position = UDim2.fromOffset(0, 6); dg.Size = UDim2.new(1, -64, 0, 16)
 	local closeB = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(24, 24), Position = UDim2.new(1, 0, 0, 2), AnchorPoint = Vector2.new(1, 0), BackgroundTransparency = 1 }, right)
@@ -2286,7 +2131,6 @@ function RayVinzUI:KeySystem(o)
 	local links = new("ScrollingFrame", { Position = UDim2.fromOffset(0, 176), Size = UDim2.new(1, 0, 1, -176), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 0,
 		CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y }, right)
 	vlist(links, 8)
-	-- one card per key service (copies that service's get-key link), then the user's own links
 	local cards = {}
 	for _, svc in ipairs(services) do
 		table.insert(cards, { Title = svc.cfg.Title or svc.Name, Content = svc.cfg.Desc or "Click to copy key link", Icon = svc.cfg.Icon or "key-round", GetLink = svc.Link })
@@ -2311,7 +2155,6 @@ function RayVinzUI:KeySystem(o)
 		end)
 	end
 
-	-- ---------- behaviour ----------
 	local result = nil
 	local acceptedKey, acceptedSvc
 	local done = Instance.new("BindableEvent")
@@ -2399,21 +2242,13 @@ function RayVinzUI:KeySystem(o)
 	return result == true
 end
 
--- ================= AntiSpy (protect your own script from remote spies / hooks) =================
--- Detects known remote-spy GUIs and common function hooks, then (optionally) kicks the player.
--- o = {
---   Interval    = 1,          -- seconds between scans
---   RemoveGui   = true,       -- destroy known spy GUIs when found
---   Kick        = true,       -- LocalPlayer:Kick(...) when a spy/hook is detected
---   KickMessage = "...",      -- message shown on the kick screen
---   Callback    = function(reasons) end, -- called before kicking
--- }
+-- ================= AntiSpy =================
 function RayVinzUI:AntiSpy(o)
 	o = o or {}
 	local interval = o.Interval or 1
 	local removeGui = o.RemoveGui ~= false
 	local doKick = o.Kick ~= false
-	local doDetectHooks = o.DetectHooks == true -- OFF by default: IY / executors hook metamethods too (false positives)
+	local doDetectHooks = o.DetectHooks == true
 	local kickMsg = o.KickMessage or "Close your remote spy and rejoin."
 	local spyNames = {
 		"simplespy", "hydroxide", "remotespy", "remote-spy", "cobalt",
@@ -2424,15 +2259,13 @@ function RayVinzUI:AntiSpy(o)
 		for _, s in ipairs(spyNames) do if string.find(n, s, 1, true) then return true end end
 		return false
 	end
-	-- title signatures UNIQUE to spies (verified NOT present in Infinite Yield's command
-	-- list, so these can't false-positive on IY like "simplespy"/"remotespy"/"cobalt" would)
 	local spyTitles = { "octo~spy", "turtle spy", "hydroxide", "utopia spy" }
 	local function hasSpyText(gui)
 		local hit, count = false, 0
 		pcall(function()
 			for _, d in ipairs(gui:GetDescendants()) do
 				count = count + 1
-				if count > 700 then return end -- don't crawl huge core GUIs
+				if count > 700 then return end
 				if d:IsA("TextLabel") or d:IsA("TextButton") then
 					local t = string.lower(d.Text or "")
 					for _, s in ipairs(spyTitles) do if string.find(t, s, 1, true) then hit = true return end end
@@ -2443,7 +2276,7 @@ function RayVinzUI:AntiSpy(o)
 	end
 	local function consider(g, found)
 		if g.Name == "RayVinzUI" then return found end
-		if string.find(string.lower(g.Name), "roblox", 1, true) then return found end -- skip Roblox core GUIs
+		if string.find(string.lower(g.Name), "roblox", 1, true) then return found end
 		if isSpyName(g.Name) or hasSpyText(g) then
 			if removeGui then pcall(function() g:Destroy() end) end
 			return true
@@ -2462,7 +2295,6 @@ function RayVinzUI:AntiSpy(o)
 				if ok then for _, g in ipairs(kids) do found = consider(g, found) end end
 			end
 		end
-		-- hidden / protected GUIs (e.g. Turtle Spy) parented to nil
 		pcall(function()
 			if type(getnilinstances) == "function" then
 				for _, inst in ipairs(getnilinstances()) do
@@ -2475,7 +2307,7 @@ function RayVinzUI:AntiSpy(o)
 	end
 	local function detectHooks()
 		local reasons = {}
-		if type(iscclosure) ~= "function" then return reasons end -- executor can't tell -> skip
+		if type(iscclosure) ~= "function" then return reasons end
 		local ok, nc = pcall(function() return getrawmetatable(game).__namecall end)
 		if ok and nc and not iscclosure(nc) then table.insert(reasons, "__namecall hooked") end
 		local ok2, fs = pcall(function() return Instance.new("RemoteEvent").FireServer end)
@@ -2484,9 +2316,6 @@ function RayVinzUI:AntiSpy(o)
 		if ok3 and idx and not iscclosure(idx) then table.insert(reasons, "__index hooked") end
 		return reasons
 	end
-	-- Roblox's kick screen always shows "Disconnected" plus a moderator line before our text.
-	-- Executors can reach CoreGui, so rewrite its labels to show only our title + message.
-	-- o.KickTitle = false keeps Roblox's normal screen.
 	local function restyleKickScreen()
 		if o.KickTitle == false then return end
 		local title = o.KickTitle or "Remote Spy Detected"
@@ -2495,7 +2324,6 @@ function RayVinzUI:AntiSpy(o)
 				return game:GetService("CoreGui"):WaitForChild("RobloxPromptGui", 5):WaitForChild("promptOverlay", 5):WaitForChild("ErrorPrompt", 5)
 			end)
 			if not ok or not prompt then return end
-			-- Roblox can set the text a moment after the prompt appears, so apply it a few times
 			for _ = 1, 20 do
 				pcall(function()
 					for _, d in ipairs(prompt:GetDescendants()) do
@@ -2530,17 +2358,16 @@ function RayVinzUI:AntiSpy(o)
 end
 
 -- ================= Error Inspector =================
--- Any element callback that errors shows a red toast with the message instead of failing silently.
 function RayVinzUI:_reportError(where, err)
 	local now = os.clock()
 	self._errLast = self._errLast or {}
-	if self._errLast[where] and now - self._errLast[where] < 2 then return end -- throttle spam
+	if self._errLast[where] and now - self._errLast[where] < 2 then return end
 	self._errLast[where] = now
 	local msg = tostring(err):gsub("^.-:%d+:%s*", "")
 	self:Notify({ Title = "Error in " .. tostring(where), Content = msg, Type = "Error", Icon = "alert-octagon", Duration = 6 })
 end
 
--- ================= Undo / Redo (Ctrl+Z / Ctrl+Y) =================
+-- ================= Undo / Redo =================
 function RayVinzUI:_ensureHistoryKeys()
 	if self._histKeys then return end
 	self._histKeys = true
@@ -2579,9 +2406,7 @@ function RayVinzUI:Redo()
 end
 
 -- ================= Reduce Motion / Performance Guard =================
--- ReduceMotion(true) makes every animation instant (accessibility / low-end devices).
 function RayVinzUI:ReduceMotion(on) MotionScale = (on == false) and 1 or 0; return self end
--- PerformanceGuard watches FPS; below MinFPS it pauses animations + blur, and restores on recovery.
 function RayVinzUI:PerformanceGuard(o)
 	if self._perfGuard then pcall(function() self._perfGuard:Disconnect() end); self._perfGuard = nil end
 	if o == false then MotionScale = 1; return self end
@@ -2624,7 +2449,6 @@ function RayVinzUI:LoadThemeCode(code)
 end
 
 -- ================= Shareable config "profile codes" =================
--- GetConfigCode() -> a base64 string of all current element values. LoadConfigCode(code) applies it.
 function RayVinzUI:GetConfigCode()
 	local data = {}
 	for flag, e in pairs(self._flags or ActiveFlags or {}) do
@@ -2653,11 +2477,10 @@ function RayVinzUI:LoadConfigCode(code)
 	return true
 end
 
--- ================= Spotlight / Command palette (Ctrl/Cmd+K) =================
--- Register custom actions with UI:Command({ Title=, Description=, Icon=, Callback= }).
+-- ================= Spotlight / Command palette =================
 function RayVinzUI:Command(o)
 	o = o or {}
-	local win = (self._tabs and self) or ActiveWindow or self -- commands live on the window
+	local win = (self._tabs and self) or ActiveWindow or self
 	win._commands = win._commands or {}
 	table.insert(win._commands, { title = o.Title or "Command", desc = o.Description or o.Desc, icon = o.Icon, callback = o.Callback })
 	return self
@@ -2679,10 +2502,9 @@ function RayVinzUI:_jumpTo(tab, inst)
 		end
 	end)
 end
--- Build (once) the Spotlight overlay and bind Ctrl/Cmd+K (+ optional opts.Key). opts.Open opens it now.
 function RayVinzUI:Spotlight(opts)
 	opts = opts or {}
-	self = (self._tabs and self) or ActiveWindow or self -- resolve to the window (tabs/controls live there)
+	self = (self._tabs and self) or ActiveWindow or self
 	if self._spotlight then if opts.Open then self._spotlight.open() end return self._spotlight end
 	local gui = self.Gui or ActiveGui
 	local overlay = new("Frame", { Name = "Spotlight", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, Visible = false, ZIndex = 95 }, gui)
