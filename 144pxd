@@ -1,10 +1,10 @@
 -- ==============================================================================
--- [[ NEXUS HUB v4.6 — TYPER TOWN ULTIMATE COMPACT ]]
+-- [[ NEXUS HUB v4.7 — TYPER TOWN ULTIMATE COMPACT ]]
 -- ไฟล์เดียวจบ: UI (WindUI) + Farm + Fishing + Auto Hop + Anti-Kick (ครบ)
--- v4.6 อัปเดต:
---   - Anti-Kick ครบ 7 keyword (kick/anticheat/antifall/teleport/exploit/speed/fly)
---   - แก้บั๊ก 6 จุดจาก v4.4 (ConsumeItem, crops[1], prompt.Parent, ProcessBanana,
---                          StartFishing, AddFarmToggle)
+-- v4.7 อัปเดต:
+--   - Auto Hop ตามจำนวนผู้เล่น (2-3 คนไม่ Hop, 5+ คน Hop)
+--   - Cooldown 180 วิ + นับเฉพาะผู้เล่นจริง (ไม่นับ NPC)
+--   - ปรับจำนวนขั้นต่ำได้ผ่าน UI Slider
 -- ==============================================================================
 
 local Players = game:GetService("Players")
@@ -20,7 +20,7 @@ local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local Notify = function(_) end
 
 -- ==============================================================================
--- ANTI-KICK (FULL — ครบ 100% จาก 1.txt ต้นฉบับ)
+-- ANTI-KICK (FULL — ครบ 100%)
 -- ==============================================================================
 pcall(function()
     local lp = Players.LocalPlayer
@@ -80,7 +80,10 @@ local isAutoEatAndDrinkEnabled = true
 local VehicleDriveSpeed = 200
 local isAutoHopOnPlayerNearbyEnabled = true
 local autoHopDistance = 60
+local autoHopPlayerCount = 5
 local isHopping = false
+local lastHopTime = 0
+local HOP_COOLDOWN = 180
 local MY_SPAWNED_CAR = nil
 local isConsumingItem = false
 
@@ -214,7 +217,6 @@ local function UseItem(item)
     end)
 end
 
--- [FIX #1] ConsumeItemSafely — reset isConsumingItem แม้ error
 local function ConsumeItemSafely(item, isFood)
     if isConsumingItem or not item then return end
     isConsumingItem = true
@@ -240,8 +242,6 @@ local function ConsumeItemSafely(item, isFood)
                 if tool.Parent ~= char then hum:EquipTool(tool); task.wait(0.25) end
                 task.wait(0.4)
                 pcall(function() tool:Activate() end)
-                local barGui = PlayerGui:FindFirstChild("Bar")
-                local barMain = barGui and barGui:FindFirstChild("Main")
                 local maxWait = (item:lower():find("sushi") and 5.6) or (isFood and 5.4 or 3.8)
                 local ws = os.clock()
                 while os.clock() - ws < maxWait do task.wait(0.15) end
@@ -771,23 +771,49 @@ pcall(function()
     end)
 end)
 
+-- ==============================================================================
+-- AUTO HOP — Hop เมื่อผู้เล่นในเซิร์ฟ >= autoHopPlayerCount (2-3 คนไม่ Hop)
+-- ==============================================================================
 task.spawn(function()
     while true do
-        task.wait(0.5)
-        if isAutoHopOnPlayerNearbyEnabled and not isHopping then
-            local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-            if root then
-                for _, pl in ipairs(Players:GetPlayers()) do
-                    if pl ~= LocalPlayer and pl.Character then
-                        local oR = pl.Character:FindFirstChild("HumanoidRootPart")
-                        local oH = pl.Character:FindFirstChildOfClass("Humanoid")
-                        if oR and oH and oH.Health > 0 and (oR.Position - root.Position).Magnitude <= autoHopDistance then
-                            HopServer("ผู้เล่น @"..pl.Name)
-                            break
-                        end
+        task.wait(2.0)
+        if not isAutoHopOnPlayerNearbyEnabled then continue end
+        if isHopping then continue end
+        if os.time() - lastHopTime < HOP_COOLDOWN then continue end
+        
+        local alivePlayers = 0
+        local nearbyPlayers = 0
+        local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        
+        for _, pl in ipairs(Players:GetPlayers()) do
+            if pl ~= LocalPlayer and pl.Character then
+                local oH = pl.Character:FindFirstChildOfClass("Humanoid")
+                local oR = pl.Character:FindFirstChild("HumanoidRootPart")
+                local isRealPlayer = pl.UserId > 0 
+                    and oH and oH.Health > 0 
+                    and pl.Character.Parent == workspace
+                if isRealPlayer then
+                    alivePlayers = alivePlayers + 1
+                    if myRoot and oR and (oR.Position - myRoot.Position).Magnitude <= autoHopDistance then
+                        nearbyPlayers = nearbyPlayers + 1
                     end
                 end
             end
+        end
+        
+        local shouldHop = false
+        local hopReason = ""
+        if alivePlayers >= autoHopPlayerCount then
+            shouldHop = true
+            hopReason = "ผู้เล่นในเซิร์ฟ " .. alivePlayers .. " คน (>= " .. autoHopPlayerCount .. ")"
+        elseif nearbyPlayers >= autoHopPlayerCount then
+            shouldHop = true
+            hopReason = "ผู้เล่นใกล้ " .. nearbyPlayers .. " คนในระยะ " .. autoHopDistance .. " studs"
+        end
+        
+        if shouldHop then
+            lastHopTime = os.time()
+            HopServer(hopReason)
         end
     end
 end)
@@ -1274,7 +1300,7 @@ end
 -- ==============================================================================
 local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/refs/heads/main/dist/main.lua"))()
 local Window = WindUI:CreateWindow({
-    Title = "NEXUS HUB | TYPER TOWN v4.6",
+    Title = "NEXUS HUB | TYPER TOWN v4.7",
     Icon = "rbxassetid://124905448303407",
     Author = "NEXUS",
     Folder = "NexusHub",
@@ -1367,7 +1393,6 @@ local function StopSession(key)
     end
 end
 
--- [FIX #6] AddFarmToggle
 local function AddFarmToggle(section, opts)
     local h = { Value = opts.Value == true, Element = nil, _suppress = false }
     h.Element = section:Toggle({
@@ -1400,7 +1425,6 @@ MainSec:Toggle({
     Callback = function(v) isAutoEatAndDrinkEnabled = v end,
 })
 
--- [FIX #2] MakeFarmLoop — crops[1] nil safety
 local function MakeFarmLoop(key, title, desc, crops, craftFn)
     FarmControls[key] = AddFarmToggle(LoopSec, {
         Title = title, Desc = desc, Value = false,
@@ -1522,15 +1546,23 @@ FishSec:Toggle({
     Callback = function(v) if v then StartAutoFishing() else StopAutoFishing() end end,
 })
 
--- ===== Hop =====
+-- ===== Hop (v4.7 — ตามจำนวนผู้เล่น) =====
 HopSec:Toggle({
-    Title = "ย้ายเซิร์ฟหนีเมื่อมีคนใกล้",
-    Desc = "Auto Server Hop",
+    Title = "ย้ายเซิร์ฟเมื่อคนเยอะ",
+    Desc = "Hop อัตโนมัติเมื่อผู้เล่นในเซิร์ฟ ≥ 5 คน (2-3 คนไม่ Hop)",
     Value = true,
     Callback = function(v) isAutoHopOnPlayerNearbyEnabled = v end,
 })
 HopSec:Slider({
-    Title = "ระยะตรวจจับ (studs)",
+    Title = "จำนวนผู้เล่นขั้นต่ำ (คน)",
+    Desc = "ถ้าผู้เล่นในเซิร์ฟ >= ค่านี้ → Hop (default 5, ตั้ง 6 ถ้าอยากให้ 5 คนอยู่ได้)",
+    Step = 1,
+    Value = { Min = 3, Max = 15, Default = 5 },
+    Callback = function(v) autoHopPlayerCount = math.clamp(math.round(v), 3, 15) end,
+})
+HopSec:Slider({
+    Title = "ระยะ \"ใกล้\" (studs)",
+    Desc = "ถ้าผู้เล่นใกล้ >= จำนวนขั้นต่ำในระยะนี้ → Hop",
     Step = 5,
     Value = { Min = 20, Max = 250, Default = 60 },
     Callback = function(v) autoHopDistance = math.clamp(math.round(v), 20, 250) end,
@@ -1579,4 +1611,4 @@ end)
 
 Tabs.Main:Select()
 Window:Open()
-Notify({ Title = "NEXUS HUB v4.6 พร้อมใช้งาน", Content = "Anti-Kick ครบ + Bugfix 6 จุด", Duration = 5 })
+Notify({ Title = "NEXUS HUB v4.7 พร้อมใช้งาน", Content = "Auto Hop ตามจำนวนคน + Anti-Kick ครบ", Duration = 5 })
