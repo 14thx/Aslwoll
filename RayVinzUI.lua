@@ -349,7 +349,7 @@ function RayVinzUI:CreateWindow(opts)
 	pcall(function() workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fitScale) end)
 
 	local title = new("Frame", { Name = "TitleBar", Size = UDim2.new(1, 0, 0, 48), BackgroundTransparency = 1 }, win)
-	local lights = new("Frame", { Size = UDim2.fromOffset(52, 14), Position = UDim2.new(0, 16, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundTransparency = 1 }, title)
+		local lights = new("Frame", { Size = UDim2.fromOffset(52, 14), Position = UDim2.new(1, -16, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), BackgroundTransparency = 1 }, title)
 	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8), VerticalAlignment = Enum.VerticalAlignment.Center }, lights)
 	local maximized, restore = false, nil
 	local function maximize()
@@ -809,12 +809,12 @@ function RayVinzUI:_section(page, opts)
 	function section:Toggle(o)
 		o = o or {}; autoCb(o); local state = o.Default or false
 		local r = row(o.Description and 58 or 48); placeLabel(r, o.Title or "Toggle", 46, o.Description)
-		local sw = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(46, 28), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), BackgroundColor3 = state and Theme.Green or Theme.Select, BackgroundTransparency = 0.35 }, r); corner(sw, 14); stroke(sw, Theme.White, 0.7, 1)
+		local sw = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(46, 28), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), BackgroundColor3 = state and Theme.Accent or Theme.Field, BackgroundTransparency = state and 0 or 0.18 }, r); corner(sw, 14); stroke(sw, Theme.Accent2, 0.45, 1)
 		local knob = new("Frame", { Size = UDim2.fromOffset(22, 22), AnchorPoint = Vector2.new(0, 0.5), Position = state and UDim2.new(1, -24, 0.5, 0) or UDim2.new(0, 3, 0.5, 0), BackgroundColor3 = Theme.White, ZIndex = 2 }, sw); corner(knob, 11)
 		local offToken = 0
 		local function set(v, fire)
 			state = v
-			tween(sw, 0.18, { BackgroundColor3 = v and Theme.Green or Theme.Select })
+			tween(sw, 0.18, { BackgroundColor3 = v and Theme.Accent or Theme.Field, BackgroundTransparency = v and 0 or 0.18 })
 			tween(knob, 0.18, { Position = v and UDim2.new(1, -24, 0.5, 0) or UDim2.new(0, 3, 0.5, 0) })
 			if o.AutoOff then offToken = offToken + 1; if v then local my = offToken; task.delay(o.AutoOff, function() if my == offToken and state then set(false) end end) end end
 			if fire ~= false and o.Callback then task.spawn(o.Callback, v) end
