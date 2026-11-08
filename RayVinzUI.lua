@@ -132,30 +132,34 @@ local function tween(i, t, props)
 end
 
 local function draggable(handle, target)
-	local dragging, sp, si
+	local dragging, startPosition, startInput, startAbsPosition, startAbsSize
 	handle.InputBegan:Connect(function(inp)
 		if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
-			dragging = true; sp = target.Position; si = inp.Position
-			inp.Changed:Connect(function() if inp.UserInputState == Enum.UserInputState.End then dragging = false end end)
+			dragging = true
+			startPosition = target.Position
+			startInput = inp.Position
+			startAbsPosition = target.AbsolutePosition
+			startAbsSize = target.AbsoluteSize
+			inp.Changed:Connect(function()
+				if inp.UserInputState == Enum.UserInputState.End then dragging = false end
+			end)
 		end
 	end)
 	UserInputService.InputChanged:Connect(function(inp)
-		if dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
-			local d = inp.Position - si
-			local cam = workspace and workspace.CurrentCamera
-			local vp = cam and cam.ViewportSize or Vector2.new(1280, 720)
-			local absSize = target.AbsoluteSize
-			local absPos = target.AbsolutePosition
-			local newAbsX = absPos.X + d.X
-			local newAbsY = absPos.Y + d.Y
-			local minX, maxX = -absSize.X + 40, vp.X - 40
-			local minY, maxY = 0, vp.Y - 40
-			local clampedX = clamp(newAbsX, minX, maxX)
-			local clampedY = clamp(newAbsY, minY, maxY)
-			local realDX = clampedX - absPos.X
-			local realDY = clampedY - absPos.Y
-			target.Position = UDim2.new(sp.X.Scale, sp.X.Offset + realDX, sp.Y.Scale, sp.Y.Offset + realDY)
-		end
+		if not dragging or (inp.UserInputType ~= Enum.UserInputType.MouseMovement and inp.UserInputType ~= Enum.UserInputType.Touch) then return end
+		local delta = inp.Position - startInput
+		local cam = workspace and workspace.CurrentCamera
+		local vp = cam and cam.ViewportSize or Vector2.new(1280, 720)
+		local desiredX = startAbsPosition.X + delta.X
+		local desiredY = startAbsPosition.Y + delta.Y
+		local minX, maxX = math.min(0, -startAbsSize.X + 40), math.max(math.min(0, -startAbsSize.X + 40), vp.X - 40)
+		local minY, maxY = 0, math.max(0, vp.Y - 40)
+		local clampedX = clamp(desiredX, minX, maxX)
+		local clampedY = clamp(desiredY, minY, maxY)
+		target.Position = UDim2.new(
+			startPosition.X.Scale, startPosition.X.Offset + clampedX - startAbsPosition.X,
+			startPosition.Y.Scale, startPosition.Y.Offset + clampedY - startAbsPosition.Y
+		)
 	end)
 end
 
@@ -300,7 +304,7 @@ function RayVinzUI:CreateWindow(opts)
 	cleanupOld()
 	local gui = new("ScreenGui", { Name = "RayVinzUI", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true }, guiParent())
 	self.Gui = gui; ActiveGui = gui; ActiveWindow = self
-	local W, H = opts.Width or 660, opts.Height or 460
+	local W, H = opts.Width or 620, opts.Height or 430
 
 	local blur = nil
 	pcall(function() blur = new("BlurEffect", { Name = "RayVinzBlur", Size = 0, Enabled = true }, game:GetService("Lighting")) end)
@@ -382,7 +386,7 @@ function RayVinzUI:CreateWindow(opts)
 			local cy = clamp(holder.AbsolutePosition.Y + holder.AbsoluteSize.Y / 2, halfH + 4, vp.Y - halfH - 4)
 			tween(holder, 0.3, { Position = UDim2.fromOffset(cx, cy) })
 		else
-			local r = restore or { W = opts.Width or 660, H = opts.Height or 460, Pos = UDim2.fromScale(0.5, 0.5) }
+			local r = restore or { W = opts.Width or 620, H = opts.Height or 430, Pos = UDim2.fromScale(0.5, 0.5) }
 			W, H = r.W, r.H
 			pcall(fitScale)
 			tween(holder, 0.3, { Size = UDim2.fromOffset(W, H), Position = r.Pos })
@@ -576,20 +580,29 @@ function RayVinzUI:CreateWindow(opts)
 end
 
 function RayVinzUI:_mountMobile(logo)
-	local btn = new("TextButton", { Name = "MobileToggle", Text = "", Size = UDim2.fromOffset(56, 56), Position = UDim2.new(0, 22, 0.5, -28), BackgroundColor3 = Color3.fromRGB(26, 26, 30), BackgroundTransparency = 0.28, AutoButtonColor = false }, self.Gui)
-	corner(btn, 17); stroke(btn, Theme.White, 0.62, 1.2); glassSheen(btn, 17, 0)
-	iconImage(btn, logo, UDim2.fromOffset(40, 40), Theme.White, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
-	local dragging, moved, sp, si
+	local btn = new("TextButton", { Name = "MobileToggle", Text = "", Size = UDim2.fromOffset(52, 52), Position = UDim2.new(0, 22, 0.5, -26), BackgroundColor3 = Color3.fromRGB(26, 26, 30), BackgroundTransparency = 0.28, AutoButtonColor = false }, self.Gui)
+	corner(btn, 16); stroke(btn, Theme.White, 0.62, 1.2); glassSheen(btn, 16, 0)
+	iconImage(btn, logo, UDim2.fromOffset(36, 36), Theme.White, UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
+	local dragging, moved, startPosition, startInput, startAbsPosition
 	btn.InputBegan:Connect(function(inp)
 		if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
-			dragging = true; moved = false; sp = btn.Position; si = inp.Position
+			dragging = true; moved = false
+			startPosition = btn.Position; startInput = inp.Position; startAbsPosition = btn.AbsolutePosition
 		end
 	end)
 	self._track(UserInputService.InputChanged:Connect(function(inp)
 		if dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
-			local d = inp.Position - si
-			if math.abs(d.X) > 4 or math.abs(d.Y) > 4 then moved = true end
-			btn.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
+			local delta = inp.Position - startInput
+			if math.abs(delta.X) > 4 or math.abs(delta.Y) > 4 then moved = true end
+			local cam = workspace and workspace.CurrentCamera
+			local vp = cam and cam.ViewportSize or Vector2.new(1280, 720)
+			local size = btn.AbsoluteSize
+			local x = clamp(startAbsPosition.X + delta.X, 0, math.max(0, vp.X - size.X))
+			local y = clamp(startAbsPosition.Y + delta.Y, 0, math.max(0, vp.Y - size.Y))
+			btn.Position = UDim2.new(
+				startPosition.X.Scale, startPosition.X.Offset + x - startAbsPosition.X,
+				startPosition.Y.Scale, startPosition.Y.Offset + y - startAbsPosition.Y
+			)
 		end
 	end))
 	self._track(UserInputService.InputEnded:Connect(function(inp)
