@@ -1,7 +1,8 @@
 -- ==============================================================================
--- [[ NEXUS HUB v5.1 — 1.txt ORIGINAL 100% + SELL FIX ]]
--- ใช้ค่าทุกอย่างจาก 1.txt (ความเร็ว 300, รอ 10 วิ, กด prompt 15 วิ)
--- + Patch ขาย/คราฟให้ทำงานได้ (กันบั๊กไม่ขายของ)
+-- [[ NEXUS HUB v5.2 — 1.txt ORIGINAL 100% + FULL PROTECTION + LOGO UI ]]
+-- - ใช้ค่าทุกอย่างจาก 1.txt (ความเร็ว 300, รอ 10 วิ, prompt 15 วิ)
+-- - มีระบบป้องกันครบ: Anti-Kick, Server Hop, FPS Boost, White Screen
+-- - มีปุ่มลอยโลโก้ NEXUS สำหรับเปิด/ปิด UI
 -- ==============================================================================
 
 local Players = game:GetService("Players")
@@ -61,14 +62,18 @@ pcall(function()
 end)
 
 -- ==============================================================================
--- CONFIG (ค่าต้นฉบับ 1.txt 100%)
+-- CONFIG
 -- ==============================================================================
 local TOWN_CAR_SPAWN = Vector3.new(-311.83, 17.5, 5490.39)
 local LAST_STORED_BOOTH = nil
 local isAutoEatEnabled = true
 local isAutoCoffeeEnabled = true
 local isAutoEatAndDrinkEnabled = true
-local VehicleDriveSpeed = 300 -- ต้นฉบับ 300
+local VehicleDriveSpeed = 300
+local isAutoHopOnPlayerNearbyEnabled = true
+local autoHopDistance = 60
+local isHopping = false
+getgenv().VisitedTyperServers = getgenv().VisitedTyperServers or {}
 
 -- ==============================================================================
 -- 1. Grace / Ground
@@ -130,12 +135,8 @@ local function GetPlayerInventoryCount(itemName)
     return 0
 end
 
-local function IsCropFull(cropName)
-    return GetPlayerInventoryCount(cropName) >= 60
-end
-
 -- ==============================================================================
--- 3. Auto Eat / Food / Coffee (ค่าต้นฉบับ)
+-- 3. Auto Eat (ค่าต้นฉบับ)
 -- ==============================================================================
 local function GetPlayerHunger()
     local stats = LocalPlayer:FindFirstChild("Stats")
@@ -266,7 +267,6 @@ local function ConsumeItemSafely(itemName, isFood, customWait)
                 if tool.Parent ~= char then hum:EquipTool(tool); task.wait(0.25) end
                 task.wait(0.4)
                 tool:Activate()
-                -- VIM คลิก (ต้นฉบับ)
                 if VirtualInputManager then
                     pcall(function()
                         VirtualInputManager:SendMouseButtonEvent(500, 500, 0, true, game, 0)
@@ -295,24 +295,14 @@ local function AutoEatThenDrink(targetPercent)
         local food = FindAvailableFood()
         local drink = FindAvailableCoffee()
         if food and (hunger == nil or hunger < targetPercent) then
-            pcall(function()
-                if Fluent and Fluent.Notify then
-                    Fluent:Notify({ Title = "NEXUS HUB", Content = "🍣 กิน " .. tostring(food), Duration = 3.0 })
-                end
-            end)
+            pcall(function() if Fluent and Fluent.Notify then Fluent:Notify({ Title="NEXUS", Content="🍣 "..food, Duration=3 }) end end)
             ConsumeItemSafely(food, true, 5.5)
             task.wait(0.5)
-            hunger = GetPlayerHunger()
         end
         if drink and (brain == nil or brain < targetPercent) then
-            pcall(function()
-                if Fluent and Fluent.Notify then
-                    Fluent:Notify({ Title = "NEXUS HUB", Content = "☕ ดื่ม " .. tostring(drink), Duration = 3.0 })
-                end
-            end)
+            pcall(function() if Fluent and Fluent.Notify then Fluent:Notify({ Title="NEXUS", Content="☕ "..drink, Duration=3 }) end end)
             ConsumeItemSafely(drink, false, 5.5)
             task.wait(0.5)
-            brain = GetPlayerEnergy()
         end
         loopCount = loopCount + 1
         task.wait(0.3)
@@ -321,9 +311,7 @@ end
 
 local function CheckAndAutoEat()
     if not isAutoEatAndDrinkEnabled or isConsumingItem then return end
-    local hunger = GetPlayerHunger()
-    local brain = GetPlayerEnergy()
-    if (hunger and hunger <= 80) or (brain and brain <= 80) then AutoEatThenDrink(95) end
+    if GetPlayerHunger() <= 80 or GetPlayerEnergy() <= 80 then AutoEatThenDrink(95) end
 end
 local function CheckAndAutoDrinkCoffee() CheckAndAutoEat() end
 
@@ -345,7 +333,7 @@ local function CancelGameFarm()
 end
 
 -- ==============================================================================
--- 4. Locations (ครบจาก 1.txt)
+-- 4. Locations
 -- ==============================================================================
 local TYPER_LOCATIONS = {
     Bread = { Booth = Vector3.new(872.19, 15.90, 4682.54), Farm = Vector3.new(828.31, 11.21, 4817.85) },
@@ -539,8 +527,7 @@ local function FindPromptNear(centerPos, maxDist, matchKeyword)
                     local d = (pPos - centerPos).Magnitude
                     if d <= closestDist then
                         if not matchKeyword or string.find(string.lower(prompt.ActionText or ""), string.lower(matchKeyword)) then
-                            closest = prompt
-                            closestDist = d
+                            closest = prompt; closestDist = d
                         end
                     end
                 end
@@ -600,7 +587,6 @@ local function SafeClickGuiButton(btn)
     end)
 end
 
--- [v5.1] TriggerPrompt สำหรับ UI ทั่วไป (ไม่ใช่ farm) — ใช้ทั้ง fireproximityprompt + InputHold
 local function TriggerPrompt(prompt)
     if not prompt or not prompt.Enabled then return end
     pcall(function()
@@ -612,25 +598,20 @@ local function TriggerPrompt(prompt)
         end)
     end)
 end
-
 -- ==============================================================================
 -- 7. Booth / Walk / Drive
 -- ==============================================================================
 local function GetNearestCarBooth(fromPos)
     fromPos = fromPos or (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character.HumanoidRootPart.Position) or TOWN_CAR_SPAWN
     local closestPos, closestDist = nil, math.huge
-    if TYPER_LOCATIONS then
-        for _, data in pairs(TYPER_LOCATIONS) do
-            if data and data.Booth then
-                local d = (data.Booth - fromPos).Magnitude
-                if d < closestDist then closestDist = d; closestPos = data.Booth end
-            end
+    for _, data in pairs(TYPER_LOCATIONS) do
+        if data and data.Booth then
+            local d = (data.Booth - fromPos).Magnitude
+            if d < closestDist then closestDist = d; closestPos = data.Booth end
         end
     end
-    if TOWN_CAR_SPAWN then
-        local d = (TOWN_CAR_SPAWN - fromPos).Magnitude
-        if d < closestDist then closestDist = d; closestPos = TOWN_CAR_SPAWN end
-    end
+    local d = (TOWN_CAR_SPAWN - fromPos).Magnitude
+    if d < closestDist then closestDist = d; closestPos = TOWN_CAR_SPAWN end
     return closestPos or TOWN_CAR_SPAWN
 end
 
@@ -658,7 +639,6 @@ local function SmoothWalkTo(targetPos, maxTimeout, shouldContinueCheck, stopDist
     return (root.Position - targetPos).Magnitude <= 8
 end
 
--- [v5.1] DriveCarTo — ใช้ VehicleDriveSpeed = 300 (ต้นฉบับ)
 local function DriveCarTo(destination, shouldContinueCheck)
     local myCar = GetNearbyPlayerVehicle(80)
     local char = LocalPlayer.Character
@@ -926,7 +906,111 @@ local function EnsureCarAvailable(boothPos)
 end
 
 -- ==============================================================================
--- 9. Harvest (ค่าต้นฉบับ 1.txt 100%)
+-- 9. Server Hop
+-- ==============================================================================
+local function IsServerSelectionScreen()
+    local pid = tostring(game.PlaceId)
+    if pid == "73746968849439" or pid == "112311675882346" then return true end
+    local pgui = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+    if pgui then
+        if pgui:FindFirstChild("serverlistUI") or pgui:FindFirstChild("ServerList") or pgui:FindFirstChild("Server_List") or pgui:FindFirstChild("ServerSelect") or pgui:FindFirstChild("Lobby") then return true end
+    end
+    return false
+end
+
+local function HopServer(reason, targetPlaceId)
+    if isHopping then return end
+    isHopping = true
+    targetPlaceId = targetPlaceId or (tostring(game.PlaceId) == "73746968849439" and 119554426329370 or game.PlaceId)
+    local placeIdStr = string.format("%.0f", targetPlaceId)
+    pcall(function()
+        if Fluent and Fluent.Notify then
+            Fluent:Notify({ Title = "NEXUS HUB - HOP", Content = "🌐 " .. (reason or "ย้ายเซิร์ฟ..."), Duration = 5.0 })
+        end
+    end)
+    pcall(function()
+        local qot = queue_on_teleport or (syn and syn.queue_on_teleport)
+        if qot and getgenv().NexusLoaderCode then qot(getgenv().NexusLoaderCode) end
+    end)
+    task.wait(0.3)
+    local TeleportService = game:GetService("TeleportService")
+    local HttpService = game:GetService("HttpService")
+    local reqFn = (syn and syn.request) or (http and http.request) or http_request or request
+    local hopped = false
+    if reqFn then
+        pcall(function()
+            local url = string.format("https://games.roblox.com/v1/games/%s/servers/Public?sortOrder=Asc&limit=100", placeIdStr)
+            local resp = reqFn({ Url = url, Method = "GET" })
+            if resp and resp.StatusCode == 200 and resp.Body then
+                local data = HttpService:JSONDecode(resp.Body)
+                if data and data.data then
+                    local validServers = {}
+                    for _, s in ipairs(data.data) do
+                        if s.id ~= game.JobId and not getgenv().VisitedTyperServers[s.id] and s.playing and s.maxPlayers and s.playing < s.maxPlayers then
+                            table.insert(validServers, s)
+                        end
+                    end
+                    table.sort(validServers, function(a, b) return (a.playing or 0) < (b.playing or 0) end)
+                    if #validServers > 0 then
+                        local chosen = validServers[1]
+                        getgenv().VisitedTyperServers[chosen.id] = os.clock()
+                        TeleportService:TeleportToPlaceInstance(targetPlaceId, chosen.id, LocalPlayer)
+                        hopped = true
+                    end
+                end
+            end
+        end)
+    end
+    if not hopped then pcall(function() TeleportService:Teleport(targetPlaceId, LocalPlayer) end) end
+end
+
+pcall(function()
+    local TeleportService = game:GetService("TeleportService")
+    TeleportService.TeleportInitFailed:Connect(function(player, result, err)
+        if player == LocalPlayer then
+            isHopping = false
+            task.wait(1.5)
+            HopServer("เซิร์ฟเต็ม กำลังหาใหม่")
+        end
+    end)
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if IsServerSelectionScreen() then
+            task.wait(1.5)
+        elseif isAutoHopOnPlayerNearbyEnabled and not isHopping then
+            local char = LocalPlayer.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            if root then
+                local myPos = root.Position
+                for _, pl in ipairs(Players:GetPlayers()) do
+                    if pl ~= LocalPlayer and pl.Character then
+                        local otherRoot = pl.Character:FindFirstChild("HumanoidRootPart")
+                        local otherHum = pl.Character:FindFirstChildOfClass("Humanoid")
+                        if otherRoot and otherHum and otherHum.Health > 0 then
+                            local dist = (otherRoot.Position - myPos).Magnitude
+                            if dist <= autoHopDistance then
+                                HopServer("ผู้เล่น @" .. pl.Name .. " ใกล้ " .. string.format("%.1f", dist) .. " studs")
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+if IsServerSelectionScreen() then
+    task.spawn(function()
+        task.wait(2.0)
+        HopServer("เข้าเซิร์ฟคนน้อยจาก Lobby", 119554426329370)
+    end)
+end
+-- ==============================================================================
+-- 10. Harvest
 -- ==============================================================================
 local function GetExactFarmPromptPosition(cropName)
     local locData = TYPER_LOCATIONS[cropName]
@@ -952,7 +1036,6 @@ local function GetExactFarmPromptPosition(cropName)
     return fallbackPos
 end
 
--- [ต้นฉบับ] math.random()
 local function GetHumanLikeFarmStandingSpot(centerPos)
     local farmRadius = 3.8
     local occupiedAngles = {}
@@ -984,7 +1067,6 @@ local function GetHumanLikeFarmStandingSpot(centerPos)
     return Vector3.new(standX, groundY + 2.2, standZ), bestAngle
 end
 
--- [ต้นฉบับ] InputHold เท่านั้น (ไม่มี fireproximityprompt)
 local function TriggerFarmPromptDirectly(cropName)
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -1029,7 +1111,6 @@ local function TriggerFarmPromptDirectly(cropName)
     return false
 end
 
--- [ต้นฉบับ] timeout 180, กด prompt 15 วิ
 local function HarvestSingleCrop(cropName, targetAmount, shouldContinueCheck)
     targetAmount = 60
     local curCount = GetPlayerInventoryCount(cropName)
@@ -1054,7 +1135,7 @@ local function HarvestSingleCrop(cropName, targetAmount, shouldContinueCheck)
     DriveCarTo(farmParkingPos, shouldContinueCheck)
     task.wait(0.1)
     if shouldContinueCheck and not shouldContinueCheck() then return end
-    task.wait(2.0) -- ต้นฉบับ: รอ 2 วิ
+    task.wait(2.0)
     ExitCarNaturally(myCar)
     task.wait(0.3)
     local standPos, bestAngle = GetHumanLikeFarmStandingSpot(exactCenter)
@@ -1062,10 +1143,7 @@ local function HarvestSingleCrop(cropName, targetAmount, shouldContinueCheck)
     task.wait(0.2)
     if root then
         local finalGround = GetGroundLevel(standPos.X, standPos.Z, exactCenter.Y)
-        root.CFrame = CFrame.lookAt(
-            Vector3.new(standPos.X, finalGround + 2.2, standPos.Z),
-            Vector3.new(exactCenter.X, finalGround + 2.2, exactCenter.Z)
-        )
+        root.CFrame = CFrame.lookAt(Vector3.new(standPos.X, finalGround + 2.2, standPos.Z), Vector3.new(exactCenter.X, finalGround + 2.2, exactCenter.Z))
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
     end
@@ -1083,8 +1161,6 @@ local function HarvestSingleCrop(cropName, targetAmount, shouldContinueCheck)
         task.wait(1.5)
     end
     pcall(function() if Fluent and Fluent.Notify then Fluent:Notify({ Title = "NEXUS HUB", Content = "⚡ ฟาร์ม " .. cropName .. " เริ่มแล้ว", Duration = 2.0 }) end end)
-    
-    -- [ต้นฉบับ] timeout 180, noProgress 15 วิ
     local farmTimeout = os.clock()
     while curCount < targetAmount do
         if isAutoEatAndDrinkEnabled and not isConsumingItem then
@@ -1117,10 +1193,7 @@ local function HarvestSingleCrop(cropName, targetAmount, shouldContinueCheck)
     pcall(function() if Fluent and Fluent.Notify then Fluent:Notify({ Title = "NEXUS HUB", Content = "🎉 ฟาร์ม " .. cropName .. " " .. curCount .. "/60", Duration = 3.0 }) end end)
     task.wait(0.5)
     local targetBooth = (locData and locData.Booth) or GetNearestCarBooth(root.Position)
-    if targetBooth then
-        SmoothWalkTo(targetBooth, 45, shouldContinueCheck, 5.5)
-        task.wait(0.3)
-    end
+    if targetBooth then SmoothWalkTo(targetBooth, 45, shouldContinueCheck, 5.5); task.wait(0.3) end
     local car = SpawnCarAtBooth(targetBooth)
     if not car then car = EnsureCarAvailable(targetBooth) end
     if car then EnsurePlayerSeatedInCar(car) end
@@ -1128,7 +1201,7 @@ local function HarvestSingleCrop(cropName, targetAmount, shouldContinueCheck)
 end
 
 -- ==============================================================================
--- 10. Craft (ค่าต้นฉบับ)
+-- 11. Craft
 -- ==============================================================================
 local function GetCraft3Prompt()
     local craftSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Crafting")
@@ -1140,7 +1213,6 @@ local function GetCraft3Prompt()
     return nil
 end
 
--- [ต้นฉบับ] รอ 10.0 วิ, args "Request" เท่านั้น
 local function CraftFoodAtStation(recipeName, shouldContinueCheck)
     local foodData = TYPER_LOCATIONS.Food
     local char = LocalPlayer.Character
@@ -1160,9 +1232,7 @@ local function CraftFoodAtStation(recipeName, shouldContinueCheck)
     local exactCraftPos = nil
     if cPrompt then
         local pParent = cPrompt.Parent
-        exactCraftPos = (pParent:IsA("BasePart") and pParent.Position)
-                     or (pParent:IsA("Attachment") and pParent.WorldPosition)
-                     or (pParent.Parent and pParent.Parent:IsA("BasePart") and pParent.Parent.Position)
+        exactCraftPos = (pParent:IsA("BasePart") and pParent.Position) or (pParent:IsA("Attachment") and pParent.WorldPosition) or (pParent.Parent and pParent.Parent:IsA("BasePart") and pParent.Parent.Position)
     end
     if not exactCraftPos then
         local craftSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Crafting")
@@ -1192,10 +1262,7 @@ local function CraftFoodAtStation(recipeName, shouldContinueCheck)
     end
     if not cg or not cg:FindFirstChild("Group") or not cg.Group.Visible then
         pcall(function()
-            if cg and cg:FindFirstChild("Group") then
-                cg.Group.Visible = true
-                cg.Group.GroupTransparency = 0
-            end
+            if cg and cg:FindFirstChild("Group") then cg.Group.Visible = true; cg.Group.GroupTransparency = 0 end
         end)
     end
     task.wait(0.2)
@@ -1248,7 +1315,6 @@ local function CraftFoodAtStation(recipeName, shouldContinueCheck)
         end
     end)
     pcall(function() if Fluent and Fluent.Notify then Fluent:Notify({ Title = "NEXUS HUB", Content = "🍳 คราฟ " .. recipeName .. " x" .. toCraft, Duration = 3.0 }) end end)
-    -- [ต้นฉบับ] รอ 10.0 วิ
     local tStart = os.clock()
     while (os.clock() - tStart < 10.0) do
         if shouldContinueCheck and not shouldContinueCheck() then break end
@@ -1278,7 +1344,7 @@ local function CraftFoodAtStation(recipeName, shouldContinueCheck)
 end
 
 -- ==============================================================================
--- 11. Process Banana (รอ 3.2 วิ ตามต้นฉบับ)
+-- 12. Process Banana
 -- ==============================================================================
 local function ProcessBananaAtStation(shouldContinueCheck)
     local foodData = TYPER_LOCATIONS.Food
@@ -1292,9 +1358,7 @@ local function ProcessBananaAtStation(shouldContinueCheck)
     local pBan = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Process") and workspace.Systems.Process:FindFirstChild("Banana")
     local pPrompt = pBan and pBan:FindFirstChild("Prompt")
     local bPos = nil
-    if pPrompt then
-        bPos = (pPrompt:IsA("Attachment") and pPrompt.WorldPosition) or (pPrompt:IsA("BasePart") and pPrompt.Position)
-    end
+    if pPrompt then bPos = (pPrompt:IsA("Attachment") and pPrompt.WorldPosition) or (pPrompt:IsA("BasePart") and pPrompt.Position) end
     if not bPos and pBan then
         local anyPart = pBan:FindFirstChildWhichIsA("BasePart", true)
         if anyPart then bPos = anyPart.Position end
@@ -1313,7 +1377,6 @@ local function ProcessBananaAtStation(shouldContinueCheck)
     if procPrompt then TriggerPrompt(procPrompt) end
     task.wait(0.3)
     pcall(function() if Fluent and Fluent.Notify then Fluent:Notify({ Title = "NEXUS HUB", Content = "🍌 แปรรูปกล้วย...", Duration = 3.0 }) end end)
-    -- [ต้นฉบับ] รอ 3.2 วิ
     local tProc = os.clock()
     while (GetPlayerInventoryCount("Banana") >= 2) and (os.clock() - tProc < 120) do
         if shouldContinueCheck and not shouldContinueCheck() then break end
@@ -1335,7 +1398,7 @@ local function ProcessBananaAtStation(shouldContinueCheck)
 end
 
 -- ==============================================================================
--- 12. Sell (v5.1 — ใช้ retry + VIM เพื่อให้ขายได้จริง)
+-- 13. Sell (retry + VIM)
 -- ==============================================================================
 local function GetEconomyMarketPosition()
     local systems = workspace:FindFirstChild("Systems")
@@ -1369,7 +1432,6 @@ local function GetEconomyMarketPosition()
     return Vector3.new(x, y + 1.2, z), nil
 end
 
--- [v5.1] SellAtEconomyMarket — retry + VIM เพื่อให้ขายได้จริง
 local function SellAtEconomyMarket(shouldContinueCheck)
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -1394,7 +1456,6 @@ local function SellAtEconomyMarket(shouldContinueCheck)
     local econPrompt = promptFound or directPrompt or FindPromptNear(root.Position, 25, "econ") or FindPromptNear(root.Position, 25, nil)
     if econPrompt then TriggerPrompt(econPrompt) end
     task.wait(0.5)
-    -- [v5.1] retry 6 ครั้ง
     local eg, main
     for i = 1, 6 do
         eg = PlayerGui:FindFirstChild("Economy") or PlayerGui:FindFirstChild("Ecconomy")
@@ -1403,7 +1464,6 @@ local function SellAtEconomyMarket(shouldContinueCheck)
         if econPrompt then TriggerPrompt(econPrompt) end
         task.wait(0.3)
     end
-    -- Remote args
     pcall(function()
         local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if remCore then
@@ -1413,28 +1473,14 @@ local function SellAtEconomyMarket(shouldContinueCheck)
             pcall(function() Remotes_m.Fire("_economy", "Sell", "All") end)
         end
     end)
-    pcall(function()
-        local rem = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Remotes")
-        if rem and rem:FindFirstChild("_economy") then
-            pcall(function() rem._economy:FireServer("SellAll") end)
-            pcall(function() rem._economy:FireServer("Sell", "All") end)
-        end
-    end)
-    -- คลิกปุ่ม
     if main then
         local sellBtn = main:FindFirstChild("Sell_All", true) or main:FindFirstChild("SellAll", true) or main:FindFirstChild("Sell", true)
         if not sellBtn then
             for _, b in ipairs(main:GetDescendants()) do
-                if b:IsA("GuiButton") and (b.Name:lower():find("sell") or (b:IsA("TextButton") and b.Text:lower():find("sell"))) then
-                    sellBtn = b; break
-                end
+                if b:IsA("GuiButton") and (b.Name:lower():find("sell") or (b:IsA("TextButton") and b.Text:lower():find("sell"))) then sellBtn = b; break end
             end
         end
-        if sellBtn and sellBtn:IsA("GuiButton") then
-            SafeClickGuiButton(sellBtn)
-            task.wait(0.3)
-            SafeClickGuiButton(sellBtn)
-        end
+        if sellBtn and sellBtn:IsA("GuiButton") then SafeClickGuiButton(sellBtn); task.wait(0.3); SafeClickGuiButton(sellBtn) end
     end
     task.wait(1.0)
     pcall(function()
@@ -1446,16 +1492,14 @@ local function SellAtEconomyMarket(shouldContinueCheck)
     end)
     pcall(function() if Fluent and Fluent.Notify then Fluent:Notify({ Title = "NEXUS HUB", Content = "💰 ขายเสร็จ", Duration = 2.0 }) end end)
     task.wait(0.3)
-    if isAutoEatAndDrinkEnabled then
-        if GetPlayerHunger() <= 75 or GetPlayerEnergy() <= 75 then AutoEatThenDrink(95) end
-    end
+    if isAutoEatAndDrinkEnabled then if GetPlayerHunger() <= 75 or GetPlayerEnergy() <= 75 then AutoEatThenDrink(95) end end
     local carAfterSell = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
     if carAfterSell then PressFToEnterCar(carAfterSell) end
     task.wait(0.2)
 end
 
 -- ==============================================================================
--- 13. FISHING (ระบบตกปลา)
+-- 14. Fishing
 -- ==============================================================================
 local FISHING_PARKING_POS = Vector3.new(-902.46, 3.41, 2964.32)
 local FISHING_SPOT = Vector3.new(-955.06, -2.65, 2907.18)
@@ -1508,10 +1552,7 @@ local function EquipFishingRod()
     if rod and rod.Parent == bp then hum:EquipTool(rod); task.wait(0.3); return rod end
     pcall(function()
         local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
-        if remCore then
-            local Remotes_m = require(remCore)
-            Remotes_m.Fire("_inventory", "Use", "FishingRod")
-        end
+        if remCore then local Remotes_m = require(remCore); Remotes_m.Fire("_inventory", "Use", "FishingRod") end
     end)
     task.wait(0.4)
     rod = GetFishingRodTool()
@@ -1566,45 +1607,6 @@ pcall(function()
     end
 end)
 
-local function BuyBaitMaxAtShop(shopPos)
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if not root then return end
-    root.CFrame = CFrame.new(shopPos.X, shopPos.Y + 1.2, shopPos.Z)
-    root.AssemblyLinearVelocity = Vector3.zero
-    task.wait(0.3)
-    local prompt = FindPromptNear(shopPos, 20, "shop") or FindPromptNear(root.Position, 20, nil)
-    if prompt then prompt.Enabled = true; TriggerPrompt(prompt); task.wait(0.4) end
-    local pData = LocalPlayer:FindFirstChild("PlayerData")
-    local money = (pData and pData:GetAttribute("Money")) or 1000
-    local toBuy = math.clamp(math.floor(money / 10), 10, 200)
-    pcall(function()
-        local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
-        if remCore then
-            local Remotes_m = require(remCore)
-            Remotes_m.Fire("_shop", "Buy", { FishingBait = toBuy }, "Money")
-            Remotes_m.Fire("_shop", "Buy", { Bait = toBuy }, "Money")
-        end
-    end)
-    task.wait(0.6)
-end
-
-local function SellAllFishAtShop(shopPos)
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if not root then return end
-    local prompt = FindPromptNear(shopPos, 20, "sell") or FindPromptNear(shopPos, 20, "economy") or FindPromptNear(root.Position, 20, nil)
-    if prompt then prompt.Enabled = true; TriggerPrompt(prompt); task.wait(0.3) end
-    pcall(function()
-        local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
-        if remCore then
-            local Remotes_m = require(remCore)
-            Remotes_m.Fire("_economy", "SellAll")
-        end
-    end)
-    task.wait(0.4)
-end
-
 local function StartAutoFishing()
     if fishingThread then return end
     isAutoFishingEnabled = true
@@ -1622,19 +1624,27 @@ local function StartAutoFishing()
                         pcall(function() local r = char:FindFirstChild("FishingRod"); if r then r:Activate() end end)
                         task.wait(0.4)
                     end
-                    local distToParking = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(FISHING_PARKING_POS.X, 0, FISHING_PARKING_POS.Z)).Magnitude
-                    if distToParking > 8.0 and distToParking < 150.0 then
-                        SmoothWalkTo(FISHING_PARKING_POS, 25, function() return isAutoFishingEnabled end, 4.0)
-                        task.wait(0.2)
-                    end
                     local myCar = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
                     if myCar then EnsurePlayerSeatedInCar(myCar); DriveCarTo(BAIT_SHOP_POS, function() return isAutoFishingEnabled end); ExitCarNaturally(myCar); task.wait(0.3) end
-                    SellAllFishAtShop(BAIT_SHOP_POS)
+                    -- ขายปลา
+                    local econPos = TYPER_LOCATIONS.Economy.Market
+                    local car = GetPlayerVehicle()
+                    if car then EnsurePlayerSeatedInCar(car); DriveCarTo(econPos, function() return isAutoFishingEnabled end); ExitCarNaturally(car); task.wait(0.3) end
+                    SellAtEconomyMarket(function() return isAutoFishingEnabled end)
                     task.wait(0.5)
-                    BuyBaitMaxAtShop(BAIT_SHOP_POS)
+                    -- ซื้อเหยื่อ
+                    local car2 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
+                    if car2 then EnsurePlayerSeatedInCar(car2); DriveCarTo(BAIT_SHOP_POS, function() return isAutoFishingEnabled end); ExitCarNaturally(car2); task.wait(0.3) end
+                    local pData2 = LocalPlayer:FindFirstChild("PlayerData")
+                    local money = (pData2 and pData2:GetAttribute("Money")) or 1000
+                    local toBuy = math.clamp(math.floor(money / 10), 10, 200)
+                    pcall(function()
+                        local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
+                        if remCore then local Remotes_m = require(remCore); Remotes_m.Fire("_shop", "Buy", { FishingBait = toBuy }, "Money") end
+                    end)
                     task.wait(0.5)
-                    myCar = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
-                    if myCar then EnsurePlayerSeatedInCar(myCar); DriveCarTo(FISHING_PARKING_POS, function() return isAutoFishingEnabled end); ExitCarNaturally(myCar); task.wait(0.4) end
+                    local car3 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
+                    if car3 then EnsurePlayerSeatedInCar(car3); DriveCarTo(FISHING_PARKING_POS, function() return isAutoFishingEnabled end); ExitCarNaturally(car3); task.wait(0.4) end
                 end
                 if not isAutoFishingEnabled then break end
                 char = LocalPlayer.Character
@@ -1662,9 +1672,7 @@ local function StartAutoFishing()
                     end
                     local pgui = LocalPlayer:FindFirstChild("PlayerGui")
                     local fg = pgui and pgui:FindFirstChild("FishingGame")
-                    if fg and fg:FindFirstChild("Minigame") then
-                        SolveFishingMinigame()
-                        task.wait(3.0)
+                    if fg and fg:FindFirstChild("Minigame") then SolveFishingMinigame(); task.wait(3.0)
                     else task.wait(0.2) end
                 else task.wait(0.5) end
             end
@@ -1682,7 +1690,7 @@ local function StopAutoFishing()
 end
 
 -- ==============================================================================
--- 14. UI (Fluent ตามต้นฉบับ)
+-- 15. UI + Floating Logo Button
 -- ==============================================================================
 local function LoadFluent()
     local urls = {
@@ -1700,14 +1708,11 @@ local function LoadFluent()
 end
 
 local Fluent = LoadFluent()
-if not Fluent then
-    warn("[NEXUS] Fluent not loaded")
-    return
-end
+if not Fluent then warn("[NEXUS] Fluent not loaded"); return end
 
 local Window = Fluent:CreateWindow({
-    Title = "NEXUS HUB | TYPER TOWN V5.1",
-    SubTitle = "1.txt Original 100%",
+    Title = "NEXUS HUB | TYPER TOWN V5.2",
+    SubTitle = "1.txt Original 100% + Full Protection",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -1716,13 +1721,92 @@ local Window = Fluent:CreateWindow({
 })
 
 local Tabs = {
-    Main = Window:AddTab({ Title = "ลูปฟาร์ม 4 สาย", Icon = "repeat" }),
+    Main = Window:AddTab({ Title = "ฟาร์ม 4 สาย", Icon = "repeat" }),
     Individual = Window:AddTab({ Title = "ฟาร์มเดี่ยว", Icon = "tree" }),
     Fishing = Window:AddTab({ Title = "ตกปลา", Icon = "fish" }),
     Settings = Window:AddTab({ Title = "ตั้งค่า", Icon = "settings" })
 }
 
--- Farm Session
+-- ==============================================================================
+-- Floating Logo Button (เปิด/ปิด UI)
+-- ==============================================================================
+local FloatingGui = Instance.new("ScreenGui")
+FloatingGui.Name = "Nexus_FloatingLogo"
+FloatingGui.ResetOnSpawn = false
+FloatingGui.DisplayOrder = 999999
+FloatingGui.IgnoreGuiInset = true
+FloatingGui.Parent = PlayerGui
+
+local FloatBtn = Instance.new("TextButton")
+FloatBtn.Name = "FloatBtn"
+FloatBtn.Size = UDim2.fromOffset(48, 48)
+FloatBtn.Position = UDim2.new(0, 20, 0.5, -24)
+FloatBtn.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+FloatBtn.BorderSizePixel = 0
+FloatBtn.Text = "NX"
+FloatBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+FloatBtn.TextSize = 16
+FloatBtn.Font = Enum.Font.GothamBold
+FloatBtn.AutoButtonColor = false
+FloatBtn.Active = true
+FloatBtn.Parent = FloatingGui
+
+local BtnCorner = Instance.new("UICorner")
+BtnCorner.CornerRadius = UDim.new(0, 12)
+BtnCorner.Parent = FloatBtn
+
+local BtnStroke = Instance.new("UIStroke")
+BtnStroke.Color = Color3.fromRGB(0, 220, 255)
+BtnStroke.Thickness = 2
+BtnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+BtnStroke.Parent = FloatBtn
+
+local BtnGlow = Instance.new("UIStroke")
+BtnGlow.Color = Color3.fromRGB(0, 220, 255)
+BtnGlow.Thickness = 4
+BtnGlow.Transparency = 0.7
+BtnGlow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+BtnGlow.Parent = FloatBtn
+
+local isUIVisible = true
+local function ToggleUI()
+    isUIVisible = not isUIVisible
+    if Fluent and Fluent.GUI then Fluent.GUI.Enabled = isUIVisible end
+    if Window and Window.Root then Window.Root.Visible = isUIVisible end
+    pcall(function() if Fluent and Fluent.Notify then Fluent:Notify({ Title = "NEXUS HUB", Content = isUIVisible and "เปิด UI" or "ปิด UI", Duration = 1.5 }) end end)
+end
+
+-- Drag + Click
+local dragging, hasMoved, dragStart, startPos = false, false, nil, nil
+FloatBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        hasMoved = false
+        dragStart = input.Position
+        startPos = FloatBtn.Position
+        local conn
+        conn = input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+                conn:Disconnect()
+                if not hasMoved then ToggleUI() end
+            end
+        end)
+    end
+end)
+FloatBtn.InputChanged:Connect(function(input)
+    if (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) and dragging then
+        local delta = input.Position - dragStart
+        if delta.Magnitude > 6 then
+            hasMoved = true
+            FloatBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end
+end)
+
+-- ==============================================================================
+-- Farm Session + UI Toggles
+-- ==============================================================================
 local CurrentFarmSessionId = 0
 local CurrentActiveFarmKey = nil
 local FarmToggleControls = {}
@@ -1742,7 +1826,7 @@ local function RequestFarmSession(farmKey)
         task.wait(0.15)
         isInternalToggling = false
     end)
-    pcall(function() Fluent:Notify({ Title = "NEXUS HUB", Content = "🌾 " .. tostring(farmKey), Duration = 2.0 }) end)
+    pcall(function() if Fluent and Fluent.Notify then Fluent:Notify({ Title = "NEXUS HUB", Content = "🌾 " .. tostring(farmKey), Duration = 2.0 }) end end)
     return function() return CurrentFarmSessionId == thisSession and CurrentActiveFarmKey == farmKey end
 end
 
@@ -1757,19 +1841,14 @@ end
 Tabs.Main:AddToggle("ToggleAutoEatAndDrink", {
     Title = "ออโต้กินข้าว + กาแฟ (≤ 80%)",
     Default = true,
-    Callback = function(v)
-        isAutoEatAndDrinkEnabled = v
-        isAutoEatEnabled = v
-        isAutoCoffeeEnabled = v
-    end
+    Callback = function(v) isAutoEatAndDrinkEnabled = v; isAutoEatEnabled = v; isAutoCoffeeEnabled = v end
 })
 
 task.spawn(function()
     while true do
         task.wait(3.0)
         if isAutoEatAndDrinkEnabled and not isConsumingItem then
-            local char = LocalPlayer.Character
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
             if hum and not hum.Sit then CheckAndAutoEat(); task.wait(0.5); CheckAndAutoDrinkCoffee() end
         end
     end
@@ -1778,8 +1857,8 @@ end)
 FarmToggleControls["Sandwich"] = Tabs.Main:AddToggle("ToggleSandwichLoop", {
     Title = "เปิดลูป แซนวิช",
     Default = false,
-    Callback = function(Value)
-        if Value then
+    Callback = function(v)
+        if v then
             local check = RequestFarmSession("Sandwich")
             task.spawn(function()
                 local firstRun = true
@@ -1791,11 +1870,11 @@ FarmToggleControls["Sandwich"] = Tabs.Main:AddToggle("ToggleSandwichLoop", {
                     if need then
                         if firstRun then WarpToTownAndSpawnCar(); firstRun = false
                         else
-                            local myCar = GetPlayerVehicle()
-                            if not myCar then
-                                local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                                if root then EnsureCarAvailable(GetNearestCarBooth(root.Position)) end
-                            else EnsurePlayerSeatedInCar(myCar) end
+                            local car = GetPlayerVehicle()
+                            if not car then
+                                local r = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                                if r then EnsureCarAvailable(GetNearestCarBooth(r.Position)) end
+                            else EnsurePlayerSeatedInCar(car) end
                         end
                         if not check() then break end
                         if GetPlayerInventoryCount("Bread") < 60 then HarvestSingleCrop("Bread", 60, check) end
@@ -1809,8 +1888,8 @@ FarmToggleControls["Sandwich"] = Tabs.Main:AddToggle("ToggleSandwichLoop", {
                     if not check() then break end
                     SellAtEconomyMarket(check)
                     if not check() then break end
-                    local returnCar = GetPlayerVehicle() or EnsureCarAvailable(TOWN_CAR_SPAWN)
-                    if returnCar then EnsurePlayerSeatedInCar(returnCar); DriveCarTo(TYPER_LOCATIONS.Bread.Farm, check) end
+                    local rCar = GetPlayerVehicle() or EnsureCarAvailable(TOWN_CAR_SPAWN)
+                    if rCar then EnsurePlayerSeatedInCar(rCar); DriveCarTo(TYPER_LOCATIONS.Bread.Farm, check) end
                     task.wait(1.0)
                 end
             end)
@@ -1821,8 +1900,8 @@ FarmToggleControls["Sandwich"] = Tabs.Main:AddToggle("ToggleSandwichLoop", {
 FarmToggleControls["MangoRice"] = Tabs.Main:AddToggle("ToggleMangoRiceLoop", {
     Title = "เปิดลูป ข้าวมันมะม่วง",
     Default = false,
-    Callback = function(Value)
-        if Value then
+    Callback = function(v)
+        if v then
             local check = RequestFarmSession("MangoRice")
             task.spawn(function()
                 local firstRun = true
@@ -1833,11 +1912,11 @@ FarmToggleControls["MangoRice"] = Tabs.Main:AddToggle("ToggleMangoRiceLoop", {
                     if need then
                         if firstRun then WarpToTownAndSpawnCar(); firstRun = false
                         else
-                            local myCar = GetPlayerVehicle()
-                            if not myCar then
-                                local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                                if root then EnsureCarAvailable(GetNearestCarBooth(root.Position)) end
-                            else EnsurePlayerSeatedInCar(myCar) end
+                            local car = GetPlayerVehicle()
+                            if not car then
+                                local r = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                                if r then EnsureCarAvailable(GetNearestCarBooth(r.Position)) end
+                            else EnsurePlayerSeatedInCar(car) end
                         end
                         if not check() then break end
                         if GetPlayerInventoryCount("Mango") < 60 then HarvestSingleCrop("Mango", 60, check) end
@@ -1849,8 +1928,8 @@ FarmToggleControls["MangoRice"] = Tabs.Main:AddToggle("ToggleMangoRiceLoop", {
                     if not check() then break end
                     SellAtEconomyMarket(check)
                     if not check() then break end
-                    local returnCar = GetPlayerVehicle() or EnsureCarAvailable(TOWN_CAR_SPAWN)
-                    if returnCar then EnsurePlayerSeatedInCar(returnCar); DriveCarTo(TYPER_LOCATIONS.Mango.Farm, check) end
+                    local rCar = GetPlayerVehicle() or EnsureCarAvailable(TOWN_CAR_SPAWN)
+                    if rCar then EnsurePlayerSeatedInCar(rCar); DriveCarTo(TYPER_LOCATIONS.Mango.Farm, check) end
                     task.wait(1.0)
                 end
             end)
@@ -1861,8 +1940,8 @@ FarmToggleControls["MangoRice"] = Tabs.Main:AddToggle("ToggleMangoRiceLoop", {
 FarmToggleControls["BananaPack"] = Tabs.Main:AddToggle("ToggleBananaPackLoop", {
     Title = "เปิดลูป กล้วยแพ็ค",
     Default = false,
-    Callback = function(Value)
-        if Value then
+    Callback = function(v)
+        if v then
             local check = RequestFarmSession("BananaPack")
             task.spawn(function()
                 local firstRun = true
@@ -1871,11 +1950,11 @@ FarmToggleControls["BananaPack"] = Tabs.Main:AddToggle("ToggleBananaPackLoop", {
                     if need then
                         if firstRun then WarpToTownAndSpawnCar(); firstRun = false
                         else
-                            local myCar = GetPlayerVehicle()
-                            if not myCar then
-                                local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                                if root then EnsureCarAvailable(GetNearestCarBooth(root.Position)) end
-                            else EnsurePlayerSeatedInCar(myCar) end
+                            local car = GetPlayerVehicle()
+                            if not car then
+                                local r = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                                if r then EnsureCarAvailable(GetNearestCarBooth(r.Position)) end
+                            else EnsurePlayerSeatedInCar(car) end
                         end
                         if not check() then break end
                         if GetPlayerInventoryCount("Banana") < 60 then HarvestSingleCrop("Banana", 60, check) end
@@ -1885,8 +1964,8 @@ FarmToggleControls["BananaPack"] = Tabs.Main:AddToggle("ToggleBananaPackLoop", {
                     if not check() then break end
                     SellAtEconomyMarket(check)
                     if not check() then break end
-                    local returnCar = GetPlayerVehicle() or EnsureCarAvailable(TOWN_CAR_SPAWN)
-                    if returnCar then EnsurePlayerSeatedInCar(returnCar); DriveCarTo(TYPER_LOCATIONS.Banana.Farm, check) end
+                    local rCar = GetPlayerVehicle() or EnsureCarAvailable(TOWN_CAR_SPAWN)
+                    if rCar then EnsurePlayerSeatedInCar(rCar); DriveCarTo(TYPER_LOCATIONS.Banana.Farm, check) end
                     task.wait(1.0)
                 end
             end)
@@ -1897,8 +1976,8 @@ FarmToggleControls["BananaPack"] = Tabs.Main:AddToggle("ToggleBananaPackLoop", {
 FarmToggleControls["KangSom"] = Tabs.Main:AddToggle("ToggleKangSomLoop", {
     Title = "เปิดลูป แกงส้ม",
     Default = false,
-    Callback = function(Value)
-        if Value then
+    Callback = function(v)
+        if v then
             local check = RequestFarmSession("KangSom")
             task.spawn(function()
                 local firstRun = true
@@ -1909,11 +1988,11 @@ FarmToggleControls["KangSom"] = Tabs.Main:AddToggle("ToggleKangSomLoop", {
                     if need then
                         if firstRun then WarpToTownAndSpawnCar(); firstRun = false
                         else
-                            local myCar = GetPlayerVehicle()
-                            if not myCar then
-                                local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                                if root then EnsureCarAvailable(GetNearestCarBooth(root.Position)) end
-                            else EnsurePlayerSeatedInCar(myCar) end
+                            local car = GetPlayerVehicle()
+                            if not car then
+                                local r = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                                if r then EnsureCarAvailable(GetNearestCarBooth(r.Position)) end
+                            else EnsurePlayerSeatedInCar(car) end
                         end
                         if not check() then break end
                         if GetPlayerInventoryCount("Tomato") < 60 then HarvestSingleCrop("Tomato", 60, check) end
@@ -1925,8 +2004,8 @@ FarmToggleControls["KangSom"] = Tabs.Main:AddToggle("ToggleKangSomLoop", {
                     if not check() then break end
                     SellAtEconomyMarket(check)
                     if not check() then break end
-                    local returnCar = GetPlayerVehicle() or EnsureCarAvailable(TOWN_CAR_SPAWN)
-                    if returnCar then EnsurePlayerSeatedInCar(returnCar); DriveCarTo(TYPER_LOCATIONS.Tomato.Farm, check) end
+                    local rCar = GetPlayerVehicle() or EnsureCarAvailable(TOWN_CAR_SPAWN)
+                    if rCar then EnsurePlayerSeatedInCar(rCar); DriveCarTo(TYPER_LOCATIONS.Tomato.Farm, check) end
                     task.wait(1.0)
                 end
             end)
@@ -1939,9 +2018,7 @@ local selectedIndividualCrop = "Bread"
 local cropDropdownList = {"Bread (ขนมปัง)","Catchup (ซอส)","Pig (หมู)","Mango (มะม่วง)","Rice (ข้าว)","Tomato (มะเขือเทศ)","Banana (กล้วย)","Crab (ปู)","Coconut (มะพร้าว)"}
 
 Tabs.Individual:AddDropdown("DropdownSelectCrop", {
-    Title = "เลือกพืช",
-    Values = cropDropdownList,
-    Default = "Bread (ขนมปัง)",
+    Title = "เลือกพืช", Values = cropDropdownList, Default = "Bread (ขนมปัง)",
     Callback = function(val)
         local key = string.match(val, "^(%a+)")
         if key and TYPER_LOCATIONS[key] then selectedIndividualCrop = key end
@@ -1951,8 +2028,8 @@ Tabs.Individual:AddDropdown("DropdownSelectCrop", {
 FarmToggleControls["IndividualMaster"] = Tabs.Individual:AddToggle("ToggleIndividualMaster", {
     Title = "เริ่มฟาร์มเดี่ยว",
     Default = false,
-    Callback = function(val)
-        if val then
+    Callback = function(v)
+        if v then
             local check = RequestFarmSession("IndividualMaster")
             task.spawn(function()
                 local firstRun = true
@@ -1983,7 +2060,7 @@ FarmToggleControls["IndividualMaster"] = Tabs.Individual:AddToggle("ToggleIndivi
 
 -- Fishing
 Tabs.Fishing:AddToggle("ToggleAutoFishing", {
-    Title = "เริ่มตกปลาอัตโนมัติ",
+    Title = "เริ่มตกปลา",
     Default = false,
     Callback = function(v) if v then StartAutoFishing() else StopAutoFishing() end end
 })
@@ -1991,23 +2068,50 @@ Tabs.Fishing:AddToggle("ToggleAutoFishing", {
 -- Settings
 Tabs.Settings:AddSection("ตั้งค่า")
 Tabs.Settings:AddSlider("SliderSpeed", {
-    Title = "ความเร็วรถ (Vehicle Speed)",
-    Default = 300, Min = 10, Max = 500, Rounding = 0,
+    Title = "ความเร็วรถ", Default = 300, Min = 10, Max = 500, Rounding = 0,
     Callback = function(v) VehicleDriveSpeed = math.clamp(math.round(v), 10, 500) end
 })
 
+Tabs.Settings:AddSection("ลดหน่วง & ประหยัด GPU")
+Tabs.Settings:AddToggle("ToggleBoostFPS", {
+    Title = "FPS Boost", Default = true,
+    Callback = function(v)
+        pcall(function()
+            local l = game:GetService("Lighting")
+            if v then l.GlobalShadows = false; l.FogEnd = 9e9; settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+            else l.GlobalShadows = true; l.FogEnd = 1000 end
+        end)
+    end
+})
+Tabs.Settings:AddToggle("ToggleWhiteScreen", {
+    Title = "จอขาว (GPU Saver)", Default = false,
+    Callback = function(v) pcall(function() RunService:Set3dRenderingEnabled(not v) end) end
+})
+
+Tabs.Settings:AddSection("Auto Hop หนีคน")
+Tabs.Settings:AddToggle("ToggleAutoHop", {
+    Title = "ย้ายเซิร์ฟเมื่อมีคนใกล้", Default = true,
+    Callback = function(v) isAutoHopOnPlayerNearbyEnabled = v end
+})
+Tabs.Settings:AddSlider("SliderHopDistance", {
+    Title = "ระยะตรวจจับ (studs)", Default = 60, Min = 20, Max = 250, Rounding = 0,
+    Callback = function(v) autoHopDistance = tonumber(v) or 60 end
+})
 Tabs.Settings:AddButton({
-    Title = "🔴 ปิดสคริปต์",
+    Title = "🚨 ย้ายเซิร์ฟเวอร์ทันที",
+    Callback = function() HopServer("กดปุ่มเอง") end
+})
+
+Tabs.Settings:AddSection("ปิดสคริปต์")
+Tabs.Settings:AddButton({
+    Title = "🔴 ปิดสคริปต์ทั้งหมด",
     Callback = function()
         StopAutoFishing()
+        if FloatingGui then FloatingGui:Destroy() end
         if Window and Window.Destroy then Window:Destroy() end
         if Fluent and Fluent.Destroy then Fluent:Destroy() end
     end
 })
 
 Window:SelectTab(1)
-Fluent:Notify({
-    Title = "NEXUS HUB V5.1 READY",
-    Content = "1.txt ต้นฉบับ 100% + ขายได้แล้ว!",
-    Duration = 5
-})
+pcall(function() if Fluent and Fluent.Notify then Fluent:Notify({ Title = "NEXUS HUB V5.2", Content = "ครบ 100% + ปุ่มลอย NX พร้อมใช้งาน!", Duration = 5 }) end end)
