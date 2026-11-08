@@ -384,7 +384,7 @@ function RayVinzUI:CreateWindow(opts)
 	lights.MouseEnter:Connect(function() for _, m in ipairs(marks) do tween(m, 0.12, { ImageTransparency = 0 }) end end)
 	lights.MouseLeave:Connect(function() for _, m in ipairs(marks) do tween(m, 0.12, { ImageTransparency = 1 }) end end)
 		local brand = new("Frame", { Size = UDim2.new(1, -92, 1, 0), Position = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 1 }, title)
-	local blogo = new("Frame", { Size = UDim2.fromOffset(38, 38), Position = UDim2.new(0, 0, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundTransparency = 1 }, brand)
+	local blogo = new("Frame", { Size = UDim2.fromOffset(38, 38), Position = UDim2.new(0, 8, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundTransparency = 1 }, brand)
 	local logoIsCustomImage = type(opts.Logo) == "number"
 		or (type(opts.Logo) == "string" and string.find(opts.Logo, "rbxassetid://") == 1)
 	local blogoIcon = iconImage(blogo, opts.Logo, UDim2.fromOffset(38, 38),
