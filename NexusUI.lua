@@ -4,7 +4,7 @@
 -- [วางโค้ด UI ของ RELWX จากข้อความก่อนหน้าที่นี่]
 -- แทนที่ส่วน "ระบบหลักจาก 1.txt" ด้วย:
 
-local Systems = loadstring(game:HttpGet("<URL_ของ_NexusSystems>"))()
+local Systems = loadstring(game:HttpGet("https://raw.githubusercontent.com/14thx/Aslwoll/main/NexusSystems.lua"))()
 Systems.SetNotify(function(msg, ok) Toast(msg, ok) end)
 Systems.SetConfig(Config)
 
