@@ -2367,33 +2367,3 @@ Notify({
     Description = "เปิดแล้ว: ฟาร์ม 4 สาย + ฟาร์มเดี่ยว + รถ + พิกัด + ตั้งค่า | Anti-Kick ครอบทุกช่อง",
     Duration = 6
 })
-```
-
----
-
-📋 สรุปการปรับปรุงทั้งหมดใน V4.4
-
-# ปรับปรุง ผล
-1 Anti-Kick Ultimate V2 บล็อก Kick / Players:Kick / Destroy / Remove / WaitForChild timeout / Remote keyword / Antifall Script / Character ถูกลบ
-2 ย้าย Notify ขึ้นก่อนฟาร์ม ไม่มี notify หายระหว่างฟาร์ม
-3 ClickGuiButton ลดการกดซ้ำ firesignal ก่อน → getconnections → VIM (fallback เท่านั้น)
-4 ลบ GetSafeWaterFloor dead code ไม่สร้าง Part ลอยในแมพ
-5 NeutralizeCharScripts ใช้ Disabled แทน Destroy ป้องกัน AntiFall ร่วงนอกแมพ
-6 SpawnCarAtBooth scan Systems ก่อน เร็วขึ้นในแมพใหญ่
-7 HarvestSingleCrop timeout 180 → 90 ไม่รอนาน 3 นาที
-8 Antifall Add DescendantAdded สคริปต์ที่โหลดช้าถูก neutralize ด้วย
-9 Character ถูกลบ → Respawn กัน Kick ที่ทำลาย Character
-10 BAD list ไม่ใส่ speed/fly/teleport/warp กันชนกับ Remote ของ Typer Town เอง
-11 HumanoidStateType.PlatformStanding กัน ragdoll เพิ่ม
-
----
-
-🎯 วิธีใช้
-
-1. Copy ทั้งก้อนด้านบน
-2. แทนที่ไฟล์ Typer Town ที่ใช้รันอยู่ (หรืออัปโหลดไป workers.dev ถ้าใช้ Auto-Resolver)
-3. รัน → ดู warn ใน console ว่ามี [EASY HUB V2] ขึ้นไหมเพื่อยืนยัน Anti-Kick ทำงาน
-
----
-
-ต้องการให้เพิ่ม Auto-Reconnect / Anti-AFK / Toggle Anti-Kick เพิ่มไหมครับ? บอกได้เลย 🚀
