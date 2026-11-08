@@ -349,7 +349,7 @@ function RayVinzUI:CreateWindow(opts)
 	pcall(function() workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fitScale) end)
 
 	local title = new("Frame", { Name = "TitleBar", Size = UDim2.new(1, 0, 0, 48), BackgroundTransparency = 1 }, win)
-		local lights = new("Frame", { Size = UDim2.fromOffset(52, 14), Position = UDim2.new(0, 16, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundTransparency = 1 }, title)
+		local lights = new("Frame", { Size = UDim2.fromOffset(52, 14), Position = UDim2.new(1, -16, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), BackgroundTransparency = 1 }, title)
 	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8), VerticalAlignment = Enum.VerticalAlignment.Center }, lights)
 	local maximized, restore = false, nil
 	local function maximize()
@@ -383,7 +383,7 @@ function RayVinzUI:CreateWindow(opts)
 	end
 	lights.MouseEnter:Connect(function() for _, m in ipairs(marks) do tween(m, 0.12, { ImageTransparency = 0 }) end end)
 	lights.MouseLeave:Connect(function() for _, m in ipairs(marks) do tween(m, 0.12, { ImageTransparency = 1 }) end end)
-		local brand = new("Frame", { Size = UDim2.fromOffset(220, 48), Position = UDim2.new(1, -20, 0, 0), AnchorPoint = Vector2.new(1, 0), BackgroundTransparency = 1 }, title)
+		local brand = new("Frame", { Size = UDim2.new(1, -92, 1, 0), Position = UDim2.new(0, 68, 0, 0), BackgroundTransparency = 1 }, title)
 	local blogo = new("Frame", { Size = UDim2.fromOffset(38, 38), Position = UDim2.new(0, 0, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundTransparency = 1 }, brand)
 	local logoIsCustomImage = type(opts.Logo) == "number"
 		or (type(opts.Logo) == "string" and string.find(opts.Logo, "rbxassetid://") == 1)
