@@ -10,17 +10,17 @@ local LocalPlayer      = Players.LocalPlayer
 
 -- ================= Theme =================
 local Theme = {
-	Background = Color3.fromRGB(7, 8, 10),
-	Sidebar    = Color3.fromRGB(15, 16, 19),
-	Card       = Color3.fromRGB(22, 24, 28),
-	Elevated   = Color3.fromRGB(29, 32, 38),
-	Select     = Color3.fromRGB(25, 55, 92),
-	Field      = Color3.fromRGB(18, 20, 24),
+	Background = Color3.fromRGB(18, 19, 22),
+	Sidebar    = Color3.fromRGB(12, 13, 16),
+	Card       = Color3.fromRGB(25, 26, 30),
+	Elevated   = Color3.fromRGB(35, 36, 41),
+	Select     = Color3.fromRGB(10, 48, 88),
+	Field      = Color3.fromRGB(20, 21, 25),
 	Text       = Color3.fromRGB(245, 247, 250),
-	SubText    = Color3.fromRGB(166, 172, 182),
-	Muted      = Color3.fromRGB(105, 112, 124),
-	Accent     = Color3.fromRGB(0, 140, 255),
-	Accent2    = Color3.fromRGB(65, 190, 255),
+	SubText    = Color3.fromRGB(184, 186, 192),
+	Muted      = Color3.fromRGB(112, 114, 121),
+	Accent     = Color3.fromRGB(25, 137, 235),
+	Accent2    = Color3.fromRGB(55, 164, 245),
 	AccentText = Color3.fromRGB(235, 247, 255),
 	Green      = Color3.fromRGB(48, 209, 88),
 	Info       = Color3.fromRGB(10, 132, 255),
@@ -302,7 +302,7 @@ function RayVinzUI:CreateWindow(opts)
 	local holder = new("Frame", { Name = "Window", Visible = false, Size = UDim2.fromOffset(W, H), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1 }, gui)
 	self.Window = holder
 	local sh = shadow(holder, 1, 48)
-	local win = new("CanvasGroup", { Name = "Main", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Background, BackgroundTransparency = 0.24, GroupTransparency = 1, ClipsDescendants = true, ZIndex = 1 }, holder)
+	local win = new("CanvasGroup", { Name = "Main", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Background, BackgroundTransparency = 0.06, GroupTransparency = 1, ClipsDescendants = true, ZIndex = 1 }, holder)
 	corner(win, 16); stroke(win, Theme.White, 0.72, 1.4); glassSheen(win, 16, 1)
 	do
 		local edgeStroke = new("UIStroke", { Thickness = 1.2, Transparency = 0.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, win)
