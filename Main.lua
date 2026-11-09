@@ -1,4 +1,3 @@
-
 -- =====================================
 -- MARVENRIZ HUB : MAIN
 -- =====================================
@@ -80,42 +79,17 @@ local System = Status:Section({
 })
 
 local StatsGrid = System:StatGrid({
-    {
-        Label = "FPS",
-        Value = "0",
-        Icon = "gauge"
-    },
-    {
-        Label = "Ping",
-        Value = "0 ms",
-        Icon = "wifi"
-    },
-    {
-        Label = "Executor",
-        Value = "Unknown",
-        Icon = "terminal"
-    },
-    {
-        Label = "Players",
-        Value = "0",
-        Icon = "users"
-    },
-    {
-        Label = "Game",
-        Value = game.Name,
-        Icon = "gamepad-2"
-    },
-    {
-        Label = "Time",
-        Value = "00:00:00",
-        Icon = "clock"
-    }
+    { Label = "FPS",      Value = "0",       Icon = "gauge" },
+    { Label = "Ping",     Value = "0 ms",    Icon = "wifi" },
+    { Label = "Executor", Value = "Unknown", Icon = "terminal" },
+    { Label = "Players",  Value = "0",       Icon = "users" },
+    { Label = "Game",     Value = game.Name, Icon = "gamepad-2" },
+    { Label = "Time",     Value = "00:00:00", Icon = "clock" },
 })
 
 -- FPS / Ping updater
 local Frames = 0
 local LastUpdate = os.clock()
-local FPS = 0
 
 RunService.RenderStepped:Connect(function()
     Frames = Frames + 1
@@ -123,7 +97,7 @@ RunService.RenderStepped:Connect(function()
     local Now = os.clock()
 
     if Now - LastUpdate >= 1 then
-        FPS = Frames
+        local FPS = Frames
         Frames = 0
         LastUpdate = Now
 
@@ -143,12 +117,13 @@ RunService.RenderStepped:Connect(function()
             end)
         end
 
-        StatsGrid:Set("FPS", FPS)
-        StatsGrid:Set("Ping", Ping .. " ms")
-        StatsGrid:Set("Executor", Executor)
-        StatsGrid:Set("Players", #Players:GetPlayers())
-        StatsGrid:Set("Game", game.Name)
-        StatsGrid:Set("Time", os.date("%H:%M:%S"))
+        -- ใช้ "." ไม่ใช่ ":" (Set ไม่ใช่เมธอด)
+        StatsGrid.Set("FPS", FPS)
+        StatsGrid.Set("Ping", Ping .. " ms")
+        StatsGrid.Set("Executor", Executor)
+        StatsGrid.Set("Players", #Players:GetPlayers())
+        StatsGrid.Set("Game", game.Name)
+        StatsGrid.Set("Time", os.date("%H:%M:%S"))
     end
 end)
 
@@ -204,12 +179,7 @@ local NormalFarm = Farm:Section({
 
 NormalFarm:Dropdown({
     Title = "เลือกฟาร์ม",
-    Options = {
-        "None",
-        "Farm 1",
-        "Farm 2",
-        "Farm 3",
-    },
+    Options = { "None", "Farm 1", "Farm 2", "Farm 3" },
     Default = "None",
     Flag = "NormalFarmType",
     Callback = function(Value)
@@ -232,12 +202,7 @@ local PlayerFarm = Farm:Section({
 
 PlayerFarm:Dropdown({
     Title = "เลือกฟาร์ม",
-    Options = {
-        "None",
-        "Player 1",
-        "Player 2",
-        "Player 3",
-    },
+    Options = { "None", "Player 1", "Player 2", "Player 3" },
     Default = "None",
     Flag = "PlayerFarmType",
     Callback = function(Value)
@@ -260,12 +225,7 @@ local SpecialFarm = Farm:Section({
 
 SpecialFarm:Dropdown({
     Title = "เลือกฟาร์มเหมือง",
-    Options = {
-        "None",
-        "Mine 1",
-        "Mine 2",
-        "Mine 3",
-    },
+    Options = { "None", "Mine 1", "Mine 2", "Mine 3" },
     Default = "None",
     Flag = "MineFarmType",
     Callback = function(Value)
