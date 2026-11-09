@@ -13,11 +13,10 @@ local Window = UI:CreateWindow({
     ToggleKey = Enum.KeyCode.RightShift,
 })
 
--- MAIN SIDEBAR
 Window:SidebarSection("MAIN")
 
 -- ==============================================================================
--- [LOGIC BACKEND] ดึงระบบทั้งหมดจาก ค่า.txt ครบ 100% ไม่มีการตัดทอน
+-- [LOGIC BACKEND] นำเข้าครบ 100% จาก ค่า.txt (ไม่มีการตัดทอน)
 -- ==============================================================================
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -80,16 +79,14 @@ local isAutoCoffeeEnabled = true
 local isAutoEatAndDrinkEnabled = true
 local VehicleDriveSpeed = 150
 local isVehicleNoclipEnabled = true
+local MY_SPAWNED_CAR = nil
+local vehiclePlatformPart = nil
+local fishingPlatform = nil
+local isAntiWaterFallEnabled = true
+local isVehiclePlatformEnabled = true
 
 local function Notify(Title, Content, Type)
-    pcall(function()
-        UI:Notify({
-            Title = Title or "NEXUS HUB",
-            Content = Content or "",
-            Type = Type or "Info",
-            Duration = 3.0
-        })
-    end)
+    pcall(function() UI:Notify({ Title = Title, Content = Content, Type = Type or "Info", Duration = 3.0 }) end)
 end
 
 local function GrantAntiXGrace(seconds)
@@ -97,8 +94,6 @@ local function GrantAntiXGrace(seconds)
     pcall(function()
         local char = LocalPlayer.Character
         if not char then return end
-        local antiFall = char:FindFirstChild("Antifall") or char:FindFirstChild("AntiFall")
-        if antiFall and antiFall:IsA("Script") then antiFall.Disabled = true end
         local root = char:FindFirstChild("HumanoidRootPart")
         if root then
             root:SetAttribute("TeleportGrace", os.clock() + seconds)
@@ -114,34 +109,6 @@ local function GrantAntiXGrace(seconds)
     end)
 end
 
-local vehiclePlatformPart = nil
-local fishingPlatform = nil
-local isAntiWaterFallEnabled = true
-local isVehiclePlatformEnabled = true
-
-local function EnsureVehiclePlatform(surfaceY, carPos)
-    if not isVehiclePlatformEnabled then
-        if vehiclePlatformPart then vehiclePlatformPart:Destroy() vehiclePlatformPart = nil end
-        return
-    end
-    if not vehiclePlatformPart or not vehiclePlatformPart.Parent then
-        local p = Instance.new("Part")
-        p.Name = "TyperTown_VehicleSafePlatform"
-        p.Size = Vector3.new(36, 1.5, 36)
-        p.Anchored = true
-        p.CanCollide = true
-        p.Transparency = 1
-        p.Material = Enum.Material.SmoothPlastic
-        p.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.8, 0, 1, 1)
-        p.Parent = workspace
-        vehiclePlatformPart = p
-    else
-        vehiclePlatformPart.CanCollide = false
-    end
-    vehiclePlatformPart.CFrame = CFrame.new(carPos.X, surfaceY - 0.75, carPos.Z)
-end
-
-local MY_SPAWNED_CAR = nil
 local function GetGroundLevel(x, z, fallbackY)
     fallbackY = fallbackY or 20
     local startY = fallbackY + 14
@@ -279,11 +246,13 @@ local function AutoEatThenDrink(targetPercent)
         local food = FindAvailableFood()
         local drink = FindAvailableCoffee()
         if food and (hunger == nil or hunger < targetPercent) then
+            Notify("NEXUS HUB", "🍣 กำลังกิน " .. tostring(food) .. " (หลอดอาหาร: " .. tostring(hunger) .. "%)...", "Info")
             ConsumeItemSafely(food, true, 5.5)
             task.wait(0.4)
             hunger = GetPlayerHunger()
         end
         if drink and (brain == nil or brain < targetPercent) then
+            Notify("NEXUS HUB", "☕ กำลังดื่ม " .. tostring(drink) .. " (หลอดน้ำ: " .. tostring(brain) .. "%)...", "Info")
             ConsumeItemSafely(drink, false, 5.5)
             task.wait(0.4)
             brain = GetPlayerEnergy()
@@ -341,11 +310,13 @@ local TYPER_LOCATIONS = {
     Rock = { Booth = Vector3.new(-4163.51, 25.33, -1234.29), Farm = Vector3.new(-4138.03, 29.88, -1286.63), Process = Vector3.new(-935.29, 6.93, 6786.66) },
     Svibranium = { Booth = Vector3.new(2785.16, 30.11, -262.38), Farm = Vector3.new(2723.67, 28.51, -236.17), Process = Vector3.new(-927.35, 6.93, 6763.02) },
     Food = { Crafting = Vector3.new(3442.48, 56.40, 3925.24), BananaProcess = Vector3.new(3429.20, 56.80, 3911.80) },
-    Economy = { Market = Vector3.new(-462.0, 18.0, 5324.7) }
+    Economy = { Market = Vector3.new(-462.0, 18.0, 5324.7) },
+    Vault = Vector3.new(-1.98, 26.54, 8632.61)
 }
 
 local function GetPreferredCarName() return "Buggy" end
 
+-- [ฟังก์ชันตรวจสอบรถ 100%]
 local function IsMyVehicle(v)
     if not v or not v:IsA("Model") or not v.Parent then return false end
     if MY_SPAWNED_CAR and v == MY_SPAWNED_CAR then return true end
@@ -411,6 +382,7 @@ local function GetNearbyPlayerVehicle(maxDist)
     return nil, math.huge, nil
 end
 
+-- [ระบบขึ้นรถ F]
 local function PressFToEnterCar(car)
     if not car or not car.Parent then return false end
     if not IsMyVehicle(car) then Notify("NEXUS HUB", "⚠️ ปฏิเสธการขึ้นรถ: คันนี้ไม่ใช่รถของเรา!", "Warning") return false end
@@ -707,6 +679,7 @@ local function SmoothWalkTo(targetPos, maxTimeout, shouldContinueCheck, stopDist
     return (root.Position - targetPos).Magnitude <= 10
 end
 
+-- [ระบบขับรถสำรอง]
 local function DriveCarTo(destination, shouldContinueCheck)
     local myCar = GetNearbyPlayerVehicle(80)
     local char = LocalPlayer.Character
@@ -731,9 +704,7 @@ local function DriveCarTo(destination, shouldContinueCheck)
     task.wait(0.1)
     pcall(function() game:GetService("ProximityPromptService").Enabled = false end)
     local currentPos = seat.Position
-    local startY = currentPos.Y
-    local initialGround = GetGroundLevel(currentPos.X, currentPos.Z, startY)
-    local naturalRideHeight = math.clamp(startY - initialGround, 2.3, 3.2)
+    local naturalRideHeight = math.clamp(currentPos.Y - GetGroundLevel(currentPos.X, currentPos.Z, currentPos.Y), 2.3, 3.2)
     local distTotal = (Vector2.new(destination.X, destination.Z) - Vector2.new(currentPos.X, currentPos.Z)).Magnitude
     if distTotal < 5 then return true end
     local traveled = 0
@@ -745,8 +716,7 @@ local function DriveCarTo(destination, shouldContinueCheck)
         if not hum.Sit or hum.SeatPart ~= seat then
             pcall(function() root.CFrame = seat.CFrame + Vector3.new(0, 0.8, 0) seat:Sit(hum) end)
         end
-        local currentSpeed = tonumber(VehicleDriveSpeed) or 200
-        currentSpeed = math.clamp(currentSpeed, 10, 200)
+        local currentSpeed = math.clamp(tonumber(VehicleDriveSpeed) or 150, 10, 200)
         local now = os.clock()
         local dt = math.min(now - lastTick, 0.1)
         lastTick = now
@@ -756,8 +726,7 @@ local function DriveCarTo(destination, shouldContinueCheck)
         local targetZ = currentPos.Z + (destination.Z - currentPos.Z) * alpha
         local estY = currentPos.Y + (destination.Y - currentPos.Y) * alpha
         local groundY = GetGroundLevel(targetX, targetZ, estY)
-        local naturalH = naturalRideHeight or 2.4
-        local surfaceY = groundY + naturalH
+        local surfaceY = groundY + naturalRideHeight
         if isAntiWaterFallEnabled then if surfaceY < 5.8 then surfaceY = 5.8 end end
         pcall(function() if hum then hum:SetStateEnabled(Enum.HumanoidStateType.Swimming, false) end end)
         local dir = Vector3.new(destination.X - targetX, 0, destination.Z - targetZ)
@@ -774,13 +743,11 @@ local function DriveCarTo(destination, shouldContinueCheck)
                 seat.AssemblyAngularVelocity = Vector3.zero
             end
         end)
-        if isVehiclePlatformEnabled then EnsureVehiclePlatform(surfaceY - naturalRideHeight, Vector3.new(targetX, surfaceY, targetZ)) end
         RunService.Heartbeat:Wait()
     end
     local endGround = GetGroundLevel(destination.X, destination.Z, destination.Y)
     local targetEndY = endGround + naturalRideHeight
     myCar:PivotTo(CFrame.new(destination.X, targetEndY, destination.Z))
-    if vehiclePlatformPart then pcall(function() vehiclePlatformPart:Destroy() vehiclePlatformPart = nil end) end
     task.wait(0.1)
     return true
 end
@@ -964,31 +931,6 @@ local function FindBlueSpawnButton(group)
     return nil, nil
 end
 
-local function FindPoundButton(group)
-    if not group then return nil, nil end
-    local sf = group:FindFirstChild("Main") and group.Main:FindFirstChild("Carlist") and group.Main.Carlist:FindFirstChild("ScrollingFrame")
-    if sf then
-        for _, carFrame in ipairs(sf:GetChildren()) do
-            if carFrame:IsA("GuiObject") then
-                local pdBtn = carFrame:FindFirstChild("Pound")
-                if pdBtn and pdBtn:IsA("GuiButton") and pdBtn.Visible then return pdBtn, carFrame.Name end
-            end
-        end
-    end
-    for _, desc in ipairs(group:GetDescendants()) do
-        if desc:IsA("GuiButton") and desc.Visible then
-            local isPoundName = desc.Name:lower():find("pound")
-            local hasPoundText = false
-            if desc:IsA("TextButton") and desc.Text:upper():find("POUND") then hasPoundText = true end
-            for _, ch in ipairs(desc:GetChildren()) do
-                if ch:IsA("TextLabel") and ch.Text:upper():find("POUND") then hasPoundText = true break end
-            end
-            if isPoundName or hasPoundText then return desc, desc.Parent and desc.Parent.Name or "Car" end
-        end
-    end
-    return nil, nil
-end
-
 local function SpawnCarAtBooth(boothPos)
     GrantAntiXGrace(40)
     local char = LocalPlayer.Character
@@ -1084,7 +1026,6 @@ local function SpawnCarAtBooth(boothPos)
     if finalCar then
         MY_SPAWNED_CAR = finalCar
         for cd = 2, 1, -1 do
-            Notify("NEXUS HUB", "⏳ รอเวลา " .. tostring(cd) .. " วินาทีก่อนออกเดินทาง...", "Info")
             task.wait(1.0)
         end
         CloseCarSpawnGui()
@@ -1094,28 +1035,6 @@ local function SpawnCarAtBooth(boothPos)
         return finalCar
     else CloseCarSpawnGui() end
     return finalCar
-end
-
-local function WarpToTownAndSpawnCar()
-    GrantAntiXGrace(45)
-    local char = LocalPlayer.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if not root then return nil end
-    if hum and hum.Sit then hum.Sit = false task.wait(0.15) end
-    Notify("NEXUS HUB", "🚀 วาปไปจุดเบิกรถในเมืองเพื่อเบิกรถใหม่...", "Info")
-    pcall(function() game:GetService("ProximityPromptService").Enabled = true end)
-    pcall(function() LocalPlayer:RequestStreamAroundAsync(TOWN_CAR_SPAWN, 45) end)
-    local groundY = GetGroundLevel(TOWN_CAR_SPAWN.X, TOWN_CAR_SPAWN.Z, TOWN_CAR_SPAWN.Y)
-    local townPos = Vector3.new(TOWN_CAR_SPAWN.X, groundY + 1.2, TOWN_CAR_SPAWN.Z)
-    root.CFrame = CFrame.new(townPos)
-    root.AssemblyLinearVelocity = Vector3.zero
-    root.AssemblyAngularVelocity = Vector3.zero
-    task.wait(0.4)
-    local car = SpawnCarAtBooth(TOWN_CAR_SPAWN)
-    if not car then car = GetNearbyPlayerVehicle(80) end
-    if car then EnsurePlayerSeatedInCar(car) CloseCarSpawnGui() end
-    return car
 end
 
 local function EnsureCarAvailable(boothPos)
@@ -1225,6 +1144,59 @@ local function TriggerFarmPromptDirectly(cropName)
     return false
 end
 
+-- [ฟังก์ชันวาป]: ซ่อนตัว -> วาป -> คืนค่าตัว 100%
+local function WarpToPosition(targetPos, shouldContinueCheck)
+    if shouldContinueCheck and not shouldContinueCheck() then return false end
+    
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root or not hum then return false end
+
+    GrantAntiXGrace(25)
+    if hum.Sit then hum.Sit = false task.wait(0.1) end
+
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+            part.Transparency = 1
+            part.LocalTransparencyModifier = 1
+        elseif part:IsA("Decal") or part:IsA("Texture") then
+            part.Transparency = 1
+        end
+    end
+
+    pcall(function() LocalPlayer:RequestStreamAroundAsync(targetPos, 30) end)
+    task.wait(0.4)
+
+    local groundY = GetGroundLevel(targetPos.X, targetPos.Z, targetPos.Y)
+    local finalPos = Vector3.new(targetPos.X, groundY + 5.0, targetPos.Z)
+    root.CFrame = CFrame.new(finalPos)
+    root.AssemblyLinearVelocity = Vector3.zero
+    root.AssemblyAngularVelocity = Vector3.zero
+
+    task.wait(1.5)
+
+    pcall(function()
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                part.Transparency = 0
+                part.LocalTransparencyModifier = 0
+            elseif part:IsA("Decal") or part:IsA("Texture") then
+                part.Transparency = 0
+            end
+        end
+        workspace.CurrentCamera.CameraSubject = hum
+        workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+    end)
+
+    task.wait(0.5)
+    return true
+end
+
+-- ==============================================================================
+-- [FARM FUNCTIONS]
+-- ==============================================================================
+
 local function HarvestSingleCrop(cropName, targetAmount, shouldContinueCheck)
     targetAmount = 60
     local curCount = GetPlayerInventoryCount(cropName)
@@ -1235,21 +1207,14 @@ local function HarvestSingleCrop(cropName, targetAmount, shouldContinueCheck)
     local root = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not root or not hum then return end
-    local myCar = GetNearbyPlayerVehicle(80)
-    if not myCar or not hum.Sit then
-        if myCar then EnsurePlayerSeatedInCar(myCar)
-        else myCar = EnsureCarAvailable(locData and locData.Booth) end
-    end
+
     local farmPos = locData.Farm
     local exactCenter = GetExactFarmPromptPosition(cropName) or farmPos
-    local boothPos = locData.Booth
-    local farmParkingPos = Vector3.new(exactCenter.X + 4.5, GetGroundLevel(exactCenter.X + 4.5, exactCenter.Z + 4.5, exactCenter.Y), exactCenter.Z + 4.5)
-    DriveCarTo(farmParkingPos, shouldContinueCheck)
-    task.wait(0.1)
-    if shouldContinueCheck and not shouldContinueCheck() then return end
-    task.wait(2.0)
-    ExitCarNaturally(myCar)
-    task.wait(0.3)
+
+    Notify("NEXUS HUB", "🚀 วาปไปจุดฟาร์ม " .. cropName .. "...", "Info")
+    WarpToPosition(exactCenter, shouldContinueCheck)
+    task.wait(0.5)
+
     local standPos, bestAngle = GetHumanLikeFarmStandingSpot(exactCenter)
     SmoothWalkTo(standPos, 6, shouldContinueCheck, 1.2)
     task.wait(0.2)
@@ -1262,14 +1227,17 @@ local function HarvestSingleCrop(cropName, targetAmount, shouldContinueCheck)
     task.wait(1.5)
     TriggerFarmPromptDirectly(cropName)
     task.wait(1.5)
+
     local afGui = PlayerGui:FindFirstChild("Auto Farm") or PlayerGui:FindFirstChild("AutoFarm")
     local isFarming = false
     if afGui and ((afGui:FindFirstChild("Group") and afGui.Group.Visible) or afGui.Enabled) then isFarming = true end
+
     if not isFarming and GetPlayerInventoryCount(cropName) == curCount then
         task.wait(0.5)
         TriggerFarmPromptDirectly(cropName)
         task.wait(1.5)
     end
+
     local farmTimeout = os.clock()
     while curCount < targetAmount do
         if isAutoEatAndDrinkEnabled and not isConsumingItem then
@@ -1300,12 +1268,6 @@ local function HarvestSingleCrop(cropName, targetAmount, shouldContinueCheck)
         task.wait(0.5)
     end
     task.wait(0.5)
-    local targetBooth = (locData and locData.Booth) or GetNearestCarBooth(root.Position)
-    if targetBooth then SmoothWalkTo(targetBooth, 45, shouldContinueCheck, 5.5) task.wait(0.3) end
-    local car = SpawnCarAtBooth(targetBooth)
-    if not car then car = EnsureCarAvailable(targetBooth) end
-    if car then EnsurePlayerSeatedInCar(car) end
-    task.wait(0.3)
 end
 
 local function GetCraft3Prompt()
@@ -1339,53 +1301,18 @@ local function CraftFoodAtStation(recipeName, shouldContinueCheck)
     local root = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not root or not hum then return end
-    local myCar = GetPlayerVehicle()
-    if not myCar or not hum.Sit then myCar = EnsureCarAvailable() end
-    if myCar then EnsurePlayerSeatedInCar(myCar) end
-    pcall(function()
-        local procGui = PlayerGui:FindFirstChild("Process")
-        if procGui and procGui:FindFirstChild("Group") then procGui.Group.Visible = false end
-        local ecoGui = PlayerGui:FindFirstChild("Economy")
-        if ecoGui and ecoGui:FindFirstChild("Group") then ecoGui.Group.Visible = false end
-    end)
+
+    Notify("NEXUS HUB", "🚀 วาปไปจุดคราฟอาหาร ("..recipeName..")...", "Info")
+    WarpToPosition(foodData.Crafting, shouldContinueCheck)
+    task.wait(0.5)
+
+    local exactCraftPos = foodData.Crafting
+    root.CFrame = CFrame.lookAt(exactCraftPos + Vector3.new(0, 3.0, 2.5), exactCraftPos)
+    task.wait(0.2)
+
     local cPrompt = GetCraft3Prompt()
-    local exactCraftPos = nil
-    if cPrompt then
-        local pParent = cPrompt.Parent
-        exactCraftPos = (pParent:IsA("BasePart") and pParent.Position) or (pParent:IsA("Attachment") and pParent.WorldPosition) or (pParent.Parent and pParent.Parent:IsA("BasePart") and pParent.Parent.Position)
-    end
-    if not exactCraftPos then
-        local craftSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Crafting")
-        local c3 = craftSys and craftSys:FindFirstChild("Craft_3")
-        if c3 then
-            local anyPart = c3:FindFirstChildWhichIsA("BasePart", true)
-            if anyPart then exactCraftPos = anyPart.Position end
-        end
-    end
-    exactCraftPos = exactCraftPos or foodData.Crafting
-    DriveCarTo(exactCraftPos + Vector3.new(0, 0, 5.0), shouldContinueCheck)
-    task.wait(0.2)
-    if shouldContinueCheck and not shouldContinueCheck() then return end
-    if hum.Sit then hum.Sit = false task.wait(0.2) end
-    local groundY = GetGroundLevel(exactCraftPos.X, exactCraftPos.Z, exactCraftPos.Y)
-    local standPos = Vector3.new(exactCraftPos.X, groundY + 3.0, exactCraftPos.Z + 2.5)
-    root.CFrame = CFrame.lookAt(standPos, exactCraftPos)
-    task.wait(0.15)
-    cPrompt = cPrompt or GetCraft3Prompt()
-    if cPrompt then TriggerPrompt(cPrompt) end
-    local cg = PlayerGui:WaitForChild("Crafting", 4)
-    local tWaitUI = os.clock()
-    while os.clock() - tWaitUI < 3.0 do
-        if cg and cg:FindFirstChild("Group") and cg.Group.Visible then break end
-        if cPrompt then TriggerPrompt(cPrompt) end
-        task.wait(0.3)
-    end
-    if not cg or not cg:FindFirstChild("Group") or not cg.Group.Visible then
-        pcall(function()
-            if cg and cg:FindFirstChild("Group") then cg.Group.Visible = true cg.Group.GroupTransparency = 0 end
-        end)
-    end
-    task.wait(0.2)
+    if cPrompt then TriggerPrompt(cPrompt) task.wait(1.0) end
+
     local function GetMaxCraftAmount()
         local b = GetPlayerInventoryCount("Bread")
         local c = GetPlayerInventoryCount("Catchup")
@@ -1403,12 +1330,16 @@ local function CraftFoodAtStation(recipeName, shouldContinueCheck)
         return 1
     end
     local toCraft = GetMaxCraftAmount()
-    if toCraft <= 0 then
-        pcall(function() if cg and cg:FindFirstChild("Group") then cg.Group.Visible = false end end)
-        local car = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
-        if car then EnsurePlayerSeatedInCar(car) end
-        return
+    if toCraft <= 0 then return end
+
+    local cg = PlayerGui:WaitForChild("Crafting", 4)
+    local tWaitUI = os.clock()
+    while os.clock() - tWaitUI < 3.0 do
+        if cg and cg:FindFirstChild("Group") and cg.Group.Visible then break end
+        if cPrompt then TriggerPrompt(cPrompt) end
+        task.wait(0.3)
     end
+
     local mainFrame = cg and cg:FindFirstChild("Group") and cg.Group:FindFirstChild("Main")
     if mainFrame then
         local scroller = mainFrame:FindFirstChild("Left_Tab") and mainFrame.Left_Tab:FindFirstChild("ScrollingFrame")
@@ -1427,6 +1358,7 @@ local function CraftFoodAtStation(recipeName, shouldContinueCheck)
         local craftBtn = mainFrame:FindFirstChild("Button") and mainFrame.Button:FindFirstChild("Craft")
         if craftBtn and craftBtn:IsA("GuiButton") then SafeClickGuiButton(craftBtn) end
     end
+
     pcall(function()
         local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if remCore then require(remCore).Fire("_crafting", "Request", "Craft_3", recipeName, toCraft, false)
@@ -1435,6 +1367,7 @@ local function CraftFoodAtStation(recipeName, shouldContinueCheck)
             if rem and rem:FindFirstChild("_crafting") then rem._crafting:FireServer("Request", "Craft_3", recipeName, toCraft, false) end
         end
     end)
+
     local tStart = os.clock()
     while (os.clock() - tStart < 10.0) do
         if shouldContinueCheck and not shouldContinueCheck() then break end
@@ -1456,47 +1389,32 @@ local function CraftFoodAtStation(recipeName, shouldContinueCheck)
         if cg and cg:FindFirstChild("Group") then cg.Group.Visible = false end
     end)
     task.wait(3.0)
-    local car = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
-    if car then EnsurePlayerSeatedInCar(car) end
-    task.wait(0.3)
 end
 
 local function ProcessBananaAtStation(shouldContinueCheck)
     local foodData = TYPER_LOCATIONS.Food
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if not root or not hum then return end
-    local myCar = GetPlayerVehicle()
-    if not myCar or not hum.Sit then myCar = EnsureCarAvailable() end
-    if myCar then EnsurePlayerSeatedInCar(myCar) end
-    local pBan = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Process") and workspace.Systems.Process:FindFirstChild("Banana")
-    local pPrompt = pBan and pBan:FindFirstChild("Prompt")
-    local bPos = nil
-    if pPrompt then bPos = (pPrompt:IsA("Attachment") and pPrompt.WorldPosition) or (pPrompt:IsA("BasePart") and pPrompt.Position) or (pPrompt:FindFirstChildWhichIsA("BasePart") and pPrompt:FindFirstChildWhichIsA("BasePart").Position) end
-    if not bPos and pBan then
-        local anyPart = pBan:FindFirstChildWhichIsA("BasePart", true)
-        if anyPart then bPos = anyPart.Position end
-    end
-    local exactBanPos = bPos or foodData.BananaProcess
-    DriveCarTo(exactBanPos + Vector3.new(0, 0, 5.0), shouldContinueCheck)
-    task.wait(0.1)
-    if shouldContinueCheck and not shouldContinueCheck() then return end
-    if hum.Sit then hum.Sit = false task.wait(0.1) end
-    local standPos = exactBanPos + Vector3.new(0, 0, 2.5)
-    local groundY = GetGroundLevel(standPos.X, standPos.Z, standPos.Y)
-    root.CFrame = CFrame.lookAt(Vector3.new(standPos.X, groundY + 3.0, standPos.Z), exactBanPos)
-    task.wait(0.1)
-    local procPrompt = pBan and pBan:FindFirstChildWhichIsA("ProximityPrompt", true)
-    if not procPrompt then procPrompt = FindPromptNear(root.Position, 15, nil) end
-    if procPrompt then TriggerPrompt(procPrompt) end
-    task.wait(0.3)
+    if not root then return end
+
+    Notify("NEXUS HUB", "🚀 วาปไปจุดแปรรูปกล้วย...", "Info")
+    WarpToPosition(foodData.BananaProcess, shouldContinueCheck)
+    task.wait(0.5)
+
+    local exactBanPos = foodData.BananaProcess
+    root.CFrame = CFrame.lookAt(exactBanPos + Vector3.new(0, 3.0, 2.5), exactBanPos)
+    task.wait(0.2)
+
+    local procPrompt = FindPromptNear(root.Position, 20)
+    if procPrompt then TriggerPrompt(procPrompt) task.wait(0.5) end
+
     local tProc = os.clock()
     while (GetPlayerInventoryCount("Banana") >= 2) and (os.clock() - tProc < 120) do
         if shouldContinueCheck and not shouldContinueCheck() then break end
         GrantAntiXGrace(15)
         task.wait(3.2)
     end
+
     pcall(function()
         local procGui = PlayerGui:FindFirstChild("Process")
         if procGui and procGui:FindFirstChild("Group") then
@@ -1506,46 +1424,30 @@ local function ProcessBananaAtStation(shouldContinueCheck)
         end
     end)
     task.wait(3.0)
-    local car = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
-    if car then EnsurePlayerSeatedInCar(car) end
-    task.wait(0.3)
 end
 
 local function ProcessOreAtStation(oreName, requiredMin, shouldContinueCheck)
+    local locData = TYPER_LOCATIONS[oreName]
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if not root or not hum then return end
-    local locData = TYPER_LOCATIONS[oreName]
-    local exactProcPos = (locData and locData.Process) or Vector3.new(-935.29, 6.93, 6786.66)
-    local myCar = GetPlayerVehicle()
-    if not myCar or not hum.Sit then myCar = EnsureCarAvailable() end
-    if myCar then EnsurePlayerSeatedInCar(myCar) end
-    DriveCarTo(exactProcPos + Vector3.new(0, 0, 5.0), shouldContinueCheck)
-    task.wait(0.1)
-    if shouldContinueCheck and not shouldContinueCheck() then return end
-    if hum.Sit then hum.Sit = false task.wait(0.1) end
-    local standPos = exactProcPos + Vector3.new(0, 0, 2.5)
-    local groundY = GetGroundLevel(standPos.X, standPos.Z, standPos.Y)
-    root.CFrame = CFrame.lookAt(Vector3.new(standPos.X, groundY + 3.0, standPos.Z), exactProcPos)
-    task.wait(0.1)
-    local pFolder = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Process") and workspace.Systems.Process:FindFirstChild(oreName)
-    local procPrompt = pFolder and pFolder:FindFirstChildWhichIsA("ProximityPrompt", true)
-    if not procPrompt then procPrompt = FindPromptNear(root.Position, 20, nil) end
-    if procPrompt then TriggerPrompt(procPrompt) end
-    task.wait(0.3)
+    if not root then return end
+
+    Notify("NEXUS HUB", "🚀 วาปไปจุดหลอมแร่ ("..oreName..")...", "Info")
+    WarpToPosition(locData.Process, shouldContinueCheck)
+    task.wait(0.5)
+
+    local exactProcPos = locData.Process
+    root.CFrame = CFrame.lookAt(exactProcPos + Vector3.new(0, 3.0, 2.5), exactProcPos)
+    task.wait(0.2)
+
+    local procPrompt = FindPromptNear(root.Position, 20)
+    if procPrompt then TriggerPrompt(procPrompt) task.wait(0.5) end
+
     pcall(function()
         local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if remCore then require(remCore).Fire("_process", "Start", oreName) end
     end)
-    pcall(function()
-        local procGui = PlayerGui:FindFirstChild("Process")
-        if procGui and procGui:FindFirstChild("Group") then
-            local mainFrame = procGui.Group:FindFirstChild("Main")
-            local actionBtn = mainFrame and mainFrame:FindFirstChild("ActionBtn")
-            if actionBtn and firesignal then firesignal(actionBtn.MouseButton1Click) end
-        end
-    end)
+
     requiredMin = requiredMin or (oreName == "Svibranium" and 4 or 2)
     local tProc = os.clock()
     while (GetPlayerInventoryCount(oreName) >= requiredMin) and (os.clock() - tProc < 180) do
@@ -1553,10 +1455,12 @@ local function ProcessOreAtStation(oreName, requiredMin, shouldContinueCheck)
         GrantAntiXGrace(15)
         task.wait(3.2)
     end
+
     pcall(function()
         local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if remCore then require(remCore).Fire("_process", "Stop") end
     end)
+
     pcall(function()
         local procGui = PlayerGui:FindFirstChild("Process")
         if procGui and procGui:FindFirstChild("Group") then
@@ -1566,104 +1470,44 @@ local function ProcessOreAtStation(oreName, requiredMin, shouldContinueCheck)
         end
     end)
     task.wait(3.0)
-    local car = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(Vector3.new(-876.62, 10.52, 6662.98))
-    if car then EnsurePlayerSeatedInCar(car) end
-    task.wait(0.3)
 end
 
-local VAULT_COORDS = Vector3.new(-1.98, 26.54, 8632.61)
 local function DepositAllToVault(shouldContinueCheck)
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if not root or not hum then return end
-    local myCar = GetPlayerVehicle()
-    if not myCar or not hum.Sit then EnsureCarAvailable() end
-    DriveCarTo(VAULT_COORDS + Vector3.new(0, 0, 8.0), shouldContinueCheck)
-    task.wait(0.2)
-    if shouldContinueCheck and not shouldContinueCheck() then return end
-    local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
-    if remCore then
-        local Remotes_m = require(remCore)
-        local pData = LocalPlayer:FindFirstChild("PlayerData")
-        if pData then
-            for attrName, _ in pairs(pData:GetAttributes()) do
-                local count = GetPlayerInventoryCount(attrName)
-                if count > 0 then
-                    pcall(function() Remotes_m.Invoke("_vault_tx", "Deposit", attrName, count) end)
-                    task.wait(0.15)
-                end
-            end
-        end
-    end
-    task.wait(0.3)
-    local carAfterVault = GetPlayerVehicle()
-    if not carAfterVault then carAfterVault = EnsureCarAvailable(TOWN_CAR_SPAWN) end
-    if carAfterVault then EnsurePlayerSeatedInCar(carAfterVault) end
-    task.wait(0.2)
-end
+    Notify("NEXUS HUB", "🚀 วาปไปตู้เซฟเพื่อเก็บของ...", "Info")
+    WarpToPosition(TYPER_LOCATIONS.Vault, shouldContinueCheck)
+    task.wait(0.5)
 
-local function GetEconomyMarketPosition()
-    local systems = workspace:FindFirstChild("Systems")
-    local containers = systems and {systems, workspace} or {workspace}
-    for _, container in ipairs(containers) do
-        for _, p in ipairs(container:GetDescendants()) do
-            if p:IsA("ProximityPrompt") and p.Enabled then
-                local act = (p.ActionText or ""):lower()
-                local obj = (p.ObjectText or ""):lower()
-                local pName = p.Name:lower()
-                local parentName = p.Parent and p.Parent.Name:lower() or ""
-                if act:find("econ") or obj:find("econ") or pName:find("econ") or parentName:find("econ") then
-                    local par = p.Parent
-                    local pPos = (par:IsA("Attachment") and par.WorldPosition) or (par:IsA("BasePart") and par.Position) or (par.Parent and par.Parent:IsA("BasePart") and par.Parent.Position)
-                    if pPos then return pPos, p end
+    pcall(function()
+        local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
+        if remCore then
+            local Remotes_m = require(remCore)
+            local pData = LocalPlayer:FindFirstChild("PlayerData")
+            if pData then
+                for attrName, _ in pairs(pData:GetAttributes()) do
+                    local count = GetPlayerInventoryCount(attrName)
+                    if count > 0 then
+                        pcall(function() Remotes_m.Invoke("_vault_tx", "Deposit", attrName, count) end)
+                        task.wait(0.15)
+                    end
                 end
             end
         end
-    end
-    local ecoModel = (workspace:FindFirstChild("Systems") and (workspace.Systems:FindFirstChild("Economy") or workspace.Systems:FindFirstChild("Ecconomy"))) or workspace:FindFirstChild("Economy") or workspace:FindFirstChild("Ecconomy")
-    if ecoModel then
-        local p = ecoModel:FindFirstChildWhichIsA("ProximityPrompt", true)
-        if p then
-            local par = p.Parent
-            local pPos = (par:IsA("Attachment") and par.WorldPosition) or (par:IsA("BasePart") and par.Position)
-            if pPos then return pPos, p end
-        end
-        local part = ecoModel:FindFirstChildWhichIsA("BasePart", true)
-        if part then return part.Position, nil end
-    end
-    local townX, townZ = -462.0, 5324.7
-    local townY = GetGroundLevel(townX, townZ, 17.5)
-    return Vector3.new(townX, townY + 1.2, townZ), nil
+    end)
+    task.wait(0.5)
 end
 
 local function SellAtEconomyMarket(shouldContinueCheck)
+    Notify("NEXUS HUB", "🚀 วาปไปตลาดขายของ...", "Info")
+    WarpToPosition(TYPER_LOCATIONS.Economy.Market, shouldContinueCheck)
+    task.wait(0.5)
+
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if not root or not hum then return end
-    local marketPos, directPrompt = GetEconomyMarketPosition()
-    marketPos = marketPos or TYPER_LOCATIONS.Economy.Market
-    local myCar = GetPlayerVehicle()
-    if not myCar or not (hum and hum.Sit) then
-        if not myCar then myCar = EnsureCarAvailable(TOWN_CAR_SPAWN) end
-        if myCar then EnsurePlayerSeatedInCar(myCar) end
-    end
-    if not myCar then myCar = EnsureCarAvailable(TOWN_CAR_SPAWN) end
-    if myCar then EnsurePlayerSeatedInCar(myCar) end
-    DriveCarTo(marketPos, shouldContinueCheck)
-    task.wait(0.3)
-    if shouldContinueCheck and not shouldContinueCheck() then return end
-    ExitCarNaturally(myCar)
-    local finalMarketPos, promptFound = GetEconomyMarketPosition()
-    local targetPos = finalMarketPos or marketPos
-    if root then
-        local gY = GetGroundLevel(targetPos.X, targetPos.Z, targetPos.Y)
-        root.CFrame = CFrame.lookAt(Vector3.new(targetPos.X + 2.5, gY + 2.2, targetPos.Z), targetPos)
-        root.AssemblyLinearVelocity = Vector3.zero
-    end
+    local targetPos = TYPER_LOCATIONS.Economy.Market
+    root.CFrame = CFrame.lookAt(Vector3.new(targetPos.X + 2.5, targetPos.Y + 2.2, targetPos.Z), targetPos)
     task.wait(0.2)
-    local econPrompt = promptFound or directPrompt or FindPromptNear(root.Position, 25, "econ") or FindPromptNear(targetPos, 25, nil)
+
+    local econPrompt = FindPromptNear(root.Position, 25, "econ") or FindPromptNear(targetPos, 25, nil)
     if econPrompt then
         local holdTime = math.max((econPrompt.HoldDuration or 0.1), 0.15) + 0.1
         pcall(function() econPrompt:InputHoldBegin() end)
@@ -1671,6 +1515,7 @@ local function SellAtEconomyMarket(shouldContinueCheck)
         pcall(function() econPrompt:InputHoldEnd() end)
     end
     task.wait(0.4)
+
     pcall(function()
         local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if remCore then
@@ -1682,6 +1527,7 @@ local function SellAtEconomyMarket(shouldContinueCheck)
             if rem and rem:FindFirstChild("_economy") then rem._economy:FireServer("SellAll") end
         end
     end)
+
     pcall(function()
         local eg = PlayerGui:FindFirstChild("Economy") or PlayerGui:FindFirstChild("Ecconomy")
         if eg and eg:FindFirstChild("Group") then
@@ -1706,16 +1552,9 @@ local function SellAtEconomyMarket(shouldContinueCheck)
         end
     end)
     task.wait(0.3)
-    if isAutoEatAndDrinkEnabled then
-        local h = GetPlayerHunger()
-        local e = GetPlayerEnergy()
-        if (h and h <= 75) or (e and e <= 75) then AutoEatThenDrink(95) end
-    end
-    local carAfterSell = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
-    if carAfterSell then PressFToEnterCar(carAfterSell) end
-    task.wait(0.2)
 end
 
+-- [FISHING]
 local FISHING_PARKING_POS = Vector3.new(-902.46, 3.41, 2964.32)
 local FISHING_SPOT = Vector3.new(-955.06, -2.65, 2907.18)
 local FISHING_LOOK_TARGET = FISHING_SPOT + Vector3.new(-0.25, 0, -0.97) * 20
@@ -1916,10 +1755,7 @@ local function StartAutoFishing()
     isAutoFishingEnabled = true
     fishingThread = task.spawn(function()
         Notify("NEXUS HUB", "🎣 เริ่มระบบตกปลาอัตโนมัติ...", "Success")
-        local isFirstRun = true
         while isAutoFishingEnabled do
-            if isFirstRun then WarpToTownAndSpawnCar() isFirstRun = false end
-            if not isAutoFishingEnabled then break end
             local char = LocalPlayer.Character
             local root = char and char:FindFirstChild("HumanoidRootPart")
             local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -1929,54 +1765,34 @@ local function StartAutoFishing()
                 local betta = (pData and pData:GetAttribute("Bettafish")) or 0
                 local angler = (pData and pData:GetAttribute("Anglerfish")) or 0
                 local fishCount = betta + angler
+
                 if bait <= 0 or fishCount >= 25 then
                     if IsFishingLineCast() then pcall(function() local r = char:FindFirstChild("FishingRod") if r then r:Activate() end end) task.wait(0.4) end
-                    local distToParking = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(FISHING_PARKING_POS.X, 0, FISHING_PARKING_POS.Z)).Magnitude
-                    if distToParking > 8.0 and distToParking < 150.0 then SmoothWalkTo(FISHING_PARKING_POS, 25, function() return isAutoFishingEnabled end, 4.0) task.wait(0.2) end
-                    local myCar = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
-                    if myCar then
-                        EnsurePlayerSeatedInCar(myCar)
-                        DriveCarTo(BAIT_SHOP_POS, function() return isAutoFishingEnabled end)
-                        ExitCarNaturally(myCar)
-                        task.wait(0.3)
-                    end
+                    WarpToPosition(BAIT_SHOP_POS, function() return isAutoFishingEnabled end)
+                    task.wait(0.5)
                     SellAllFishAtShop(BAIT_SHOP_POS)
                     task.wait(0.5)
                     BuyBaitMaxAtShop(BAIT_SHOP_POS)
                     task.wait(0.5)
-                    myCar = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
-                    if myCar then
-                        EnsurePlayerSeatedInCar(myCar)
-                        DriveCarTo(FISHING_PARKING_POS, function() return isAutoFishingEnabled end)
-                        ExitCarNaturally(myCar)
-                        task.wait(0.4)
-                    end
                 end
+
                 if not isAutoFishingEnabled then break end
-                local distToParking = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(FISHING_PARKING_POS.X, 0, FISHING_PARKING_POS.Z)).Magnitude
                 local distToFish = (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(FISHING_SPOT.X, 0, FISHING_SPOT.Z)).Magnitude
-                if distToParking > 15.0 and distToFish > 15.0 then
-                    local myCar = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
-                    if myCar then
-                        EnsurePlayerSeatedInCar(myCar)
-                        DriveCarTo(FISHING_PARKING_POS, function() return isAutoFishingEnabled end)
-                        ExitCarNaturally(myCar)
-                        task.wait(0.4)
-                    end
+                if distToFish > 3.0 then
+                    WarpToPosition(FISHING_SPOT, function() return isAutoFishingEnabled end)
+                    task.wait(0.5)
                 end
-                if not isAutoFishingEnabled then break end
-                char = LocalPlayer.Character
-                root = char and char:FindFirstChild("HumanoidRootPart")
-                distToFish = root and (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(FISHING_SPOT.X, 0, FISHING_SPOT.Z)).Magnitude or 9999
-                if distToFish > 3.0 then SmoothWalkTo(FISHING_SPOT, 25, function() return isAutoFishingEnabled end, 2.5) task.wait(0.2) end
+
                 if not isAutoFishingEnabled then break end
                 EnsureFishingPlatform(FISHING_SPOT)
                 GrantAntiXGrace(20)
+
                 if not IsFishingLineCast() and isAutoEatAndDrinkEnabled then
                     local h = GetPlayerHunger()
                     local e = GetPlayerEnergy()
                     if (h and h <= 75) or (e and e <= 75) then AutoEatThenDrink(95) end
                 end
+
                 local rod = char:FindFirstChild("FishingRod")
                 if not rod then
                     rod = EquipFishingRod()
@@ -1989,6 +1805,7 @@ local function StartAutoFishing()
                         rod = EquipFishingRod()
                     end
                 end
+
                 if rod and rod.Parent == char then
                     if not IsFishingLineCast() then
                         root.CFrame = CFrame.lookAt(FISHING_SPOT, FISHING_LOOK_TARGET)
@@ -2025,7 +1842,7 @@ local function StopAutoFishing()
     Notify("NEXUS HUB", "🛑 หยุดระบบตกปลาอัตโนมัติ", "Warning")
 end
 
--- ตัวแปรสำหรับควบคุมลูป
+-- ตัวแปรควบคุมลูป
 local CurrentFarmSessionId = 0
 local CurrentActiveFarmKey = nil
 local FarmToggleControls = {}
@@ -2068,234 +1885,210 @@ task.spawn(function()
     end
 end)
 
-
 -- ==============================================================================
--- [UI INTERFACE] สร้าง UI ตามแบบที่คุณกำหนด (MarvenRiz Hub) และผูกเข้ากับ Logic
+-- [UI INTERFACE] ครบทุกฟังก์ชัน ตามรูปภาพ 100%
 -- ==============================================================================
 
--- =====================================
--- 1. STATUS (สถานะ)
--- =====================================
 local Status = Window:Tab({ Title = "สถานะ", Icon = "chart-no-axes-combined" })
-local System = Status:Section({ Title = "SYSTEM INFO" })
-System:SystemInfo({
+Status:Section({ Title = "SYSTEM INFO" }):SystemInfo({
     Icons = { FPS = "gauge", Ping = "wifi", Executor = "terminal", Players = "users", Game = "gamepad-2", Time = "clock" }
 })
 
--- =====================================
--- 2. SETTINGS (ตั้งค่า)
--- =====================================
 local Settings = Window:Tab({ Title = "ตั้งค่า", Icon = "settings" })
 local SettingsSection = Settings:Section({ Title = "ตั้งค่าฟาร์ม", Icon = "sliders-horizontal" })
+SettingsSection:Toggle({ Title = "ออโต้ ขายไอเทม", Description = "ขายของอัตโนมัติเมื่อฟาร์มแล้วได้เพิ่มเติม", Default = true, Callback = function() end })
+SettingsSection:Toggle({ Title = "ออโต้ กินอาหาร", Description = "กินอาหารอัตโนมัติ หากค่าต่ำกว่า 20", Default = true, Callback = function(on) isAutoEatAndDrinkEnabled = on end })
 
-SettingsSection:Toggle({
-    Title = "ออโต้ ขายไอเทม",
-    Description = "ขายของอัตโนมัติเมื่อฟาร์มแล้วได้เพิ่มเติม",
-    Default = true, 
-    Callback = function(on) print("Auto Sell Item:", on) end
-})
-
-SettingsSection:Toggle({
-    Title = "ออโต้ กินอาหาร",
-    Description = "กินอาหารอัตโนมัติ หากค่าต่ำกว่า 20",
-    Default = true, 
-    Callback = function(on)
-        isAutoEatAndDrinkEnabled = on
-        isAutoEatEnabled = on
-        isAutoCoffeeEnabled = on
-    end
-})
-
-local SettingsVehicle = Settings:Section({ Title = "ความเร็วยานพาหนะ", Icon = "car" })
-SettingsVehicle:Slider({
-    Title = "ความเร็วขับรถ", Min = 10, Max = 200, Default = 150,
-    Callback = function(val) VehicleDriveSpeed = val end
-})
-
-SettingsVehicle:Toggle({
-    Title = "รถทะลุสิ่งกีดขวาง (NoClip)", Default = true,
-    Callback = function(on) isVehicleNoclipEnabled = on end
-})
-
--- =====================================
--- 3. FARM (ฟาร์ม) - จัดเรียงตามที่คุณต้องการ
--- =====================================
 local Farm = Window:Tab({ Title = "ฟาร์ม", Icon = "sprout" })
 
--- 3.1 ฟาร์มไอเท็ม
-local FarmItemSection = Farm:Section({ Title = "ฟาร์มไอเท็ม", Icon = "box" })
+-- 1. ลูปฟาร์ม 4 สาย (จาก ค่า.txt)
+local FarmLoopSection = Farm:Section({ Title = "ลูปฟาร์ม 4 สาย (ครบวงจร)", Icon = "repeat" })
 
-FarmItemSection:Dropdown({
-    Title = "เลือกฟาร์ม", 
-    Options = {"Bread", "Catchup", "Pig", "Mango", "Rice", "Tomato", "Banana", "Crab", "Coconut", "Corn", "Egg", "Milk", "Sugarcane"}, 
-    Default = "Bread",
-    Callback = function(option)
-        _G.SelectedFarmItem = option
+FarmToggleControls["Sandwich"] = FarmLoopSection:Toggle({
+    Title = "เปิดลูป แซนวิช", Default = false,
+    Callback = function(Value)
+        if Value then
+            local check = RequestFarmSession("Sandwich")
+            task.spawn(function()
+                while check() do
+                    if GetPlayerInventoryCount("Bread") < 60 then HarvestSingleCrop("Bread", 60, check) end
+                    if not check() then break end
+                    if GetPlayerInventoryCount("Catchup") < 60 then HarvestSingleCrop("Catchup", 60, check) end
+                    if not check() then break end
+                    if GetPlayerInventoryCount("Pig") < 60 then HarvestSingleCrop("Pig", 60, check) end
+                    if not check() then break end
+                    CraftFoodAtStation("Sandwish", check)
+                    if not check() then break end
+                    SellAtEconomyMarket(check)
+                    task.wait(1.0)
+                end
+            end)
+        else StopFarmSession("Sandwich") end
     end
 })
 
-FarmItemSection:Toggle({
+FarmToggleControls["MangoRice"] = FarmLoopSection:Toggle({
+    Title = "เปิดลูป ข้าวมันมะม่วง", Default = false,
+    Callback = function(Value)
+        if Value then
+            local check = RequestFarmSession("MangoRice")
+            task.spawn(function()
+                while check() do
+                    if GetPlayerInventoryCount("Mango") < 60 then HarvestSingleCrop("Mango", 60, check) end
+                    if not check() then break end
+                    if GetPlayerInventoryCount("Rice") < 60 then HarvestSingleCrop("Rice", 60, check) end
+                    if not check() then break end
+                    CraftFoodAtStation("MangoRice", check)
+                    if not check() then break end
+                    SellAtEconomyMarket(check)
+                    task.wait(1.0)
+                end
+            end)
+        else StopFarmSession("MangoRice") end
+    end
+})
+
+FarmToggleControls["BananaPack"] = FarmLoopSection:Toggle({
+    Title = "เปิดลูป กล้วยแพ็ค", Default = false,
+    Callback = function(Value)
+        if Value then
+            local check = RequestFarmSession("BananaPack")
+            task.spawn(function()
+                while check() do
+                    if GetPlayerInventoryCount("Banana") < 60 then HarvestSingleCrop("Banana", 60, check) end
+                    if not check() then break end
+                    ProcessBananaAtStation(check)
+                    if not check() then break end
+                    SellAtEconomyMarket(check)
+                    task.wait(1.0)
+                end
+            end)
+        else StopFarmSession("BananaPack") end
+    end
+})
+
+FarmToggleControls["KangSom"] = FarmLoopSection:Toggle({
+    Title = "เปิดลูป แกงส้ม", Default = false,
+    Callback = function(Value)
+        if Value then
+            local check = RequestFarmSession("KangSom")
+            task.spawn(function()
+                while check() do
+                    if GetPlayerInventoryCount("Tomato") < 60 then HarvestSingleCrop("Tomato", 60, check) end
+                    if not check() then break end
+                    if GetPlayerInventoryCount("Crab") < 60 then HarvestSingleCrop("Crab", 60, check) end
+                    if not check() then break end
+                    CraftFoodAtStation("KangSom", check)
+                    if not check() then break end
+                    SellAtEconomyMarket(check)
+                    task.wait(1.0)
+                end
+            end)
+        else StopFarmSession("KangSom") end
+    end
+})
+
+-- 2. ฟาร์มไอเท็ม (Dropdown)
+local FarmItemSection = Farm:Section({ Title = "ฟาร์มไอเท็ม", Icon = "box" })
+FarmItemSection:Dropdown({
+    Title = "เลือกฟาร์ม", 
+    Options = {"Bread", "Catchup", "Pig", "Mango", "Rice", "Tomato", "Banana", "Crab"}, 
+    Default = "Bread",
+    Callback = function(option) _G.SelectedFarmItem = option end
+})
+FarmToggleControls["IndividualMaster"] = FarmItemSection:Toggle({
     Title = "ออโต้ ฟาร์มไอเท็ม (ที่เลือก)", Default = false,
     Callback = function(on)
         if on then
-            local check = RequestFarmSession("FarmItemMaster")
+            local check = RequestFarmSession("IndividualMaster")
             task.spawn(function()
                 local crop = _G.SelectedFarmItem or "Bread"
-                local isFirstRun = true
                 while check() do
-                    if isFirstRun then WarpToTownAndSpawnCar() isFirstRun = false end
-                    if not check() then break end
                     HarvestSingleCrop(crop, 60, check)
                     if not check() then break end
                     SellAtEconomyMarket(check)
                     task.wait(1.0)
                 end
             end)
-        else
-            StopFarmSession("FarmItemMaster")
-        end
+        else StopFarmSession("IndividualMaster") end
     end
 })
 
--- 3.2 ฟาร์มไอเท็มโพ (ผลไม้)
+-- 3. ฟาร์มไอเท็มโพ (ผลไม้)
 local FarmFruitSection = Farm:Section({ Title = "ฟาร์มไอเท็มโพ (ผลไม้)", Icon = "apple" })
-
 FarmFruitSection:Dropdown({
     Title = "เลือกฟาร์ม", 
-    Options = {"Banana", "Mango", "Rice"}, 
+    Options = {"Banana", "MangoRice", "RiceKapaoMoo"}, 
     Default = "Banana",
-    Callback = function(option)
-        _G.SelectedFruitItem = option
-    end
+    Callback = function(option) _G.SelectedFruitItem = option end
 })
-
-FarmFruitSection:Toggle({
+FarmToggleControls["FruitProcess"] = FarmFruitSection:Toggle({
     Title = "ออโต้ ฟาร์มโพทย์", Default = false,
     Callback = function(on)
         if on then
             local check = RequestFarmSession("FruitProcess")
             task.spawn(function()
                 local crop = _G.SelectedFruitItem or "Banana"
-                local isFirstRun = true
                 while check() do
-                    if isFirstRun then WarpToTownAndSpawnCar() isFirstRun = false end
-                    if not check() then break end
-                    if GetPlayerInventoryCount(crop) < 60 then
-                        HarvestSingleCrop(crop, 60, check)
-                    end
-                    if not check() then break end
-                    
                     if crop == "Banana" then
+                        if GetPlayerInventoryCount("Banana") < 60 then HarvestSingleCrop("Banana", 60, check) end
+                        if not check() then break end
                         ProcessBananaAtStation(check)
-                    elseif crop == "Mango" then
+                    elseif crop == "MangoRice" then
+                        if GetPlayerInventoryCount("Mango") < 60 then HarvestSingleCrop("Mango", 60, check) end
+                        if GetPlayerInventoryCount("Rice") < 60 then HarvestSingleCrop("Rice", 60, check) end
+                        if not check() then break end
                         CraftFoodAtStation("MangoRice", check)
-                    elseif crop == "Rice" then
+                    elseif crop == "RiceKapaoMoo" then
+                        if GetPlayerInventoryCount("Pig") < 60 then HarvestSingleCrop("Pig", 60, check) end
+                        if GetPlayerInventoryCount("Rice") < 60 then HarvestSingleCrop("Rice", 60, check) end
+                        if not check() then break end
                         CraftFoodAtStation("RiceKapaoMoo", check)
                     end
-                    
                     if not check() then break end
                     SellAtEconomyMarket(check)
                     task.wait(1.0)
                 end
             end)
-        else
-            StopFarmSession("FruitProcess")
-        end
+        else StopFarmSession("FruitProcess") end
     end
 })
 
--- 3.3 ฟาร์มไอเท็มโพ (เหมือง)
+-- 4. ฟาร์มไอเท็มโพ (เหมือง)
 local FarmMineSection = Farm:Section({ Title = "ฟาร์มไอเท็มโพ (เหมือง)", Icon = "pickaxe" })
-
 FarmMineSection:Dropdown({
     Title = "เลือกฟาร์มเหมือง", 
     Options = {"Rock", "Svibranium"}, 
     Default = "Rock",
-    Callback = function(option)
-        _G.SelectedMineItem = option
-    end
+    Callback = function(option) _G.SelectedMineItem = option end
 })
-
-FarmMineSection:Toggle({
+FarmToggleControls["MineProcess"] = FarmMineSection:Toggle({
     Title = "ออโต้ ฟาร์มเหมืองโพ", Default = false,
     Callback = function(on)
         if on then
             local check = RequestFarmSession("MineProcess")
             task.spawn(function()
                 local ore = _G.SelectedMineItem or "Rock"
-                local isFirstRun = true
                 while check() do
-                    if isFirstRun then WarpToTownAndSpawnCar() isFirstRun = false end
+                    if GetPlayerInventoryCount(ore) < 60 then HarvestSingleCrop(ore, 60, check) end
                     if not check() then break end
-                    
-                    if GetPlayerInventoryCount(ore) < 60 then
-                        local myCar = GetPlayerVehicle() or EnsureCarAvailable(TOWN_CAR_SPAWN)
-                        if myCar then EnsurePlayerSeatedInCar(myCar) end
-                        if not check() then break end
-                        local char = LocalPlayer.Character
-                        local hum = char and char:FindFirstChildOfClass("Humanoid")
-                        if hum and hum.Sit then hum.Sit = false task.wait(0.3) end
-                        
-                        local pillarPos = ore == "Rock" and Vector3.new(-4138.03, 29.88, -1286.63) or Vector3.new(2723.67, 28.51, -236.17)
-                        SmoothWalkTo(pillarPos + Vector3.new(0, 0, 3.0), 6, check, 1.2)
-                        task.wait(0.5)
-                        TriggerFarmPromptDirectly(ore)
-                        task.wait(1.5)
-                        
-                        local farmTimeout = os.clock()
-                        while GetPlayerInventoryCount(ore) < 60 do
-                            if not check() then break end
-                            if os.clock() - farmTimeout > 300 then break end
-                            if isAutoEatAndDrinkEnabled and not isConsumingItem then
-                                local h = GetPlayerHunger()
-                                local e = GetPlayerEnergy()
-                                if (h and h <= 75) or (e and e <= 75) then
-                                    CancelGameFarm()
-                                    task.wait(0.3)
-                                    if h and h <= 75 then CheckAndAutoEat() end
-                                    if e and e <= 75 then CheckAndAutoDrinkCoffee() end
-                                    task.wait(0.5)
-                                    TriggerFarmPromptDirectly(ore)
-                                    task.wait(1.5)
-                                end
-                            end
-                            GrantAntiXGrace(15)
-                            task.wait(1.0)
-                        end
-                        CancelGameFarm()
-                        task.wait(0.5)
-                    end
-                    if not check() then break end
-                    
                     ProcessOreAtStation(ore, ore == "Svibranium" and 4 or 2, check)
                     if not check() then break end
                     DepositAllToVault(check)
                     if not check() then break end
-                    
-                    if ore == "Rock" then
-                        SellAtEconomyMarket(check)
-                    end
+                    if ore == "Rock" then SellAtEconomyMarket(check) end
                     task.wait(1.0)
                 end
             end)
-        else
-            StopFarmSession("MineProcess")
-        end
+        else StopFarmSession("MineProcess") end
     end
 })
 
--- 3.4 ระบบตกปลา
+-- 5. ระบบตกปลา
 local FarmFishingSection = Farm:Section({ Title = "ระบบตกปลา", Icon = "fish" })
-FarmFishingSection:Toggle({
-    Title = "เริ่มออโต้ตกปลา", Default = false,
-    Callback = function(on)
-        if on then StartAutoFishing() else StopAutoFishing() end
-    end
-})
+FarmFishingSection:Toggle({ Title = "เริ่มออโต้ตกปลา", Default = false, Callback = function(on) if on then StartAutoFishing() else StopAutoFishing() end end })
 
--- =====================================
--- 4. OTHERS (อื่นๆ)
--- =====================================
+-- 6. อื่นๆ
 local Others = Window:Tab({ Title = "อื่นๆ", Icon = "ellipsis" })
 local OthersSection = Others:Section({ Title = "Others", Icon = "more-horizontal" })
 
@@ -2305,67 +2098,31 @@ OthersSection:Button({
         CurrentFarmSessionId = CurrentFarmSessionId + 1
         CurrentActiveFarmKey = nil
         StopAutoFishing()
-        if Window and Window.Destroy then Window:Destroy() end
         if UI and UI.Destroy then UI:Destroy() end
-        pcall(function()
-            local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-            if hum then
-                hum:SetStateEnabled(Enum.HumanoidStateType.Swimming, true)
-                hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
-                hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
-                hum:SetStateEnabled(Enum.HumanoidStateType.Freefall, true)
-            end
-        end)
     end
 })
 
--- =====================================
--- 5. CONFIG
--- =====================================
+-- 7. Config
 local Config = Window:Tab({ Title = "Config", Icon = "folder-cog" })
 local ConfigSection = Config:Section({ Title = "CONFIG", Icon = "folder" })
+ConfigSection:Textbox({ Title = "New config name", Placeholder = "my_config", Default = "my_config", Callback = function() end })
+ConfigSection:Dropdown({ Title = "Config", Options = {"Select...", "default"}, Default = "Select...", Callback = function() end })
 
-ConfigSection:Textbox({
-    Title = "New config name", Placeholder = "my_config", Default = "my_config",
-    Callback = function(text) end
-})
-
-ConfigSection:Dropdown({
-    Title = "Config", Options = {"Select...", "default"}, Default = "Select...",
-    Callback = function(option) end
-})
-
-local success, err = pcall(function()
+local success = pcall(function()
     local ButtonRow1 = ConfigSection:Row() 
     ButtonRow1:Button({ Title = "Create", Callback = function() end })
     ButtonRow1:Button({ Title = "Save", Callback = function() end })
-
     local ButtonRow2 = ConfigSection:Row()
     ButtonRow2:Button({ Title = "Load", Callback = function() end })
     ButtonRow2:Button({ Title = "Delete", Callback = function() end })
 end)
-
 if not success then
     ConfigSection:Button({ Title = "Create", Callback = function() end })
     ConfigSection:Button({ Title = "Save", Callback = function() end })
     ConfigSection:Button({ Title = "Load", Callback = function() end })
     ConfigSection:Button({ Title = "Delete", Callback = function() end })
 end
+ConfigSection:Dropdown({ Title = "Auto-load config", Options = {"Select...", "default"}, Default = "Select...", Callback = function() end })
+ConfigSection:Toggle({ Title = "Auto-load on open", Description = "Load the selected config automatically when the script starts", Default = true, Callback = function() end })
 
-ConfigSection:Dropdown({
-    Title = "Auto-load config", Options = {"Select...", "default"}, Default = "Select...",
-    Callback = function(option) end
-})
-
-ConfigSection:Toggle({
-    Title = "Auto-load on open", Description = "Load the selected config automatically when the script starts",
-    Default = true, 
-    Callback = function(on) end
-})
-
--- NOTIFICATION
-UI:Notify({
-    Title = "Loaded",
-    Content = "MarvenRiz Hub is ready! (Full Logic Included 100%)",
-    Type = "Success"
-})
+UI:Notify({ Title = "Loaded", Content = "MarvenRiz Hub - Full Version (Warp System 100%)", Type = "Success" })
