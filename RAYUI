@@ -4,7 +4,6 @@ local UI = loadstring(game:HttpGet(
 
 UI:LoadLucide()
 
--- WINDOW
 local Window = UI:CreateWindow({
     Title = "MarvenRiz Hub",
     Logo = "rbxassetid://124905448303407",
@@ -16,7 +15,7 @@ local Window = UI:CreateWindow({
 Window:SidebarSection("MAIN")
 
 -- ==============================================================================
--- [LOGIC BACKEND] นำเข้าครบ 100% จาก ค่า.txt
+-- [LOGIC BACKEND]
 -- ==============================================================================
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -25,13 +24,12 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
--- [ตัวแปรเปิด/ปิดระบบป้องกัน]
+-- [ระบบป้องกัน]
 _G.AntiKickEnabled = true
 _G.AntiFlingEnabled = true
 _G.AntiVoidEnabled = true
 _G.AntiTeleportEnabled = true
 
--- [Anti-Kick & Anti-Ban Shield]
 pcall(function()
     local lp = Players.LocalPlayer
     if hookmetamethod then
@@ -39,81 +37,44 @@ pcall(function()
         oldNm = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
             local method = getnamecallmethod()
             local args = {...}
-            
             if _G.AntiKickEnabled then
-                if (method == "Kick" or method == "kick") and (self == lp or self == Players) then
-                    warn("🛡️ [NEXUS HUB ANTI-KICK] บล็อกคำสั่ง Kick: " .. tostring(args[1] or "Unknown"))
-                    return nil
-                end
+                if (method == "Kick" or method == "kick") and (self == lp or self == Players) then return nil end
                 if method == "FireServer" or method == "InvokeServer" then
                     for _, a in ipairs(args) do
                         local str = tostring(a):lower()
-                        if str:find("kick") or str:find("anticheat") or str:find("antifall") or str:find("teleport") or str:find("exploit") or str:find("speed") or str:find("fly") then
-                            return nil
-                        end
+                        if str:find("kick") or str:find("anticheat") or str:find("antifall") then return nil end
                     end
                 end
             end
             return oldNm(self, ...)
         end))
     end
-    if hookfunction and lp and lp.Kick then
-        hookfunction(lp.Kick, newcclosure(function(self, ...)
-            if _G.AntiKickEnabled then
-                warn("🛡️ [NEXUS HUB ANTI-KICK] บล็อก LocalPlayer:Kick")
-                return nil
-            end
-            return
-        end))
-    end
-    local function NeutralizeCharScripts(char)
-        if not char then return end
-        for _, desc in ipairs(char:GetDescendants()) do
-            if desc:IsA("Script") or desc:IsA("LocalScript") then
-                local name = desc.Name:lower()
-                if name:find("antifall") or name:find("fall") or name:find("ragdoll") or name:find("anti") then
-                    pcall(function() desc.Disabled = true desc:Destroy() end)
-                end
-            end
-        end
-    end
-    if lp.Character then NeutralizeCharScripts(lp.Character) end
-    lp.CharacterAdded:Connect(NeutralizeCharScripts)
 end)
 
--- [Anti-Fling & Anti-Void]
 local function SetupCharacterProtection(char)
     if not char then return end
     local root = char:WaitForChild("HumanoidRootPart", 5)
     local hum = char:WaitForChild("Humanoid", 5)
-    
     if root and hum then
         root:GetPropertyChangedSignal("AssemblyLinearVelocity"):Connect(function()
             if _G.AntiFlingEnabled then
                 local vel = root.AssemblyLinearVelocity
-                if vel.Magnitude > 150 then
-                    root.AssemblyLinearVelocity = Vector3.new(0, vel.Y, 0)
-                end
+                if vel.Magnitude > 150 then root.AssemblyLinearVelocity = Vector3.new(0, vel.Y, 0) end
             end
         end)
-
         RunService.Heartbeat:Connect(function()
             if _G.AntiVoidEnabled and root.Parent then
                 if root.Position.Y < -50 then
-                    local safeSpawn = CFrame.new(-311.83, 17.5, 5490.39)
-                    root.CFrame = safeSpawn
+                    root.CFrame = CFrame.new(-311.83, 17.5, 5490.39)
                     root.AssemblyLinearVelocity = Vector3.zero
-                    warn("🛡️ [ANTI-VOID] ตรวจพบการตกแมพ! วาปกลับจุดเกิด...")
                 end
             end
         end)
     end
 end
-
 if LocalPlayer.Character then SetupCharacterProtection(LocalPlayer.Character) end
 LocalPlayer.CharacterAdded:Connect(SetupCharacterProtection)
 
--- [Anti-Teleport]
 local lastValidPosition = nil
 task.spawn(function()
     while task.wait(0.5) do
@@ -121,33 +82,24 @@ task.spawn(function()
             local char = LocalPlayer.Character
             local root = char and char:FindFirstChild("HumanoidRootPart")
             local hum = char and char:FindFirstChildOfClass("Humanoid")
-            
             if root and hum and hum.Health > 0 then
                 if not hum.Sit and not root:GetAttribute("TeleportGrace") then
                     local currentPos = root.Position
                     if lastValidPosition then
                         local distance = (currentPos - lastValidPosition).Magnitude
-                        if distance > 50 then
-                            root.CFrame = CFrame.new(lastValidPosition)
-                            root.AssemblyLinearVelocity = Vector3.zero
-                            warn("🛡️ [ANTI-TELEPORT] ตรวจพบการวาร์ปผิดปกติ! ดึงตัวกลับ...")
-                        else
-                            lastValidPosition = currentPos
-                        end
-                    else
-                        lastValidPosition = currentPos
-                    end
-                else
-                    lastValidPosition = root.Position
-                end
+                        -- อนุญาตให้ลอยได้ไกลสุด 250 สตั๊ดใน 0.5 วิ (เพื่อไม่ให้ดึงกลับระหว่างลอย)
+                        if distance > 250 then root.CFrame = CFrame.new(lastValidPosition) root.AssemblyLinearVelocity = Vector3.zero
+                        else lastValidPosition = currentPos end
+                    else lastValidPosition = currentPos end
+                else lastValidPosition = root.Position end
             end
         end
     end
 end)
 
-
+local TOWN_CAR_SPAWN = Vector3.new(-311.83, 17.5, 5490.39)
 local isAutoEatAndDrinkEnabled = true
-local VehicleDriveSpeed = 150
+local MY_SPAWNED_CAR = nil
 
 local function Notify(Title, Content, Type)
     pcall(function() UI:Notify({ Title = Title, Content = Content, Type = Type or "Info", Duration = 3.0 }) end)
@@ -175,11 +127,17 @@ end
 
 local function GetGroundLevel(x, z, fallbackY)
     fallbackY = fallbackY or 20
-    local rayOrigin = Vector3.new(x, fallbackY + 30, z)
+    local startY = fallbackY + 14
+    local rayOrigin = Vector3.new(x, startY, z)
+    local rayDir = Vector3.new(0, -70, 0)
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = { LocalPlayer.Character }
-    local result = workspace:Raycast(rayOrigin, Vector3.new(0, -100, 0), params)
+    params.IgnoreWater = false
+    local filterList = {}
+    if LocalPlayer.Character then table.insert(filterList, LocalPlayer.Character) end
+    if MY_SPAWNED_CAR then table.insert(filterList, MY_SPAWNED_CAR) end
+    params.FilterDescendantsInstances = filterList
+    local result = workspace:Raycast(rayOrigin, rayDir, params)
     if result and result.Position then
         if result.Material == Enum.Material.Water then return math.max(result.Position.Y, 4.0) end
         return result.Position.Y
@@ -299,18 +257,8 @@ local function AutoEatThenDrink(targetPercent)
         if (hunger and hunger >= targetPercent) and (brain and brain >= targetPercent) then break end
         local food = FindAvailableFood()
         local drink = FindAvailableCoffee()
-        if food and (hunger == nil or hunger < targetPercent) then
-            Notify("NEXUS HUB", "🍣 กำลังกิน " .. tostring(food) .. "...", "Info")
-            ConsumeItemSafely(food, true, 5.5)
-            task.wait(0.4)
-            hunger = GetPlayerHunger()
-        end
-        if drink and (brain == nil or brain < targetPercent) then
-            Notify("NEXUS HUB", "☕ กำลังดื่ม " .. tostring(drink) .. "...", "Info")
-            ConsumeItemSafely(drink, false, 5.5)
-            task.wait(0.4)
-            brain = GetPlayerEnergy()
-        end
+        if food and (hunger == nil or hunger < targetPercent) then ConsumeItemSafely(food, true, 5.5) task.wait(0.4) hunger = GetPlayerHunger() end
+        if drink and (brain == nil or brain < targetPercent) then ConsumeItemSafely(drink, false, 5.5) task.wait(0.4) brain = GetPlayerEnergy() end
         if (not food or (hunger and hunger >= targetPercent)) and (not drink or (brain and brain >= targetPercent)) then break end
         loopCount = loopCount + 1
         task.wait(0.3)
@@ -321,7 +269,6 @@ local function CheckAndAutoEat()
     if not isAutoEatAndDrinkEnabled or isConsumingItem then return end
     if (GetPlayerHunger() <= 80) or (GetPlayerEnergy() <= 80) then AutoEatThenDrink(95) end
 end
-
 local function CheckAndAutoDrinkCoffee() CheckAndAutoEat() end
 
 local function CancelGameFarm()
@@ -357,118 +304,18 @@ local TYPER_LOCATIONS = {
     Vault = Vector3.new(-1.98, 26.54, 8632.61)
 }
 
-local function FindPromptNear(centerPos, maxDist, matchKeyword)
-    maxDist = maxDist or 25
-    local closest, closestDist = nil, maxDist
-    local systems = workspace:FindFirstChild("Systems")
-    local containers = systems and {systems} or {workspace}
-    for _, container in ipairs(containers) do
-        for _, prompt in ipairs(container:GetDescendants()) do
-            if prompt:IsA("ProximityPrompt") and prompt.Enabled then
-                local pPart = prompt.Parent
-                local pPos = pPart and (pPart:IsA("BasePart") and pPart.Position or (pPart:IsA("Attachment") and pPart.WorldPosition))
-                if pPos then
-                    local d = (pPos - centerPos).Magnitude
-                    if d <= closestDist then
-                        if not matchKeyword or string.find(string.lower(prompt.ActionText or ""), string.lower(matchKeyword)) or string.find(string.lower(prompt.ObjectText or ""), string.lower(matchKeyword)) then
-                            closest = prompt
-                            closestDist = d
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return closest
-end
-
-local function ClickGuiButton(btn)
-    if not btn then return end
-    pcall(function() if firesignal then firesignal(btn.MouseButton1Click) firesignal(btn.Activated) end end)
-    pcall(function()
-        if VirtualInputManager and btn.AbsolutePosition then
-            local pos = btn.AbsolutePosition + (btn.AbsoluteSize / 2)
-            VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 0)
-            task.wait(0.05)
-            VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 0)
-        end
-    end)
-end
-
-local function SafeClickGuiButton(btn)
-    if not btn or not btn:IsA("GuiButton") then return end
-    pcall(function()
-        if firesignal then
-            pcall(function() firesignal(btn.MouseButton1Click) end)
-            pcall(function() firesignal(btn.Activated) end)
-        end
-    end)
-end
-
-local function TriggerPrompt(prompt)
-    if not prompt or not prompt.Enabled then return end
-    pcall(function()
-        if fireproximityprompt then pcall(function() fireproximityprompt(prompt) end) end
-        pcall(function()
-            prompt:InputHoldBegin()
-            task.wait(prompt.HoldDuration > 0 and (prompt.HoldDuration + 0.05) or 0.1)
-            prompt:InputHoldEnd()
-        end)
-    end)
-end
-
-local function TriggerFarmPromptDirectly(cropName)
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if not root then return false end
-    local farmSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Farm")
-    local farmFolder = farmSys and farmSys:FindFirstChild(cropName)
-    local targetPrompt = nil
-    if farmFolder then
-        for _, desc in ipairs(farmFolder:GetDescendants()) do
-            if desc:IsA("ProximityPrompt") and desc.Enabled then
-                local pName = desc.Parent and desc.Parent.Name:lower() or ""
-                local action = (desc.ActionText or ""):lower()
-                local obj = (desc.ObjectText or ""):lower()
-                if not pName:find("spawn") and not action:find("spawn") and not action:find("car") and not obj:find("car") then targetPrompt = desc break end
-            end
-        end
-    end
-    if not targetPrompt and farmSys then
-        for _, prompt in ipairs(farmSys:GetDescendants()) do
-            if prompt:IsA("ProximityPrompt") and prompt.Enabled then
-                local prParent = prompt.Parent
-                local pPos = (prParent:IsA("Attachment") and prParent.WorldPosition) or (prParent:IsA("BasePart") and prParent.Position)
-                if pPos and (pPos - root.Position).Magnitude <= 20 then
-                    local action = (prompt.ActionText or ""):lower()
-                    local obj = (prompt.ObjectText or ""):lower()
-                    if not action:find("spawn") and not action:find("car") and not obj:find("car") then targetPrompt = prompt break end
-                end
-            end
-        end
-    end
-    if targetPrompt then
-        local holdTime = math.max((targetPrompt.HoldDuration or 0.1), 0.15) + 0.12
-        pcall(function() targetPrompt:InputHoldBegin() end)
-        task.wait(holdTime)
-        pcall(function() targetPrompt:InputHoldEnd() end)
-        return true
-    end
-    return false
-end
-
--- [SYSTEM WARP]: ซ่อนตัว -> วาป -> คืนค่าตัว 100%
-local function WarpToPosition(targetPos, shouldContinueCheck)
+-- [ระบบลอยหายตัว (Invisible FlyTo)]
+local function FlyToPosition(targetPos, shouldContinueCheck)
     if shouldContinueCheck and not shouldContinueCheck() then return false end
-    
     local char = LocalPlayer.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
     local root = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not root or not hum then return false end
 
     GrantAntiXGrace(25)
     if hum.Sit then hum.Sit = false task.wait(0.1) end
 
+    -- ซ่อนตัวก่อนลอย
     pcall(function()
         for _, part in ipairs(char:GetDescendants()) do
             if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
@@ -481,16 +328,33 @@ local function WarpToPosition(targetPos, shouldContinueCheck)
     end)
 
     pcall(function() LocalPlayer:RequestStreamAroundAsync(targetPos, 30) end)
-    task.wait(0.3)
 
     local groundY = GetGroundLevel(targetPos.X, targetPos.Z, targetPos.Y)
-    local finalPos = Vector3.new(targetPos.X, groundY + 5.0, targetPos.Z)
-    root.CFrame = CFrame.new(finalPos)
+    local finalPos = Vector3.new(targetPos.X, groundY + 3.0, targetPos.Z)
+
+    local tweenService = game:GetService("TweenService")
+    local distance = (finalPos - root.Position).Magnitude
+    -- เวลาลอย (ขั้นต่ำ 1.5 วิ สูงสุด 4 วิ)
+    local duration = math.clamp(distance / 120, 1.5, 4.0) 
+
+    local graceConn = RunService.Heartbeat:Connect(function()
+        if root then root:SetAttribute("TeleportGrace", os.clock() + 5) end
+    end)
+
+    local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
+    local tween = tweenService:Create(root, tweenInfo, { CFrame = CFrame.new(finalPos) })
+    
+    tween:Play()
+    tween:Completed:Wait()
+    
+    if graceConn then graceConn:Disconnect() end
+    
     root.AssemblyLinearVelocity = Vector3.zero
     root.AssemblyAngularVelocity = Vector3.zero
+    
+    task.wait(0.5) -- รอให้ตัวแตะพื้นก่อน
 
-    task.wait(1.2)
-
+    -- คืนค่าตัวให้โชว์ปกติ
     pcall(function()
         for _, part in ipairs(char:GetDescendants()) do
             if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
@@ -515,20 +379,38 @@ local function HarvestSingleCrop(cropName, targetAmount, shouldContinueCheck)
     local locData = TYPER_LOCATIONS[cropName]
     if not locData or not locData.Farm then return end
     
-    local exactCenter = locData.Farm
-    Notify("NEXUS HUB", "🚀 วาปไปจุดฟาร์ม " .. cropName .. "...", "Info")
-    WarpToPosition(exactCenter, shouldContinueCheck)
-    task.wait(0.5)
+    Notify("NEXUS HUB", "🕊️ ลอยไปจุดฟาร์ม " .. cropName .. "...", "Info")
+    FlyToPosition(locData.Farm, shouldContinueCheck)
+    
+    -- [สำคัญ]: เว้นจังหวะรอ 2 วินาที เหมือนตอนขับรถมาถึงฟาร์ม
+    Notify("NEXUS HUB", "🚗 ถึงฟาร์มแล้ว! รอ 2 วินาทีเพื่อเตรียมกดฟาร์ม...", "Info")
+    task.wait(2.0)
     
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if root then
-        root.CFrame = CFrame.lookAt(exactCenter + Vector3.new(0, 2, 3), exactCenter)
+        -- จัดท่ายืนหันหน้าเข้าหาเสาฟาร์ม
+        root.CFrame = CFrame.lookAt(locData.Farm + Vector3.new(0, 2, 3), locData.Farm)
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
     end
     task.wait(0.5)
     
-    TriggerFarmPromptDirectly(cropName)
-    task.wait(1.5)
+    -- กด Prompt ฟาร์ม
+    local farmSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Farm")
+    local farmFolder = farmSys and farmSys:FindFirstChild(cropName)
+    local promptTriggered = false
+    if farmFolder then
+        for _, desc in ipairs(farmFolder:GetDescendants()) do
+            if desc:IsA("ProximityPrompt") and desc.Enabled then
+                pcall(function() desc:InputHoldBegin() task.wait(0.15) desc:InputHoldEnd() end)
+                promptTriggered = true
+                break
+            end
+        end
+    end
+    
+    task.wait(1.5) -- รอให้ UI ฟาร์มขึ้น
     
     local farmTimeout = os.clock()
     while GetPlayerInventoryCount(cropName) < targetAmount do
@@ -541,7 +423,9 @@ local function HarvestSingleCrop(cropName, targetAmount, shouldContinueCheck)
                 if h and h <= 75 then CheckAndAutoEat() end
                 if e and e <= 75 then CheckAndAutoDrinkCoffee() end
                 task.wait(0.3)
-                TriggerFarmPromptDirectly(cropName)
+                if promptTriggered then
+                    pcall(function() desc:InputHoldBegin() task.wait(0.15) desc:InputHoldEnd() end)
+                end
                 task.wait(1.2)
                 farmTimeout = os.clock()
             end
@@ -550,7 +434,9 @@ local function HarvestSingleCrop(cropName, targetAmount, shouldContinueCheck)
         if os.clock() - farmTimeout > 180 then break end
         GrantAntiXGrace(15)
         if (os.clock() - farmTimeout > 15) and GetPlayerInventoryCount(cropName) == curCount then
-            TriggerFarmPromptDirectly(cropName)
+            if promptTriggered then
+                pcall(function() desc:InputHoldBegin() task.wait(0.15) desc:InputHoldEnd() end)
+            end
             farmTimeout = os.clock()
         end
         task.wait(0.5)
@@ -562,15 +448,13 @@ local function SellAtEconomyMarket(shouldContinueCheck)
     local marketPos = TYPER_LOCATIONS.Economy.Market
     if not marketPos then return end
     
-    Notify("NEXUS HUB", "🚀 วาปไปตลาดขายของ...", "Info")
-    WarpToPosition(marketPos, shouldContinueCheck)
+    Notify("NEXUS HUB", "🕊️ ลอยไปตลาดขายของ...", "Info")
+    FlyToPosition(marketPos, shouldContinueCheck)
     task.wait(0.5)
     
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
-    if root then
-        root.CFrame = CFrame.lookAt(marketPos + Vector3.new(2.5, 2.2, 0), marketPos)
-    end
+    if root then root.CFrame = CFrame.lookAt(marketPos + Vector3.new(2.5, 2.2, 0), marketPos) end
     task.wait(0.3)
     
     local econPrompt = FindPromptNear(root.Position, 30, "econ") or FindPromptNear(marketPos, 30, nil)
@@ -601,8 +485,8 @@ end
 
 local function CraftFoodAtStation(recipeName, shouldContinueCheck)
     local pos = TYPER_LOCATIONS.Food.Crafting
-    Notify("NEXUS HUB", "🚀 วาปไปจุดคราฟ ("..recipeName..")...", "Info")
-    WarpToPosition(pos, shouldContinueCheck)
+    Notify("NEXUS HUB", "🕊️ ลอยไปจุดคราฟ ("..recipeName..")...", "Info")
+    FlyToPosition(pos, shouldContinueCheck)
     task.wait(0.5)
     
     local char = LocalPlayer.Character
@@ -648,8 +532,8 @@ end
 
 local function ProcessOreAtStation(oreName, requiredMin, shouldContinueCheck)
     local procPos = TYPER_LOCATIONS[oreName].Process
-    Notify("NEXUS HUB", "🚀 วาปไปหลอมแร่ ("..oreName..")...", "Info")
-    WarpToPosition(procPos, shouldContinueCheck)
+    Notify("NEXUS HUB", "🕊️ ลอยไปหลอมแร่ ("..oreName..")...", "Info")
+    FlyToPosition(procPos, shouldContinueCheck)
     task.wait(0.5)
     
     local char = LocalPlayer.Character
@@ -690,7 +574,7 @@ end
 
 local function ProcessBananaAtStation(shouldContinueCheck)
     local pos = TYPER_LOCATIONS.Food.BananaProcess
-    WarpToPosition(pos, shouldContinueCheck)
+    FlyToPosition(pos, shouldContinueCheck)
     task.wait(0.5)
     
     local char = LocalPlayer.Character
@@ -720,7 +604,7 @@ local function ProcessBananaAtStation(shouldContinueCheck)
 end
 
 local function DepositAllToVault(shouldContinueCheck)
-    WarpToPosition(TYPER_LOCATIONS.Vault, shouldContinueCheck)
+    FlyToPosition(TYPER_LOCATIONS.Vault, shouldContinueCheck)
     task.wait(0.5)
     
     pcall(function()
@@ -774,7 +658,6 @@ local function StopFarmSession(farmKey)
     end
 end
 
--- ระบบรันพื้นหลัง Auto Eat
 task.spawn(function()
     while true do
         task.wait(3.0)
@@ -800,7 +683,6 @@ local SettingsSection = Settings:Section({ Title = "ตั้งค่าฟา�
 SettingsSection:Toggle({ Title = "ออโต้ ขายไอเทม", Description = "ขายของอัตโนมัติเมื่อฟาร์มแล้วได้เพิ่มเติม", Default = true, Callback = function() end })
 SettingsSection:Toggle({ Title = "ออโต้ กินอาหาร", Description = "กินอาหารอัตโนมัติ หากค่าต่ำกว่า 20", Default = true, Callback = function(on) isAutoEatAndDrinkEnabled = on end })
 
--- [เพิ่มแท็บระบบป้องกัน]
 local ProtectionTab = Window:Tab({ Title = "ระบบป้องกัน", Icon = "shield" })
 local ProtectionSection = ProtectionTab:Section({ Title = "ระบบป้องกันตัวละคร", Icon = "shield-check" })
 ProtectionSection:Toggle({ Title = "Anti-Kick (กันโดนเตะ)", Description = "บล็อกคำสั่ง Kick จากเกมและ Remote ที่ผิดปกติ", Default = true, Callback = function(on) _G.AntiKickEnabled = on end })
@@ -1017,4 +899,4 @@ if not success then
     ConfigSection:Button({ Title = "Delete", Callback = function() end })
 end
 
-UI:Notify({ Title = "Loaded", Content = "MarvenRiz Hub - ระบบวาป 100% + ระบบป้องกัน", Type = "Success" })
+UI:Notify({ Title = "Loaded", Content = "MarvenRiz Hub - ระบบลอยหายตัว + ดีเลย์กดฟาร์ม", Type = "Success" })
