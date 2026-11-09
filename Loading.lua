@@ -54,16 +54,16 @@ local function StartLoading()
     Background.BackgroundTransparency = 1
     Background.Parent = Gui
 
-    -- กล่องการ์ด
+    -- กล่องการ์ด (ขนาดใหม่)
     Card = Instance.new("Frame")
     Card.AnchorPoint = Vector2.new(0.5, 0.5)
     Card.Position = UDim2.fromScale(0.5, 0.5)
-    Card.Size = UDim2.new(0.82, 0, 0, 112)
+    Card.Size = UDim2.new(0, 300, 0, 76)
     Card.BackgroundColor3 = Color3.fromRGB(28, 30, 36)
     Card.BackgroundTransparency = 0.12
     Card.BorderSizePixel = 0
     Card.Parent = Background
-    Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 16)
+    Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 14)
 
     local Stroke = Instance.new("UIStroke")
     Stroke.Color = Color3.fromRGB(95, 105, 125)
@@ -74,41 +74,41 @@ local function StartLoading()
     -- โลโก้
     local Logo = Instance.new("ImageLabel")
     Logo.BackgroundTransparency = 1
-    Logo.Size = UDim2.fromOffset(62, 62)
-    Logo.Position = UDim2.new(0, 15, 0.5, -31)
+    Logo.Size = UDim2.fromOffset(46, 46)
+    Logo.Position = UDim2.new(0, 12, 0.5, -26)
     Logo.Image = "rbxassetid://124905448303407"
     Logo.Parent = Card
 
     -- ชื่อ
     local Title = Instance.new("TextLabel")
     Title.BackgroundTransparency = 1
-    Title.Position = UDim2.new(0, 88, 0, 22)
-    Title.Size = UDim2.new(1, -105, 0, 25)
+    Title.Position = UDim2.new(0, 68, 0, 13)
+    Title.Size = UDim2.new(1, -120, 0, 20)
     Title.Font = Enum.Font.GothamBold
     Title.Text = "MarvenRiz Hub"
     Title.TextColor3 = Color3.fromRGB(245, 247, 255)
-    Title.TextSize = 17
+    Title.TextSize = 15
     Title.TextXAlignment = Enum.TextXAlignment.Left
     Title.Parent = Card
 
     -- สถานะ
     Status = Instance.new("TextLabel")
     Status.BackgroundTransparency = 1
-    Status.Position = UDim2.new(0, 88, 0, 49)
-    Status.Size = UDim2.new(1, -105, 0, 20)
+    Status.Position = UDim2.new(0, 68, 0, 35)
+    Status.Size = UDim2.new(1, -82, 0, 16)
     Status.Font = Enum.Font.Gotham
     Status.Text = "กำลังเริ่มต้น..."
     Status.TextColor3 = Color3.fromRGB(170, 178, 195)
-    Status.TextSize = 12
+    Status.TextSize = 11
     Status.TextXAlignment = Enum.TextXAlignment.Left
     Status.Parent = Card
 
-    -- เปอร์เซ็นต์
+    -- เปอร์เซ็นต์ (มุมขวาบน)
     PercentLabel = Instance.new("TextLabel")
     PercentLabel.BackgroundTransparency = 1
     PercentLabel.AnchorPoint = Vector2.new(1, 0)
-    PercentLabel.Position = UDim2.new(1, -14, 0, 75)
-    PercentLabel.Size = UDim2.fromOffset(45, 17)
+    PercentLabel.Position = UDim2.new(1, -14, 0, 14)
+    PercentLabel.Size = UDim2.fromOffset(40, 16)
     PercentLabel.Font = Enum.Font.GothamMedium
     PercentLabel.Text = "0%"
     PercentLabel.TextColor3 = Color3.fromRGB(200, 210, 230)
@@ -118,8 +118,8 @@ local function StartLoading()
 
     -- แถบพื้นหลังโหลด
     local BarBG = Instance.new("Frame")
-    BarBG.Position = UDim2.new(0, 14, 1, -12)
-    BarBG.Size = UDim2.new(1, -28, 0, 4)
+    BarBG.Position = UDim2.new(0, 14, 1, -13)
+    BarBG.Size = UDim2.new(1, -28, 0, 3)
     BarBG.BackgroundColor3 = Color3.fromRGB(65, 70, 82)
     BarBG.BorderSizePixel = 0
     BarBG.Parent = Card
@@ -204,7 +204,7 @@ task.wait(0.8)
 -- 3. เสร็จสิ้น
 FinishLoading()
 
--- (ทางเลือก) ถ้าคุณมีโมเดลหรือรูปภาพที่ต้องโหลดจริงๆ 
+-- (ทางเลือก) ถ้าคุณมีโมเดลหรือรูปภาพที่ต้องโหลดจริงๆ
 -- สามารถใช้ ContentProvider เพื่อรอให้โหลดเสร็จก่อนปิดหน้าโหลดได้
 -- ตัวอย่าง:
 -- ContentProvider:PreloadAsync({game.Workspace.SomeModel})
