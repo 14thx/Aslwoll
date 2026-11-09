@@ -1,50 +1,47 @@
+-- ==========================================
+-- MarvenRiz Hub Loading Screen (Ready to Use)
+-- วางใน StarterPlayer > StarterPlayerScripts
+-- ==========================================
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local Lighting = game:GetService("Lighting")
-
-local Loading = {}
+local ContentProvider = game:GetService("ContentProvider")
 
 local Player = Players.LocalPlayer
 local PlayerGui = Player:WaitForChild("PlayerGui")
 
-local Gui
-local Blur
-local Card
-local ProgressFill
-local Status
-local PercentLabel
 local started = false
 local finished = false
+local Gui, Blur, Card, ProgressFill, Status, PercentLabel
 
+-- ฟังก์ชัน Animation
 local function tween(obj, duration, props)
-    local info = TweenInfo.new(
-        duration,
-        Enum.EasingStyle.Quart,
-        Enum.EasingDirection.Out
-    )
+    local info = TweenInfo.new(duration, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
     local t = TweenService:Create(obj, info, props)
     t:Play()
     return t
 end
 
-function Loading.Start()
+-- ฟังก์ชันเริ่มแสดงหน้าโหลด
+local function StartLoading()
     if started then return end
     started = true
     finished = false
 
     local oldGui = PlayerGui:FindFirstChild("MarvenRizLoading")
     if oldGui then oldGui:Destroy() end
-
     local oldBlur = Lighting:FindFirstChild("MarvenRizBlur")
     if oldBlur then oldBlur:Destroy() end
 
+    -- สร้าง Blur Effect
     Blur = Instance.new("BlurEffect")
     Blur.Name = "MarvenRizBlur"
     Blur.Size = 0
     Blur.Parent = Lighting
     tween(Blur, 0.45, {Size = 18})
 
+    -- สร้าง GUI หลัก
     Gui = Instance.new("ScreenGui")
     Gui.Name = "MarvenRizLoading"
     Gui.IgnoreGuiInset = true
@@ -53,13 +50,12 @@ function Loading.Start()
     Gui.Parent = PlayerGui
 
     local Background = Instance.new("Frame")
-    Background.Name = "Background"
     Background.Size = UDim2.fromScale(1, 1)
     Background.BackgroundTransparency = 1
     Background.Parent = Gui
 
+    -- กล่องการ์ด
     Card = Instance.new("Frame")
-    Card.Name = "Card"
     Card.AnchorPoint = Vector2.new(0.5, 0.5)
     Card.Position = UDim2.fromScale(0.5, 0.5)
     Card.Size = UDim2.new(0.82, 0, 0, 112)
@@ -67,9 +63,7 @@ function Loading.Start()
     Card.BackgroundTransparency = 0.12
     Card.BorderSizePixel = 0
     Card.Parent = Background
-
-    Instance.new("UICorner", Card).CornerRadius =
-        UDim.new(0, 16)
+    Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 16)
 
     local Stroke = Instance.new("UIStroke")
     Stroke.Color = Color3.fromRGB(95, 105, 125)
@@ -77,14 +71,15 @@ function Loading.Start()
     Stroke.Thickness = 1
     Stroke.Parent = Card
 
+    -- โลโก้
     local Logo = Instance.new("ImageLabel")
-    Logo.Name = "Logo"
     Logo.BackgroundTransparency = 1
     Logo.Size = UDim2.fromOffset(62, 62)
     Logo.Position = UDim2.new(0, 15, 0.5, -31)
     Logo.Image = "rbxassetid://124905448303407"
     Logo.Parent = Card
 
+    -- ชื่อ
     local Title = Instance.new("TextLabel")
     Title.BackgroundTransparency = 1
     Title.Position = UDim2.new(0, 88, 0, 22)
@@ -96,6 +91,7 @@ function Loading.Start()
     Title.TextXAlignment = Enum.TextXAlignment.Left
     Title.Parent = Card
 
+    -- สถานะ
     Status = Instance.new("TextLabel")
     Status.BackgroundTransparency = 1
     Status.Position = UDim2.new(0, 88, 0, 49)
@@ -107,6 +103,7 @@ function Loading.Start()
     Status.TextXAlignment = Enum.TextXAlignment.Left
     Status.Parent = Card
 
+    -- เปอร์เซ็นต์
     PercentLabel = Instance.new("TextLabel")
     PercentLabel.BackgroundTransparency = 1
     PercentLabel.AnchorPoint = Vector2.new(1, 0)
@@ -119,42 +116,33 @@ function Loading.Start()
     PercentLabel.TextXAlignment = Enum.TextXAlignment.Right
     PercentLabel.Parent = Card
 
+    -- แถบพื้นหลังโหลด
     local BarBG = Instance.new("Frame")
-    BarBG.Name = "ProgressBG"
     BarBG.Position = UDim2.new(0, 14, 1, -12)
     BarBG.Size = UDim2.new(1, -28, 0, 4)
     BarBG.BackgroundColor3 = Color3.fromRGB(65, 70, 82)
     BarBG.BorderSizePixel = 0
     BarBG.Parent = Card
+    Instance.new("UICorner", BarBG).CornerRadius = UDim.new(1, 0)
 
-    Instance.new("UICorner", BarBG).CornerRadius =
-        UDim.new(1, 0)
-
+    -- แถบโหลดสีฟ้า
     ProgressFill = Instance.new("Frame")
-    ProgressFill.Name = "ProgressFill"
     ProgressFill.Size = UDim2.fromScale(0, 1)
     ProgressFill.BackgroundColor3 = Color3.fromRGB(65, 145, 255)
     ProgressFill.BorderSizePixel = 0
     ProgressFill.Parent = BarBG
-
-    Instance.new("UICorner", ProgressFill).CornerRadius =
-        UDim.new(1, 0)
+    Instance.new("UICorner", ProgressFill).CornerRadius = UDim.new(1, 0)
 
     Card.BackgroundTransparency = 1
     tween(Card, 0.35, {BackgroundTransparency = 0.12})
 end
 
-function Loading.SetProgress(percent, message)
-    if not started or finished or not ProgressFill then
-        return
-    end
-
+-- ฟังก์ชันอัปเดตหลอดโหลด
+local function SetProgress(percent, message)
+    if not started or finished or not ProgressFill then return end
     percent = math.clamp(tonumber(percent) or 0, 0, 100)
 
-    tween(ProgressFill, 0.25, {
-        Size = UDim2.fromScale(percent / 100, 1)
-    })
-
+    tween(ProgressFill, 0.25, {Size = UDim2.fromScale(percent / 100, 1)})
     PercentLabel.Text = math.floor(percent) .. "%"
 
     if message then
@@ -162,13 +150,13 @@ function Loading.SetProgress(percent, message)
     end
 end
 
-function Loading.Finish()
+-- ฟังก์ชันปิดหน้าโหลด
+local function FinishLoading()
     if not started or finished then return end
     finished = true
 
-    Loading.SetProgress(100, "โหลดเสร็จแล้ว")
-
-    task.wait(0.35)
+    SetProgress(100, "โหลดเสร็จแล้ว")
+    task.wait(0.5) -- รอให้ผู้เล่นเห็น 100% สักครู่
 
     if Card then
         tween(Card, 0.35, {BackgroundTransparency = 1})
@@ -185,17 +173,38 @@ function Loading.Finish()
         end
     end
 
-    if Blur then
-        tween(Blur, 0.4, {Size = 0})
-    end
-
+    if Blur then tween(Blur, 0.4, {Size = 0}) end
     task.wait(0.45)
 
     if Gui then Gui:Destroy() end
     if Blur then Blur:Destroy() end
-
     started = false
 end
 
-return Loading
+-- ==========================================
+-- ส่วนการทำงานจริง (Real Execution)
+-- ==========================================
 
+-- 1. เริ่มแสดงหน้าจอโหลดทันทีที่ผู้เล่นเข้ามา
+StartLoading()
+
+-- 2. จำลองขั้นตอนการโหลด (คุณสามารถเปลี่ยนข้อความและเวลาได้)
+SetProgress(15, "กำลังเชื่อมต่อเซิร์ฟเวอร์...")
+task.wait(1)
+
+SetProgress(40, "กำลังโหลดข้อมูลผู้เล่น...")
+task.wait(1.5)
+
+SetProgress(70, "กำลังโหลดโมดูล (Modules)...")
+task.wait(1)
+
+SetProgress(90, "กำลังเตรียมความพร้อม...")
+task.wait(0.8)
+
+-- 3. เสร็จสิ้น
+FinishLoading()
+
+-- (ทางเลือก) ถ้าคุณมีโมเดลหรือรูปภาพที่ต้องโหลดจริงๆ 
+-- สามารถใช้ ContentProvider เพื่อรอให้โหลดเสร็จก่อนปิดหน้าโหลดได้
+-- ตัวอย่าง:
+-- ContentProvider:PreloadAsync({game.Workspace.SomeModel})
