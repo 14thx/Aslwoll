@@ -1,6 +1,6 @@
 -- ==========================================
 -- MarvenRiz Hub Loading Screen (Ready to Use)
--- วางใน StarterPlayer > StarterPlayerScripts
+-- ไฟล์นี้เป็น Module: อัปโหลดทับ Loading.lua บน GitHub
 -- ==========================================
 
 local Players = game:GetService("Players")
@@ -182,29 +182,10 @@ local function FinishLoading()
 end
 
 -- ==========================================
--- ส่วนการทำงานจริง (Real Execution)
+-- ส่งออกฟังก์ชันให้ Main เรียกใช้
 -- ==========================================
-
--- 1. เริ่มแสดงหน้าจอโหลดทันทีที่ผู้เล่นเข้ามา
-StartLoading()
-
--- 2. จำลองขั้นตอนการโหลด (คุณสามารถเปลี่ยนข้อความและเวลาได้)
-SetProgress(15, "กำลังเชื่อมต่อเซิร์ฟเวอร์...")
-task.wait(1)
-
-SetProgress(40, "กำลังโหลดข้อมูลผู้เล่น...")
-task.wait(1.5)
-
-SetProgress(70, "กำลังโหลดโมดูล (Modules)...")
-task.wait(1)
-
-SetProgress(90, "กำลังเตรียมความพร้อม...")
-task.wait(0.8)
-
--- 3. เสร็จสิ้น
-FinishLoading()
-
--- (ทางเลือก) ถ้าคุณมีโมเดลหรือรูปภาพที่ต้องโหลดจริงๆ
--- สามารถใช้ ContentProvider เพื่อรอให้โหลดเสร็จก่อนปิดหน้าโหลดได้
--- ตัวอย่าง:
--- ContentProvider:PreloadAsync({game.Workspace.SomeModel})
+return {
+    Start = StartLoading,
+    SetProgress = SetProgress,
+    Finish = FinishLoading,
+}
