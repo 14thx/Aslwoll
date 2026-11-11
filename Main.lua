@@ -1516,7 +1516,6 @@ ProcessBananaAtStation = function(check)
     while GetPlayerInventoryCount("Banana") >= 2 and (os.clock() - tP < 120) do
         if check and not check() then break end
         GrantAntiXGrace(15)
-        -- ⭐⭐⭐ NEXUS กด ActionBtn ใน UI ทุก 3.2 วิ
         pcall(function()
             local procGui = PlayerGui:FindFirstChild("Process")
             if procGui and procGui:FindFirstChild("Group") then
@@ -2066,7 +2065,7 @@ pcall(function()
 end)
 
 -- =====================================
--- AUTO BEST PRICE (ตรง NEXUS 100%)
+-- AUTO BEST PRICE (ดึงราคาจริงจากเกม)
 -- =====================================
 local ItemAliases = {
     Sandwich   = {"Sandwich","Sandwish","แซนวิช","Food_Sandwich"},
@@ -2075,101 +2074,71 @@ local ItemAliases = {
     KangSom    = {"KangSom","Kang_Som","แกงส้ม"},
 }
 
-local function GetRealMarketPrices()
-    local detected = {}
-    local rep = ReplicatedStorage
-    local pgui = LocalPlayer:FindFirstChild("PlayerGui")
-    pcall(function()
-        if pgui then
-            for _, gui in ipairs(pgui:GetChildren()) do
-                if gui:IsA("ScreenGui") then
-                    local gn = gui.Name:lower()
-                    if gn:find("econ") or gn:find("market") or gn:find("shop") or gn:find("price") or gn:find("food") then
-                        for _, d in ipairs(gui:GetDescendants()) do
-                            if d:IsA("TextLabel") or d:IsA("TextBox") or d:IsA("TextButton") then
-                                local txt = d.Text or ""
-                                for k, aliases in pairs(ItemAliases) do
-                                    for _, a in ipairs(aliases) do
-                                        if txt:lower():find(a:lower(), 1, true) then
-                                            local par = d.Parent
-                                            if par then
-                                                for _, s in ipairs(par:GetChildren()) do
-                                                    if s:IsA("TextLabel") and s ~= d then
-                                                        local st = (s.Text or ""):gsub(",",""):gsub("฿",""):gsub("%$","")
-                                                        local num = tonumber(st:match("%d+"))
-                                                        if num and num >= 100 and num <= 20000 then
-                                                            if not detected[k] or num > detected[k] then detected[k] = num end
-                                                        end
-                                                    end
-                                                end
-                                            end
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end)
-    pcall(function()
-        local folders = {rep:FindFirstChild("Economy"), rep:FindFirstChild("Systems") and rep.Systems:FindFirstChild("Economy"), rep:FindFirstChild("Prices"), rep:FindFirstChild("Market"), rep:FindFirstChild("FoodPrices")}
-        for _, f in ipairs(folders) do
-            if f then
-                for an, v in pairs(f:GetAttributes()) do
-                    local num = tonumber(v)
-                    if num and num > 0 then
-                        for k, aliases in pairs(ItemAliases) do
-                            for _, a in ipairs(aliases) do
-                                if an:lower() == a:lower() or an:lower():find(a:lower(), 1, true) then detected[k] = num end
-                            end
-                        end
-                    end
-                end
-                for _, o in ipairs(f:GetChildren()) do
-                    if o:IsA("ValueBase") then
-                        local num = tonumber(o.Value)
-                        if num and num > 0 then
-                            for k, aliases in pairs(ItemAliases) do
-                                for _, a in ipairs(aliases) do
-                                    if o.Name:lower() == a:lower() or o.Name:lower():find(a:lower(), 1, true) then detected[k] = num end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end)
-    for k, _ in pairs(ItemAliases) do
-        if not detected[k] then detected[k] = 2500 end
-    end
-    return detected
-end
-
 local function GetBestFoodPack()
-    local prices = GetRealMarketPrices()
-    local bestKey, bestPrice, bestName = nil, -1, nil
-    local map = {
+    local prices = {}
+    
+    -- 1. ลองดึงราคาจาก PlayerData หรือ ReplicatedStorage (ถ้าเกมเก็บไว้)
+    local rep = ReplicatedStorage
+    local pd = LocalPlayer:FindFirstChild("PlayerData")
+    
+    local folders = {
+        rep:FindFirstChild("Economy"), 
+        rep:FindFirstChild("Systems") and rep.Systems:FindFirstChild("Economy"), 
+        rep:FindFirstChild("Prices"), 
+        rep:FindFirstChild("Market")
+    }
+
+    for k, aliases in pairs(ItemAliases) do
+        local foundPrice = 0
+        -- ค้นหาใน Attribute ของ PlayerData
+        if pd then
+            for _, alias in ipairs(aliases) do
+                local val = pd:GetAttribute(alias) or pd:GetAttribute("Price_" .. alias)
+                if typeof(val) == "number" and val > 0 then foundPrice = val break end
+            end
+        end
+        -- ค้นหาใน Folder
+        if foundPrice == 0 then
+            for _, f in ipairs(folders) do
+                if f then
+                    for _, alias in ipairs(aliases) do
+                        local val = f:GetAttribute(alias)
+                        if typeof(val) == "number" and val > 0 then foundPrice = val break end
+                    end
+                end
+                if foundPrice > 0 then break end
+            end
+        end
+        prices[k] = foundPrice
+    end
+
+    -- 2. ถ้าราคาเป็น 0 ทั้งหมด (ดึงไม่ได้) ให้ Fallback เป็นราคาพื้นฐานของเกม
+    local basePrices = {
+        Sandwich = 1500, 
+        MangoRice = 2000, 
+        BananaPack = 1800, 
+        KangSom = 2500
+    }
+    
+    local bestKey = nil
+    local bestPrice = -1
+    local bestName = nil
+    local displayNames = {
         Sandwich = "แซนวิช",
         MangoRice = "ข้าวมันมะม่วง",
         BananaPack = "กล้วยแพ็ค",
         KangSom = "แกงส้ม"
     }
-    for k, _ in pairs(ItemAliases) do
-        local p = prices[k] or 0
-        if p > bestPrice then
-            bestPrice = p
+
+    for k, v in pairs(prices) do
+        local finalPrice = (v > 0) and v or basePrices[k]
+        if finalPrice > bestPrice then
+            bestPrice = finalPrice
             bestKey = k
-            bestName = map[k]
+            bestName = displayNames[k] -- ดึงชื่อจริง
         end
     end
-    if not bestKey then
-        bestKey = "Sandwich"
-        bestName = map["Sandwich"]
-        bestPrice = 2500
-    end
+    
     return bestKey, bestName, bestPrice
 end
 
@@ -2707,7 +2676,7 @@ MineFarm:Toggle({
 local BestPriceSection = FarmTab:Section({Title = "🌟 ฟาร์มตามราคาดี (Auto Best Price)"})
 local BestPriceInfo = BestPriceSection:Paragraph({
     Title = "📊 ข้อมูลตลาด Real-Time",
-    Content = "⭐ ราคาดีสุด: แซนวิช (2500฿)\n🔄 สถานะ: พร้อมทำงาน"
+    Content = "⭐ ราคาดีสุด: แซนวิช (1500฿)\n🔄 สถานะ: พร้อมทำงาน"
 })
 BestPriceSection:Toggle({
     Title = "🚀 เปิดลูปฟาร์มตามราคาดี",
@@ -2720,7 +2689,7 @@ BestPriceSection:Toggle({
     end
 })
 
--- Background Thread (แก้ไม่ให้ค้าง)
+-- Background Thread (อัปเดตราคา Real-Time)
 task.spawn(function()
     while true do
         task.wait(1.5)
