@@ -1,6 +1,6 @@
 -- =====================================
 -- MARVENRIZ HUB + NEXUS ENGINE (FULL 22 จุด)
--- ProcessBananaAtStation = NEXUS ต้นฉบับแท้ (กด ActionBtn)
+-- Craft & Process = NEXUS ต้นฉบับแท้ 100%
 -- PART 1/2
 -- =====================================
 
@@ -429,7 +429,7 @@ if LocalPlayer.Character then NeutralizeCharScripts(LocalPlayer.Character) end
 LocalPlayer.CharacterAdded:Connect(NeutralizeCharScripts)
 
 -- =====================================
--- VEHICLE (เหมือนเดิม)
+-- VEHICLE (Vehicle Functions เหมือนเดิม)
 -- =====================================
 local function IsMyVehicle(v)
     if not v or not v:IsA("Model") or not v.Parent then return false end
@@ -1160,7 +1160,7 @@ RunService.Stepped:Connect(function()
 end)
 
 -- =====================================
--- HARVEST
+-- HARVEST (เหมือนเดิม)
 -- =====================================
 local function TriggerFarmPromptDirectly(cropName)
     local char = LocalPlayer.Character
@@ -1358,110 +1358,199 @@ HarvestSingleCrop = function(cropName, targetAmount, check)
 end
 
 -- =====================================
--- CRAFT
+-- CRAFT (NEXUS ต้นฉบับแท้ 100%)
 -- =====================================
 local function GetCraft3Prompt()
-    local cs = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Crafting")
-    local c3 = cs and cs:FindFirstChild("Craft_3")
+    local craftSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Crafting")
+    local c3 = craftSys and craftSys:FindFirstChild("Craft_3")
     if c3 then
         local p = c3:FindFirstChildWhichIsA("ProximityPrompt", true)
         if p and p.Enabled then return p end
     end
+    return nil
 end
 
-CraftFoodAtStation = function(recipeName, check)
+CraftFoodAtStation = function(recipeName, shouldContinueCheck)
     local foodData = TYPER_LOCATIONS.Food
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not root or not hum then return end
+
     local myCar = GetPlayerVehicle()
-    if not myCar or not hum.Sit then myCar = EnsureCarAvailable() end
-    if myCar then EnsurePlayerSeatedInCar(myCar) end
-    pcall(function()
-        local pg = PlayerGui:FindFirstChild("Process")
-        if pg and pg:FindFirstChild("Group") then pg.Group.Visible = false end
-        local eg = PlayerGui:FindFirstChild("Economy")
-        if eg and eg:FindFirstChild("Group") then eg.Group.Visible = false end
-    end)
-    local cPrompt = GetCraft3Prompt()
-    local exactPos = foodData.Crafting
-    if cPrompt then
-        local p = cPrompt.Parent
-        exactPos = (p:IsA("BasePart") and p.Position) or (p:IsA("Attachment") and p.WorldPosition) or exactPos
+    if not myCar or not hum.Sit then
+        myCar = EnsureCarAvailable()
     end
-    DriveCarTo(exactPos + Vector3.new(0,0,5.0), check)
+    if myCar then
+        EnsurePlayerSeatedInCar(myCar)
+    end
+
+    pcall(function()
+        local procGui = PlayerGui:FindFirstChild("Process")
+        if procGui and procGui:FindFirstChild("Group") then procGui.Group.Visible = false end
+        local ecoGui = PlayerGui:FindFirstChild("Economy")
+        if ecoGui and ecoGui:FindFirstChild("Group") then ecoGui.Group.Visible = false end
+    end)
+
+    local cPrompt = GetCraft3Prompt()
+    local exactCraftPos = nil
+    if cPrompt then
+        local pParent = cPrompt.Parent
+        exactCraftPos = (pParent:IsA("BasePart") and pParent.Position)
+                     or (pParent:IsA("Attachment") and pParent.WorldPosition)
+                     or (pParent.Parent and pParent.Parent:IsA("BasePart") and pParent.Parent.Position)
+    end
+    if not exactCraftPos then
+        local craftSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Crafting")
+        local c3 = craftSys and craftSys:FindFirstChild("Craft_3")
+        if c3 then
+            local anyPart = c3:FindFirstChildWhichIsA("BasePart", true)
+            if anyPart then exactCraftPos = anyPart.Position end
+        end
+    end
+    exactCraftPos = exactCraftPos or foodData.Crafting
+
+    DriveCarTo(exactCraftPos + Vector3.new(0, 0, 5.0), shouldContinueCheck)
     task.wait(0.2)
-    if check and not check() then return end
-    if hum.Sit then hum.Sit = false task.wait(0.2) end
-    local gy = GetGroundLevel(exactPos.X, exactPos.Z, exactPos.Y)
-    root.CFrame = CFrame.lookAt(Vector3.new(exactPos.X, gy+3.0, exactPos.Z+2.5), exactPos)
+    if shouldContinueCheck and not shouldContinueCheck() then return end
+
+    if hum.Sit then
+        hum.Sit = false
+        task.wait(0.2)
+    end
+
+    local groundY = GetGroundLevel(exactCraftPos.X, exactCraftPos.Z, exactCraftPos.Y)
+    local standPos = Vector3.new(exactCraftPos.X, groundY + 3.0, exactCraftPos.Z + 2.5)
+    root.CFrame = CFrame.lookAt(standPos, exactCraftPos)
     task.wait(0.15)
-    if cPrompt then TriggerPrompt(cPrompt) end
+
+    cPrompt = cPrompt or GetCraft3Prompt()
+    if cPrompt then
+        TriggerPrompt(cPrompt)
+    end
+
     local cg = PlayerGui:WaitForChild("Crafting", 4)
-    local tW = os.clock()
-    while os.clock() - tW < 3.0 do
+    local tWaitUI = os.clock()
+    while os.clock() - tWaitUI < 3.0 do
         if cg and cg:FindFirstChild("Group") and cg.Group.Visible then break end
         if cPrompt then TriggerPrompt(cPrompt) end
         task.wait(0.3)
     end
+
+    if not cg or not cg:FindFirstChild("Group") or not cg.Group.Visible then
+        pcall(function()
+            if cg and cg:FindFirstChild("Group") then
+                cg.Group.Visible = true
+                cg.Group.GroupTransparency = 0
+            end
+        end)
+    end
+    task.wait(0.2)
+
     local function GetMaxCraftAmount()
         local b = GetPlayerInventoryCount("Bread")
         local c = GetPlayerInventoryCount("Catchup")
         local p = GetPlayerInventoryCount("Pig")
         local m = GetPlayerInventoryCount("Mango")
         local r = GetPlayerInventoryCount("Rice")
-        if recipeName == "Sandwish" then return math.min(math.floor(b/3), math.floor(c/2), math.floor(p/2))
-        elseif recipeName == "MangoRice" then return math.min(math.floor(m/2), math.floor(r/3))
+        if recipeName == "Sandwish" then
+            return math.min(math.floor(b / 3), math.floor(c / 2), math.floor(p / 2))
+        elseif recipeName == "MangoRice" then
+            return math.min(math.floor(m / 2), math.floor(r / 3))
         elseif recipeName == "KangSom" then
             local t = GetPlayerInventoryCount("Tomato")
             local cr = GetPlayerInventoryCount("Crab")
-            return math.min(math.floor(t/2), math.floor(cr/2))
+            return math.min(math.floor(t / 2), math.floor(cr / 2))
         end
         return 1
     end
+
     local toCraft = GetMaxCraftAmount()
-    if toCraft <= 0 then return end
+    if toCraft <= 0 then
+        pcall(function()
+            if cg and cg:FindFirstChild("Group") then cg.Group.Visible = false end
+        end)
+        local myCar2 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
+        if myCar2 then
+            EnsurePlayerSeatedInCar(myCar2)
+        end
+        return
+    end
+
     local mainFrame = cg and cg:FindFirstChild("Group") and cg.Group:FindFirstChild("Main")
     if mainFrame then
         local scroller = mainFrame:FindFirstChild("Left_Tab") and mainFrame.Left_Tab:FindFirstChild("ScrollingFrame")
         if scroller then
-            local sandCatBtn = scroller:FindFirstChild("Sand") or scroller:FindFirstChild("Food")
-            if sandCatBtn then SafeClickGuiButton(sandCatBtn) task.wait(0.2) end
+            local sandCatBtn = scroller:FindFirstChild("Sand") or scroller:FindFirstChild("Food") or scroller:FindFirstChild("อาหาร")
+            if sandCatBtn then
+                SafeClickGuiButton(sandCatBtn)
+                task.wait(0.2)
+            end
+
             local recipeBtn = scroller:FindFirstChild(recipeName) or mainFrame:FindFirstChild(recipeName, true)
             if recipeBtn then
-                local ct = (recipeBtn:IsA("GuiButton") and recipeBtn) or recipeBtn:FindFirstChildWhichIsA("GuiButton", true) or recipeBtn
-                if ct and ct:IsA("GuiButton") then SafeClickGuiButton(ct) end
+                local clickTarget = (recipeBtn:IsA("GuiButton") and recipeBtn) or recipeBtn:FindFirstChildWhichIsA("GuiButton", true) or recipeBtn
+                if clickTarget and clickTarget:IsA("GuiButton") then
+                    SafeClickGuiButton(clickTarget)
+                end
                 task.wait(0.2)
             end
         end
+
         local amtBox = mainFrame:FindFirstChild("Function") and mainFrame.Function:FindFirstChild("Amount") and mainFrame.Function.Amount:FindFirstChild("Amount")
-        if amtBox and amtBox:IsA("TextBox") then amtBox.Text = tostring(toCraft) task.wait(0.1) end
+        if amtBox and amtBox:IsA("TextBox") then
+            amtBox.Text = tostring(toCraft)
+            task.wait(0.1)
+        end
+
         local craftBtn = mainFrame:FindFirstChild("Button") and mainFrame.Button:FindFirstChild("Craft")
-        if craftBtn and craftBtn:IsA("GuiButton") then SafeClickGuiButton(craftBtn) end
+        if craftBtn and craftBtn:IsA("GuiButton") then
+            SafeClickGuiButton(craftBtn)
+        end
     end
+
     pcall(function()
-        local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
-        if rc then require(rc).Fire("_crafting", "Request", "Craft_3", recipeName, toCraft, false) end
+        local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
+        if remCore then
+            local Remotes_m = require(remCore)
+            Remotes_m.Fire("_crafting", "Request", "Craft_3", recipeName, toCraft, false)
+        end
     end)
-    local tS = os.clock()
-    while os.clock() - tS < 10.0 do
-        if check and not check() then break end
+
+    local tStart = os.clock()
+    while (os.clock() - tStart < 10.0) do
+        if shouldContinueCheck and not shouldContinueCheck() then break end
         GrantAntiXGrace(15)
         task.wait(0.5)
     end
+    task.wait(0.2)
+
     pcall(function()
-        local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
-        if rc then require(rc).Fire("_crafting", "Complete", "Craft_3", recipeName, toCraft, false) end
+        local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
+        if remCore then
+            local Remotes_m = require(remCore)
+            Remotes_m.Fire("_crafting", "Complete", "Craft_3", recipeName, toCraft, false)
+        end
     end)
     task.wait(0.3)
+
     pcall(function()
-        if mainFrame and mainFrame:FindFirstChild("Exit") and firesignal then firesignal(mainFrame.Exit.MouseButton1Click) end
-        if cg and cg:FindFirstChild("Group") then cg.Group.Visible = false end
+        if mainFrame and mainFrame:FindFirstChild("Exit") then
+            if firesignal then firesignal(mainFrame.Exit.MouseButton1Click) end
+        end
+        if cg and cg:FindFirstChild("Group") then
+            cg.Group.Visible = false
+        end
     end)
+    task.wait(0.2)
+
     task.wait(3.0)
-    local c2 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
-    if c2 then EnsurePlayerSeatedInCar(c2) end
+
+    local myCar3 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
+    if myCar3 then
+        EnsurePlayerSeatedInCar(myCar3)
+    end
+    task.wait(0.3)
 end
 
 -- =====================================
@@ -2076,8 +2165,6 @@ local ItemAliases = {
 
 local function GetBestFoodPack()
     local prices = {}
-    
-    -- 1. ลองดึงราคาจาก PlayerData หรือ ReplicatedStorage (ถ้าเกมเก็บไว้)
     local rep = ReplicatedStorage
     local pd = LocalPlayer:FindFirstChild("PlayerData")
     
@@ -2090,14 +2177,12 @@ local function GetBestFoodPack()
 
     for k, aliases in pairs(ItemAliases) do
         local foundPrice = 0
-        -- ค้นหาใน Attribute ของ PlayerData
         if pd then
             for _, alias in ipairs(aliases) do
                 local val = pd:GetAttribute(alias) or pd:GetAttribute("Price_" .. alias)
                 if typeof(val) == "number" and val > 0 then foundPrice = val break end
             end
         end
-        -- ค้นหาใน Folder
         if foundPrice == 0 then
             for _, f in ipairs(folders) do
                 if f then
@@ -2112,33 +2197,18 @@ local function GetBestFoodPack()
         prices[k] = foundPrice
     end
 
-    -- 2. ถ้าราคาเป็น 0 ทั้งหมด (ดึงไม่ได้) ให้ Fallback เป็นราคาพื้นฐานของเกม
-    local basePrices = {
-        Sandwich = 1500, 
-        MangoRice = 2000, 
-        BananaPack = 1800, 
-        KangSom = 2500
-    }
-    
-    local bestKey = nil
-    local bestPrice = -1
-    local bestName = nil
-    local displayNames = {
-        Sandwich = "แซนวิช",
-        MangoRice = "ข้าวมันมะม่วง",
-        BananaPack = "กล้วยแพ็ค",
-        KangSom = "แกงส้ม"
-    }
+    local basePrices = { Sandwich = 1500, MangoRice = 2000, BananaPack = 1800, KangSom = 2500 }
+    local bestKey, bestPrice, bestName = nil, -1, nil
+    local displayNames = { Sandwich = "แซนวิช", MangoRice = "ข้าวมันมะม่วง", BananaPack = "กล้วยแพ็ค", KangSom = "แกงส้ม" }
 
     for k, v in pairs(prices) do
         local finalPrice = (v > 0) and v or basePrices[k]
         if finalPrice > bestPrice then
             bestPrice = finalPrice
             bestKey = k
-            bestName = displayNames[k] -- ดึงชื่อจริง
+            bestName = displayNames[k]
         end
     end
-    
     return bestKey, bestName, bestPrice
 end
 
@@ -2327,13 +2397,10 @@ local MarvenState = {
     AutoMineFarm    = false,
     AutoFish        = false,
     InfiniteEnergy  = false,
+    InfiniteStamina = false,
     ServerHop       = true,
 }
-local MarvenSelected = {
-    NormalFarmType  = "Bread",
-    ProcessFarmType = "Banana",
-    MineFarmType    = "Rock",
-}
+local MarvenSelected = { NormalFarmType = "Bread", ProcessFarmType = "Banana", MineFarmType = "Rock" }
 local MarvenSession = {AutoFarmItem = 0, AutoProcessFarm = 0, AutoMineFarm = 0}
 local MarvenBestPrice = {Key = nil, Name = "?", Price = 0, Action = "พร้อมทำงาน", AutoMode = false}
 
@@ -2433,17 +2500,13 @@ local function RunProcessFarm()
                 end
                 if not check() then break end
                 
-                -- ⭐ ลองแปรรูปสูงสุด 3 รอบ ถ้ายังไม่หมดให้วนใหม่
                 local processRetry = 0
                 while GetPlayerInventoryCount("Banana") >= 2 and processRetry < 3 do
                     ProcessBananaAtStation(check)
                     task.wait(2.0)
                     processRetry = processRetry + 1
                 end
-                
                 if not check() then break end
-                
-                -- ⭐ ถ้าแปรรูปหมดแล้ว (Banana < 2) ค่อยไปขาย
                 if GetPlayerInventoryCount("Banana") < 2 then
                     SellAtEconomyMarket(check)
                 end
@@ -2541,9 +2604,20 @@ local function RunAutoBestPrice()
                 if not check() then break end
                 if GetPlayerInventoryCount("Pig") < 60 then EnsureCarAvailable(TYPER_LOCATIONS.Pig.Booth) HarvestSingleCrop("Pig", 60, rt) end
                 if not check() then break end
-                CraftFoodAtStation("Sandwish", rt)
+                
+                -- ⭐ ลองคราฟต์สูงสุด 3 รอบ ถ้ายังไม่ได้ให้วนใหม่
+                local craftRetry = 0
+                while GetPlayerInventoryCount("Sandwish") < 1 and craftRetry < 3 do
+                    CraftFoodAtStation("Sandwish", rt)
+                    task.wait(2.0)
+                    craftRetry = craftRetry + 1
+                end
                 if not check() then break end
-                SellAtEconomyMarket(rt)
+                
+                -- ⭐ ถ้าคราฟต์สำเร็จแล้ว (มี Sandwish > 0) ค่อยไปขาย
+                if GetPlayerInventoryCount("Sandwish") > 0 or GetPlayerInventoryCount("Bread") < 3 then
+                    SellAtEconomyMarket(rt)
+                end
             elseif k == "MangoRice" then
                 if GetPlayerInventoryCount("Mango") < 60 then EnsureCarAvailable(TYPER_LOCATIONS.Mango.Booth) HarvestSingleCrop("Mango", 60, rt) end
                 if not check() then break end
@@ -2555,9 +2629,17 @@ local function RunAutoBestPrice()
             elseif k == "BananaPack" then
                 if GetPlayerInventoryCount("Banana") < 60 then EnsureCarAvailable(TYPER_LOCATIONS.Banana.Booth) HarvestSingleCrop("Banana", 60, rt) end
                 if not check() then break end
-                ProcessBananaAtStation(rt)
+                
+                local processRetry = 0
+                while GetPlayerInventoryCount("Banana") >= 2 and processRetry < 3 do
+                    ProcessBananaAtStation(rt)
+                    task.wait(2.0)
+                    processRetry = processRetry + 1
+                end
                 if not check() then break end
-                SellAtEconomyMarket(rt)
+                if GetPlayerInventoryCount("Banana") < 2 then
+                    SellAtEconomyMarket(rt)
+                end
             elseif k == "KangSom" then
                 if GetPlayerInventoryCount("Tomato") < 60 then EnsureCarAvailable(TYPER_LOCATIONS.Tomato.Booth) HarvestSingleCrop("Tomato", 60, rt) end
                 if not check() then break end
@@ -2591,7 +2673,7 @@ Settings:Toggle({
 
 Settings:Toggle({
     Title = "พลังงานไม่จำกัด",
-    Description = "ตั้ง Brain/Hunger = 100 ตลอด",
+    Description = "ล็อค Stamina/Brain/Hunger = 100 ตลอดเวลา",
     Default = false,
     Flag = "InfiniteEnergy",
     Callback = function(v)
@@ -2604,9 +2686,19 @@ Settings:Toggle({
             _G._MarvenInfEnergyConn = RunService.Heartbeat:Connect(function()
                 pcall(function()
                     local s = LocalPlayer:FindFirstChild("Stats")
-                    if s then s:SetAttribute("Brain", 100) s:SetAttribute("Hunger", 100) end
+                    if s then 
+                        s:SetAttribute("Brain", 100) 
+                        s:SetAttribute("Hunger", 100)
+                        s:SetAttribute("Stamina", 100)
+                        s:SetAttribute("Energy", 100)
+                    end
                     local pd = LocalPlayer:FindFirstChild("PlayerData")
-                    if pd then pd:SetAttribute("Brain", 100) pd:SetAttribute("Hunger", 100) end
+                    if pd then 
+                        pd:SetAttribute("Brain", 100) 
+                        pd:SetAttribute("Hunger", 100)
+                        pd:SetAttribute("Stamina", 100)
+                        pd:SetAttribute("Energy", 100)
+                    end
                 end)
             end)
         end
