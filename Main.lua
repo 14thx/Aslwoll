@@ -1,6 +1,7 @@
 -- =====================================
 -- MARVENRIZ HUB + NEXUS ENGINE (FULL 22 จุด)
 -- ตรง NEXUS 100% — ไม่มี AutoSell Loop
+-- ProcessBananaAtStation คืน 3 จุด + fallback + verify
 -- PART 1/2
 -- =====================================
 
@@ -1465,7 +1466,7 @@ CraftFoodAtStation = function(recipeName, check)
 end
 
 -- =====================================
--- PROCESS
+-- PROCESS: Banana (ใหม่ — คืน 3 จุด + fallback + verify)
 -- =====================================
 ProcessBananaAtStation = function(check)
     local foodData = TYPER_LOCATIONS.Food
@@ -1473,27 +1474,112 @@ ProcessBananaAtStation = function(check)
     local root = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not root or not hum then return end
+
     local myCar = GetPlayerVehicle()
     if not myCar or not hum.Sit then myCar = EnsureCarAvailable() end
     if myCar then EnsurePlayerSeatedInCar(myCar) end
-    local exactPos = foodData.BananaProcess
-    DriveCarTo(exactPos + Vector3.new(0,0,5.0), check)
+
+    -- ⭐ คืนจุดที่ 1-3: หาตำแหน่งจาก Prompt ก่อน
+    local pBan = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Process") and workspace.Systems.Process:FindFirstChild("Banana")
+    local pPrompt = pBan and pBan:FindFirstChild("Prompt")
+    local bPos = nil
+    if pPrompt then
+        bPos = (pPrompt:IsA("Attachment") and pPrompt.WorldPosition)
+            or (pPrompt:IsA("BasePart") and pPrompt.Position)
+            or (pPrompt:FindFirstChildWhichIsA("BasePart") and pPrompt:FindFirstChildWhichIsA("BasePart").Position)
+    end
+    if not bPos and pBan then
+        local anyPart = pBan:FindFirstChildWhichIsA("BasePart", true)
+        if anyPart then bPos = anyPart.Position end
+    end
+    local exactPos = bPos or foodData.BananaProcess
+
+    DriveCarTo(exactPos + Vector3.new(0, 0, 5.0), check)
     task.wait(0.1)
     if check and not check() then return end
+
     if hum.Sit then hum.Sit = false task.wait(0.1) end
-    local gy = GetGroundLevel(exactPos.X, exactPos.Z+2.5, exactPos.Y)
-    root.CFrame = CFrame.lookAt(Vector3.new(exactPos.X, gy+3.0, exactPos.Z+2.5), exactPos)
+
+    local standPos = exactPos + Vector3.new(0, 0, 2.5)
+    local gy = GetGroundLevel(standPos.X, standPos.Z, standPos.Y)
+    root.CFrame = CFrame.lookAt(Vector3.new(standPos.X, gy + 3.0, standPos.Z), exactPos)
+    root.AssemblyLinearVelocity = Vector3.zero
+    root.AssemblyAngularVelocity = Vector3.zero
     task.wait(0.1)
-    local pBan = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Process") and workspace.Systems.Process:FindFirstChild("Banana")
+
+    -- ⭐ คืนจุดที่ 4: FindPromptNear fallback
     local procPrompt = pBan and pBan:FindFirstChildWhichIsA("ProximityPrompt", true)
-    if procPrompt then TriggerPrompt(procPrompt) end
-    task.wait(0.3)
-    local tP = os.clock()
-    while GetPlayerInventoryCount("Banana") >= 2 and (os.clock() - tP < 120) do
-        if check and not check() then break end
-        GrantAntiXGrace(15)
-        task.wait(3.2)
+    if not procPrompt then
+        procPrompt = FindPromptNear(root.Position, 15, nil)
     end
+    if not procPrompt then
+        for retry = 1, 3 do
+            task.wait(2.0)
+            pBan = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Process") and workspace.Systems.Process:FindFirstChild("Banana")
+            procPrompt = pBan and pBan:FindFirstChildWhichIsA("ProximityPrompt", true)
+            if procPrompt then break end
+            procPrompt = FindPromptNear(root.Position, 15, nil)
+            if procPrompt then break end
+        end
+    end
+
+    if procPrompt then
+        procPrompt.Enabled = true
+        pcall(function() procPrompt.HoldDuration = 0 end)
+        if fireproximityprompt then pcall(function() fireproximityprompt(procPrompt) end) end
+        TriggerPrompt(procPrompt)
+        task.wait(0.5)
+    else
+        pcall(function()
+            local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
+            if rc then
+                local R = require(rc)
+                R.Fire("_process", "Start", "Banana")
+            end
+        end)
+        task.wait(0.5)
+        pBan = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Process") and workspace.Systems.Process:FindFirstChild("Banana")
+        procPrompt = pBan and pBan:FindFirstChildWhichIsA("ProximityPrompt", true)
+        if procPrompt then
+            procPrompt.Enabled = true
+            TriggerPrompt(procPrompt)
+            task.wait(0.5)
+        end
+    end
+
+    -- ⭐ Verify: ตรวจสอบว่าแปรรูปเริ่มแล้วหรือยัง
+    local startCount = GetPlayerInventoryCount("Banana")
+    local verified = false
+    local tCheck = os.clock()
+    while (os.clock() - tCheck < 8.0) do
+        if check and not check() then return end
+        task.wait(1.0)
+        local nowCount = GetPlayerInventoryCount("Banana")
+        if nowCount < startCount then
+            verified = true
+            break
+        end
+        pcall(function()
+            local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
+            if rc then require(rc).Fire("_process", "Start", "Banana") end
+        end)
+        if procPrompt then
+            procPrompt.Enabled = true
+            TriggerPrompt(procPrompt)
+        end
+    end
+
+    if verified then
+        local tP = os.clock()
+        while GetPlayerInventoryCount("Banana") >= 2 and (os.clock() - tP < 120) do
+            if check and not check() then break end
+            GrantAntiXGrace(15)
+            task.wait(3.2)
+        end
+    else
+        task.wait(15.0)
+    end
+
     pcall(function()
         local pg = PlayerGui:FindFirstChild("Process")
         if pg and pg:FindFirstChild("Group") then
@@ -1508,8 +1594,12 @@ ProcessBananaAtStation = function(check)
     task.wait(3.0)
     local c2 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
     if c2 then EnsurePlayerSeatedInCar(c2) end
+    task.wait(0.3)
 end
 
+-- =====================================
+-- PROCESS: Ore (ตรง NEXUS 100%)
+-- =====================================
 ProcessOreAtStation = function(oreName, minP, check)
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -2111,11 +2201,30 @@ end
 local function GetBestFoodPack()
     local prices = GetRealMarketPrices()
     local bestKey, bestPrice, bestName = nil, -1, nil
-    local map = {Sandwich = "แซนวิช", MangoRice = "ข้าวมันมะม่วง", BananaPack = "กล้วยแพ็ค", KangSom = "แกงส้ม"}
+    local map = {
+        Sandwich = "แซนวิช",
+        MangoRice = "ข้าวมันมะม่วง",
+        BananaPack = "กล้วยแพ็ค",
+        KangSom = "แกงส้ม"
+    }
+    
+    -- หาตัวที่ราคาสูงสุด
     for k, _ in pairs(ItemAliases) do
         local p = prices[k] or 0
-        if p > bestPrice then bestPrice = p bestKey = k bestName = map[k] end
+        if p > bestPrice then
+            bestPrice = p
+            bestKey = k
+            bestName = map[k]
+        end
     end
+    
+    -- ⭐ Fallback: ถ้าหาไม่เจอเลย ให้เลือก Sandwich เป็นค่าเริ่มต้น
+    if not bestKey then
+        bestKey = "Sandwich"
+        bestName = map["Sandwich"]
+        bestPrice = 2500
+    end
+    
     return bestKey, bestName, bestPrice
 end
 
@@ -2544,7 +2653,7 @@ local Settings = SettingsTab:Section({Title = "ตั้งค่าทั่ว
 Settings:Toggle({
     Title = "ออโต้ กินอาหาร",
     Description = "กินอาหารอัตโนมัติ (<= 80%)",
-    Default = true,   -- ⭐ ตรง NEXUS
+    Default = true,
     Flag = "AutoEat",
     Callback = function(v)
         MarvenState.AutoEat = v
@@ -2658,20 +2767,31 @@ task.spawn(function()
     while true do
         task.wait(1.5)
         pcall(function()
+            -- ดึงราคา
             local k, name, price = GetBestFoodPack()
+            
+            -- อัปเดตค่าลงตาราง
             MarvenBestPrice.Key = k
-            MarvenBestPrice.Name = name or "?"
+            MarvenBestPrice.Name = name or "ไม่ทราบชื่อ"
             MarvenBestPrice.Price = price or 0
+            
+            -- อัปเดต Global
             _G.CurrentBestItemKey = k
-            _G.BestFarmCurrentBestItem = name
-            _G.BestFarmCurrentBestPrice = price
+            _G.BestFarmCurrentBestItem = MarvenBestPrice.Name
+            _G.BestFarmCurrentBestPrice = MarvenBestPrice.Price
+            
+            -- อัปเดต UI
             if BestPriceInfo and BestPriceInfo.SetDesc then
-                BestPriceInfo:SetDesc(string.format(
-                    "⭐ ราคาดีสุด: %s (%d฿)\n🔄 กำลังทำ: %s",
+                local statusText = string.format(
+                    "⭐ ราคาดีสุด: %s (%d฿)\n🔄 สถานะ: %s",
                     tostring(MarvenBestPrice.Name),
                     tonumber(MarvenBestPrice.Price) or 0,
                     tostring(MarvenBestPrice.Action)
-                ))
+                )
+                -- เรียก SetDesc ผ่าน pcall อีกชั้นเพื่อป้องกัน error
+                pcall(function()
+                    BestPriceInfo:SetDesc(statusText)
+                end)
             end
         end)
     end
