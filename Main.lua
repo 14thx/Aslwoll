@@ -1,6 +1,6 @@
 -- =====================================
 -- MARVENRIZ HUB + NEXUS ENGINE (FULL 22 จุด)
--- Craft & Process = NEXUS ต้นฉบับแท้ + แก้จุดยืนข้างล่าง
+-- Craft & Process = NEXUS ต้นฉบับแท้ 100%
 -- PART 1/2
 -- =====================================
 
@@ -115,11 +115,24 @@ local function GetGroundLevel(x, z, fallbackY)
     if vehiclePlatformPart then table.insert(fl, vehiclePlatformPart) end
     if fishingPlatform then table.insert(fl, fishingPlatform) end
     params.FilterDescendantsInstances = fl
-    local r = workspace:Raycast(Vector3.new(x, fallbackY + 14, z), Vector3.new(0,-70,0), params)
-    if r then
-        if r.Material == Enum.Material.Water then return math.max(r.Position.Y, 4.0) end
-        return r.Position.Y
+
+    -- ⭐ ค้นหาพื้นดินด้านล่างสุด โดยเริ่มจาก Y=500 ลงมา
+    local highest = nil
+    local bestResult = nil
+    
+    -- ยิง Raycast จาก Y สูง 500 ลงมา (เพื่อหาพื้นดินจริง)
+    local rayOrigin = Vector3.new(x, 500, z)
+    local rayDir = Vector3.new(0, -1000, 0)
+    local result = workspace:Raycast(rayOrigin, rayDir, params)
+
+    if result then
+        if result.Material == Enum.Material.Water then 
+            return math.max(result.Position.Y, 4.0) 
+        end
+        return result.Position.Y
     end
+
+    -- Fallback ถ้าไม่เจออะไรเลย ให้ใช้ fallbackY
     return fallbackY
 end
 
@@ -429,7 +442,7 @@ if LocalPlayer.Character then NeutralizeCharScripts(LocalPlayer.Character) end
 LocalPlayer.CharacterAdded:Connect(NeutralizeCharScripts)
 
 -- =====================================
--- VEHICLE (Functions เหมือนเดิมทั้งหมด)
+-- VEHICLE
 -- =====================================
 local function IsMyVehicle(v)
     if not v or not v:IsA("Model") or not v.Parent then return false end
@@ -1358,30 +1371,15 @@ HarvestSingleCrop = function(cropName, targetAmount, check)
 end
 
 -- =====================================
--- CRAFT (NEXUS ต้นฉบับแท้ 100%) + จุดยืนข้างล่าง
+-- CRAFT (NEXUS ต้นฉบับแท้ 100%)
 -- =====================================
 local function GetCraft3Prompt()
     local craftSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Crafting")
     local c3 = craftSys and craftSys:FindFirstChild("Craft_3")
-    if not c3 then return nil end
-
-    -- ⭐ หา Prompt ที่เกี่ยวกับ "อาหาร" หรือ "Food" เท่านั้น
-    for _, d in ipairs(c3:GetDescendants()) do
-        if d:IsA("ProximityPrompt") and d.Enabled then
-            local pName = (d.Parent and d.Parent.Name or ""):lower()
-            local aText = (d.ActionText or ""):lower()
-            local oText = (d.ObjectText or ""):lower()
-
-            if (aText:find("craft") or oText:find("food") or pName:find("food") or aText:find("cook")) 
-               and not aText:find("weapon") and not oText:find("weapon") and not pName:find("weapon") 
-               and not aText:find("gun") and not pName:find("gun") then
-                return d
-            end
-        end
+    if c3 then
+        local p = c3:FindFirstChildWhichIsA("ProximityPrompt", true)
+        if p and p.Enabled then return p end
     end
-
-    local p = c3:FindFirstChildWhichIsA("ProximityPrompt", true)
-    if p and p.Enabled then return p end
     return nil
 end
 
@@ -1392,10 +1390,16 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not root or not hum then return end
 
+    -- ตรวจสอบและขึ้นรถเสมอเพื่อขับไปโต๊ะคราฟท์
     local myCar = GetPlayerVehicle()
-    if not myCar or not hum.Sit then myCar = EnsureCarAvailable() end
-    if myCar then EnsurePlayerSeatedInCar(myCar) end
+    if not myCar or not hum.Sit then
+        myCar = EnsureCarAvailable()
+    end
+    if myCar then
+        EnsurePlayerSeatedInCar(myCar)
+    end
 
+    -- 1. ปิด UI ที่อาจค้างอยู่
     pcall(function()
         local procGui = PlayerGui:FindFirstChild("Process")
         if procGui and procGui:FindFirstChild("Group") then procGui.Group.Visible = false end
@@ -1403,6 +1407,7 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
         if ecoGui and ecoGui:FindFirstChild("Group") then ecoGui.Group.Visible = false end
     end)
 
+    -- 2. หาตำแหน่งที่แน่นอนของโต๊ะคราฟอาหาร Craft_3
     local cPrompt = GetCraft3Prompt()
     local exactCraftPos = nil
     if cPrompt then
@@ -1421,22 +1426,29 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
     end
     exactCraftPos = exactCraftPos or foodData.Crafting
 
+    -- 3. ขับรถไปจอดหน้าโต๊ะคราฟอาหาร
     DriveCarTo(exactCraftPos + Vector3.new(0, 0, 5.0), shouldContinueCheck)
     task.wait(0.2)
     if shouldContinueCheck and not shouldContinueCheck() then return end
 
-    if hum.Sit then hum.Sit = false task.wait(0.2) end
+    -- 4. ลงจากรถและยืนหน้าโต๊ะคราฟ
+    if hum.Sit then
+        hum.Sit = false
+        task.wait(0.2)
+    end
 
-    -- ⭐⭐⭐ แก้จุดยืน: ยืนติดพื้นด้านล่าง
     local groundY = GetGroundLevel(exactCraftPos.X, exactCraftPos.Z, exactCraftPos.Y)
-    local standPos = Vector3.new(exactCraftPos.X, groundY + 2.8, exactCraftPos.Z + 2.5)
+    local standPos = Vector3.new(exactCraftPos.X, groundY + 3.0, exactCraftPos.Z + 2.5)
     root.CFrame = CFrame.lookAt(standPos, exactCraftPos)
-    root.AssemblyLinearVelocity = Vector3.zero
-    task.wait(0.3) -- รอให้ตัวละครลงพื้น
+    task.wait(0.15)
 
+    -- 5. กด ProximityPrompt
     cPrompt = cPrompt or GetCraft3Prompt()
-    if cPrompt then TriggerPrompt(cPrompt) end
+    if cPrompt then
+        TriggerPrompt(cPrompt)
+    end
 
+    -- 6. รอ UI Crafting เปิดขึ้นมา
     local cg = PlayerGui:WaitForChild("Crafting", 4)
     local tWaitUI = os.clock()
     while os.clock() - tWaitUI < 3.0 do
@@ -1455,53 +1467,77 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
     end
     task.wait(0.2)
 
+    -- 7. คำนวณจำนวนที่คราฟได้จริง
     local function GetMaxCraftAmount()
         local b = GetPlayerInventoryCount("Bread")
         local c = GetPlayerInventoryCount("Catchup")
         local p = GetPlayerInventoryCount("Pig")
         local m = GetPlayerInventoryCount("Mango")
         local r = GetPlayerInventoryCount("Rice")
-        if recipeName == "Sandwish" then return math.min(math.floor(b/3), math.floor(c/2), math.floor(p/2))
-        elseif recipeName == "MangoRice" then return math.min(math.floor(m/2), math.floor(r/3))
+        if recipeName == "Sandwish" then
+            return math.min(math.floor(b / 3), math.floor(c / 2), math.floor(p / 2))
+        elseif recipeName == "MangoRice" then
+            return math.min(math.floor(m / 2), math.floor(r / 3))
         elseif recipeName == "KangSom" then
             local t = GetPlayerInventoryCount("Tomato")
             local cr = GetPlayerInventoryCount("Crab")
-            return math.min(math.floor(t/2), math.floor(cr/2))
+            return math.min(math.floor(t / 2), math.floor(cr / 2))
         end
         return 1
     end
+
     local toCraft = GetMaxCraftAmount()
     if toCraft <= 0 then
-        pcall(function() if cg and cg:FindFirstChild("Group") then cg.Group.Visible = false end end)
+        pcall(function()
+            if cg and cg:FindFirstChild("Group") then cg.Group.Visible = false end
+        end)
         local myCar2 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
         if myCar2 then EnsurePlayerSeatedInCar(myCar2) end
         return
     end
 
+    -- 8. กดเลือกหมวดหมู่ Sand (อาหาร) และเลือกเมนู
     local mainFrame = cg and cg:FindFirstChild("Group") and cg.Group:FindFirstChild("Main")
     if mainFrame then
         local scroller = mainFrame:FindFirstChild("Left_Tab") and mainFrame.Left_Tab:FindFirstChild("ScrollingFrame")
         if scroller then
-            local sandCatBtn = scroller:FindFirstChild("Sand") or scroller:FindFirstChild("Food")
-            if sandCatBtn then SafeClickGuiButton(sandCatBtn) task.wait(0.2) end
+            local sandCatBtn = scroller:FindFirstChild("Sand") or scroller:FindFirstChild("Food") or scroller:FindFirstChild("อาหาร")
+            if sandCatBtn then
+                SafeClickGuiButton(sandCatBtn)
+                task.wait(0.2)
+            end
             local recipeBtn = scroller:FindFirstChild(recipeName) or mainFrame:FindFirstChild(recipeName, true)
             if recipeBtn then
-                local ct = (recipeBtn:IsA("GuiButton") and recipeBtn) or recipeBtn:FindFirstChildWhichIsA("GuiButton", true) or recipeBtn
-                if ct and ct:IsA("GuiButton") then SafeClickGuiButton(ct) end
+                local clickTarget = (recipeBtn:IsA("GuiButton") and recipeBtn) or recipeBtn:FindFirstChildWhichIsA("GuiButton", true) or recipeBtn
+                if clickTarget and clickTarget:IsA("GuiButton") then
+                    SafeClickGuiButton(clickTarget)
+                end
                 task.wait(0.2)
             end
         end
+
         local amtBox = mainFrame:FindFirstChild("Function") and mainFrame.Function:FindFirstChild("Amount") and mainFrame.Function.Amount:FindFirstChild("Amount")
-        if amtBox and amtBox:IsA("TextBox") then amtBox.Text = tostring(toCraft) task.wait(0.1) end
+        if amtBox and amtBox:IsA("TextBox") then
+            amtBox.Text = tostring(toCraft)
+            task.wait(0.1)
+        end
+
         local craftBtn = mainFrame:FindFirstChild("Button") and mainFrame.Button:FindFirstChild("Craft")
-        if craftBtn and craftBtn:IsA("GuiButton") then SafeClickGuiButton(craftBtn) end
+        if craftBtn and craftBtn:IsA("GuiButton") then
+            SafeClickGuiButton(craftBtn)
+        end
     end
 
+    -- 9. ยิง Remote Request
     pcall(function()
-        local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
-        if rc then require(rc).Fire("_crafting", "Request", "Craft_3", recipeName, toCraft, false) end
+        local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
+        if remCore then
+            local Remotes_m = require(remCore)
+            Remotes_m.Fire("_crafting", "Request", "Craft_3", recipeName, toCraft, false)
+        end
     end)
 
+    -- รอระยะเวลาคราฟ 10.5 วินาที
     local tStart = os.clock()
     while (os.clock() - tStart < 10.0) do
         if shouldContinueCheck and not shouldContinueCheck() then break end
@@ -1510,29 +1546,39 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
     end
     task.wait(0.2)
 
+    -- 10. ยิง Remote Complete
     pcall(function()
-        local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
-        if rc then require(rc).Fire("_crafting", "Complete", "Craft_3", recipeName, toCraft, false) end
+        local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
+        if remCore then
+            local Remotes_m = require(remCore)
+            Remotes_m.Fire("_crafting", "Complete", "Craft_3", recipeName, toCraft, false)
+        end
     end)
     task.wait(0.3)
 
+    -- 11. ปิดหน้าต่าง UI คราฟ
     pcall(function()
         if mainFrame and mainFrame:FindFirstChild("Exit") then
             if firesignal then firesignal(mainFrame.Exit.MouseButton1Click) end
         end
-        if cg and cg:FindFirstChild("Group") then cg.Group.Visible = false end
+        if cg and cg:FindFirstChild("Group") then
+            cg.Group.Visible = false
+        end
     end)
     task.wait(0.2)
 
+    -- 12. รอ 3 วินาทีก่อนขึ้นรถไปขาย
     task.wait(3.0)
 
     local myCar3 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
-    if myCar3 then EnsurePlayerSeatedInCar(myCar3) end
+    if myCar3 then
+        EnsurePlayerSeatedInCar(myCar3)
+    end
     task.wait(0.3)
 end
 
 -- =====================================
--- PROCESS: Banana (NEXUS ต้นฉบับแท้ — กด ActionBtn) + จุดยืนข้างล่าง
+-- PROCESS: Banana (NEXUS ต้นฉบับแท้ — กด ActionBtn)
 -- =====================================
 ProcessBananaAtStation = function(check)
     local foodData = TYPER_LOCATIONS.Food
@@ -1563,15 +1609,12 @@ ProcessBananaAtStation = function(check)
 
     if hum.Sit then hum.Sit = false task.wait(0.1) end
 
-    -- ⭐⭐⭐ แก้จุดยืน: ยืนติดพื้นด้านล่าง
-    local standX = exactPos.X
-    local standZ = exactPos.Z + 2.5
-    local gy = GetGroundLevel(standX, standZ, exactPos.Y)
-    local standPos = Vector3.new(standX, gy + 2.8, standZ)
-    root.CFrame = CFrame.lookAt(standPos, exactPos)
+    local standPos = exactPos + Vector3.new(0, 0, 2.5)
+    local gy = GetGroundLevel(standPos.X, standPos.Z, standPos.Y)
+    root.CFrame = CFrame.lookAt(Vector3.new(standPos.X, gy + 3.0, standPos.Z), exactPos)
     root.AssemblyLinearVelocity = Vector3.zero
     root.AssemblyAngularVelocity = Vector3.zero
-    task.wait(0.3) -- รอให้ตัวละครลงพื้น
+    task.wait(0.1)
 
     local procPrompt = pBan and pBan:FindFirstChildWhichIsA("ProximityPrompt", true)
     if not procPrompt then
