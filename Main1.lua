@@ -2088,15 +2088,19 @@ local function EnsureFishingPlatform(pos)
 end
 
 -- =====================================
--- FISHING: Buy Bait / Sell Fish
+-- BuyBaitMaxAtShop (NEXUS ต้นฉบับแท้ 100%)
 -- =====================================
 local function BuyBaitMaxAtShop(shopPos)
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not root then return end
+
+    -- วาร์ปไปหน้าร้าน
     root.CFrame = CFrame.new(shopPos.X, shopPos.Y + 1.2, shopPos.Z)
     root.AssemblyLinearVelocity = Vector3.zero
     task.wait(0.3)
+
+    -- กด ProximityPrompt เปิดร้าน
     local prompt = FindPromptNear(shopPos, 20, "shop") or FindPromptNear(root.Position, 20, nil)
     if prompt then
         prompt.Enabled = true
@@ -2105,18 +2109,24 @@ local function BuyBaitMaxAtShop(shopPos)
         pcall(function() prompt:InputHoldEnd() end)
         task.wait(0.4)
     end
+
+    -- คำนวณเงินและจำนวนที่ซื้อ (สูตรเดาของ NEXUS)
     local pData = LocalPlayer:FindFirstChild("PlayerData")
     local money = (pData and pData:GetAttribute("Money")) or 1000
     local toBuy = math.clamp(math.floor(money / 10), 10, 200)
+
+    -- ยิง Remote ซื้อของ
     pcall(function()
-        local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
-        if rc then
-            local R = require(rc)
-            R.Fire("_shop", "Buy", { FishingBait = toBuy }, "Money")
-            R.Fire("_shop", "Buy", { Bait = toBuy }, "Money")
+        local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
+        if remCore then
+            local Remotes_m = require(remCore)
+            Remotes_m.Fire("_shop", "Buy", { FishingBait = toBuy }, "Money")
+            Remotes_m.Fire("_shop", "Buy", { Bait = toBuy }, "Money")
         end
     end)
     task.wait(0.6)
+
+    -- กดปุ่มใน UI (หาแค่ 2 ชื่อตาม NEXUS)
     pcall(function()
         local pgui = LocalPlayer:FindFirstChild("PlayerGui")
         local shop = pgui and pgui:FindFirstChild("Shop")
@@ -2125,12 +2135,14 @@ local function BuyBaitMaxAtShop(shopPos)
             local sf = main:FindFirstChild("ScrollingFrame")
             local baitBtn = sf and (sf:FindFirstChild("FishingBait") or sf:FindFirstChild("Bait"))
             local payBtn = main:FindFirstChild("Pay") and main.Pay:FindFirstChild("Money")
+            
             if baitBtn and payBtn then
                 SafeClickGuiButton(baitBtn)
                 task.wait(0.2)
                 SafeClickGuiButton(payBtn)
                 task.wait(0.3)
             end
+            
             local closeBtn = main:FindFirstChild("Closed") or main:FindFirstChild("Close")
             if closeBtn then SafeClickGuiButton(closeBtn) end
             shop.Group.Visible = false
