@@ -2900,35 +2900,60 @@ local FarmTab = Window:Tab({Title = "ฟาร์ม", Icon = "sprout"})
 local NormalFarm = FarmTab:Section({Title = "ฟาร์มปกติ"})
 NormalFarm:Dropdown({
     Title = "เลือกฟาร์ม",
-    Options = {"Bread","Catchup","Pig","Mango","Rice","Tomato","Banana","Crab","Coconut","Corn","Egg","Milk","Sugarcane"},
-    Default = "Bread",
+    Options = {
+        "ขนมปัง (วัตถุดิบ)", 
+        "ซอสมะเขือเทศ (วัตถุดิบ)", 
+        "หมู (วัตถุดิบ)", 
+        "มะม่วง (วัตถุดิบ)", 
+        "ข้าว (วัตถุดิบ)", 
+        "มะเขือเทศ (วัตถุดิบ)", 
+        "กล้วย (วัตถุดิบ)", 
+        "ปู (วัตถุดิบ)", 
+        "มะพร้าว (วัตถุดิบ)", 
+        "ข้าวโพด (วัตถุดิบ)", 
+        "ไข่ไก่ (วัตถุดิบ)", 
+        "นม (วัตถุดิบ)", 
+        "อ้อย (วัตถุดิบ)"
+    },
+    Default = "ขนมปัง (วัตถุดิบ)",
     Flag = "NormalFarmType",
-    Callback = function(v) MarvenSelected.NormalFarmType = v end
-})
-NormalFarm:Toggle({
-    Title = "ออโต้ ฟาร์มไอเท็ม",
-    Default = false,
-    Flag = "AutoFarmItem",
     Callback = function(v)
-        MarvenState.AutoFarmItem = v
-        if v then RunNormalFarm()
-        else StopSession("AutoFarmItem") pcall(CancelGameFarm) end
+        local map = {
+            ["ขนมปัง (วัตถุดิบ)"] = "Bread",
+            ["ซอสมะเขือเทศ (วัตถุดิบ)"] = "Catchup",
+            ["หมู (วัตถุดิบ)"] = "Pig",
+            ["มะม่วง (วัตถุดิบ)"] = "Mango",
+            ["ข้าว (วัตถุดิบ)"] = "Rice",
+            ["มะเขือเทศ (วัตถุดิบ)"] = "Tomato",
+            ["กล้วย (วัตถุดิบ)"] = "Banana",
+            ["ปู (วัตถุดิบ)"] = "Crab",
+            ["มะพร้าว (วัตถุดิบ)"] = "Coconut",
+            ["ข้าวโพด (วัตถุดิบ)"] = "Corn",
+            ["ไข่ไก่ (วัตถุดิบ)"] = "Egg",
+            ["นม (วัตถุดิบ)"] = "Milk",
+            ["อ้อย (วัตถุดิบ)"] = "Sugarcane",
+        }
+        MarvenSelected.NormalFarmType = map[v] or "Bread"
     end
 })
 
 local ProcessFarm = FarmTab:Section({Title = "ฟาร์มโพสต์ (คราฟต์/แปรรูป)"})
 ProcessFarm:Dropdown({
     Title = "เลือกของ",
-    -- ⭐ v2.6: 4 เมนู (3 คราฟ + 1 แปรรูป)
-    Options = {"กล้วยแพ็ค (แปรรูป)", "ข้าวมันมะม่วง", "ข้าวกะเพราหมู", "แซนวิช"},
+    Options = {
+        "กล้วยแพ็ค (แปรรูป)", 
+        "ข้าวมันมะม่วง (คราฟต์)", 
+        "ข้าวกะเพราหมู (คราฟต์)", 
+        "แซนวิช (คราฟต์)"
+    },
     Default = "กล้วยแพ็ค (แปรรูป)",
     Flag = "ProcessFarmType",
     Callback = function(v)
         local map = {
             ["กล้วยแพ็ค (แปรรูป)"] = "Banana",
-            ["ข้าวมันมะม่วง"] = "Mango",
-            ["ข้าวกะเพราหมู"] = "RiceKapaoMoo",
-            ["แซนวิช"] = "Sandwich",
+            ["ข้าวมันมะม่วง (คราฟต์)"] = "Mango",
+            ["ข้าวกะเพราหมู (คราฟต์)"] = "RiceKapaoMoo",
+            ["แซนวิช (คราฟต์)"] = "Sandwich",
         }
         MarvenSelected.ProcessFarmType = map[v] or "Banana"
     end
@@ -2947,19 +2972,18 @@ ProcessFarm:Toggle({
 local MineFarm = FarmTab:Section({Title = "ฟาร์มเหมือง (ขุด+แปรรูป+ฝาก)"})
 MineFarm:Dropdown({
     Title = "เลือกเหมือง",
-    Options = {"Rock","Svibranium"},
-    Default = "Rock",
+    Options = {
+        "ฟาร์มหิน (หลอมแร่)", 
+        "ฟาร์มไวเบรเนียม (หลอมแร่)"
+    },
+    Default = "ฟาร์มหิน (หลอมแร่)",
     Flag = "MineFarmType",
-    Callback = function(v) MarvenSelected.MineFarmType = v end
-})
-MineFarm:Toggle({
-    Title = "ออโต้ ฟาร์มเหมือง",
-    Default = false,
-    Flag = "AutoMineFarm",
     Callback = function(v)
-        MarvenState.AutoMineFarm = v
-        if v then RunMineFarm()
-        else StopSession("AutoMineFarm") pcall(CancelGameFarm) end
+        local map = {
+            ["ฟาร์มหิน (หลอมแร่)"] = "Rock",
+            ["ฟาร์มไวเบรเนียม (หลอมแร่)"] = "Svibranium",
+        }
+        MarvenSelected.MineFarmType = map[v] or "Rock"
     end
 })
 
