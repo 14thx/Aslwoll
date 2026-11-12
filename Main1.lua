@@ -1385,7 +1385,6 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not root or not hum then return end
 
-    -- ตรวจสอบและขึ้นรถเสมอเพื่อขับไปโต๊ะคราฟท์
     local myCar = GetPlayerVehicle()
     if not myCar or not hum.Sit then
         myCar = EnsureCarAvailable()
@@ -1394,7 +1393,6 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
         EnsurePlayerSeatedInCar(myCar)
     end
 
-    -- 1. ปิด UI ที่อาจค้างอยู่ (เช่น Process หรือ Economy) เพื่อป้องกันการเปิด UI ผิด
     pcall(function()
         local procGui = PlayerGui:FindFirstChild("Process")
         if procGui and procGui:FindFirstChild("Group") then procGui.Group.Visible = false end
@@ -1402,7 +1400,6 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
         if ecoGui and ecoGui:FindFirstChild("Group") then ecoGui.Group.Visible = false end
     end)
 
-    -- 2. หาตำแหน่งที่แน่นอนของโต๊ะคราฟอาหาร Craft_3
     local cPrompt = GetCraft3Prompt()
     local exactCraftPos = nil
     if cPrompt then
@@ -1421,12 +1418,10 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
     end
     exactCraftPos = exactCraftPos or foodData.Crafting
 
-    -- 3. ขับรถไปจอดหน้าโต๊ะคราฟอาหาร Craft_3
-    DriveCarTo(exactCraftPos + Vector3.new(0, 0, 8.0), shouldContinueCheck)
+    DriveCarTo(exactCraftPos + Vector3.new(0, 0, 5.0), shouldContinueCheck)
     task.wait(0.2)
     if shouldContinueCheck and not shouldContinueCheck() then return end
 
-    -- 4. ลงจากรถและยืนหน้าโต๊ะคราฟ
     if hum.Sit then
         hum.Sit = false
         task.wait(0.2)
@@ -1437,13 +1432,11 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
     root.CFrame = CFrame.lookAt(standPos, exactCraftPos)
     task.wait(0.15)
 
-    -- 5. กด ProximityPrompt เฉพาะของโต๊ะ Craft_3 เท่านั้น
     cPrompt = cPrompt or GetCraft3Prompt()
     if cPrompt then
         TriggerPrompt(cPrompt)
     end
 
-    -- 6. รอ UI Crafting เปิดขึ้นมา
     local cg = PlayerGui:WaitForChild("Crafting", 4)
     local tWaitUI = os.clock()
     while os.clock() - tWaitUI < 3.0 do
@@ -1462,7 +1455,6 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
     end
     task.wait(0.2)
 
-    -- 7. คำนวณจำนวนที่คราฟได้จริง
     local function GetMaxCraftAmount()
         local b = GetPlayerInventoryCount("Bread")
         local c = GetPlayerInventoryCount("Catchup")
@@ -1491,7 +1483,6 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
         return
     end
 
-    -- 8. เลือกหมวดหมู่ Sand (อาหาร) และเลือกเมนูใน UI Crafting
     local mainFrame = cg and cg:FindFirstChild("Group") and cg.Group:FindFirstChild("Main")
     if mainFrame then
         local scroller = mainFrame:FindFirstChild("Left_Tab") and mainFrame.Left_Tab:FindFirstChild("ScrollingFrame")
@@ -1523,7 +1514,6 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
         end
     end
 
-    -- 9. ยิง Remote Request เพื่อสั่งคราฟกับเซิร์ฟเวอร์โดยตรง
     pcall(function()
         local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if remCore then
@@ -1537,7 +1527,6 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
         end
     end)
 
-    -- รอระยะเวลาคราฟ 10.5 วินาที
     local tStart = os.clock()
     while (os.clock() - tStart < 10.0) do
         if shouldContinueCheck and not shouldContinueCheck() then break end
@@ -1546,7 +1535,6 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
     end
     task.wait(0.2)
 
-    -- 10. ยิง Remote Complete เพื่อรับไอเทมอาหารสำเร็จ
     pcall(function()
         local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if remCore then
@@ -1561,7 +1549,6 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
     end)
     task.wait(0.3)
 
-    -- 11. ปิดหน้าต่าง UI คราฟ
     pcall(function()
         if mainFrame and mainFrame:FindFirstChild("Exit") then
             if firesignal then firesignal(mainFrame.Exit.MouseButton1Click) end
@@ -1572,7 +1559,6 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
     end)
     task.wait(0.2)
 
-    -- 12. รอ 3 วินาทีก่อนขึ้นรถไปขาย
     task.wait(3.0)
 
     local myCar3 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
@@ -1585,7 +1571,7 @@ end
 -- =====================================
 -- PROCESS: Banana (NEXUS ต้นฉบับแท้ — กด ActionBtn)
 -- =====================================
-ProcessBananaAtStation = function(check)
+ProcessBananaAtStation = function(shouldContinueCheck)
     local foodData = TYPER_LOCATIONS.Food
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -1593,8 +1579,12 @@ ProcessBananaAtStation = function(check)
     if not root or not hum then return end
 
     local myCar = GetPlayerVehicle()
-    if not myCar or not hum.Sit then myCar = EnsureCarAvailable() end
-    if myCar then EnsurePlayerSeatedInCar(myCar) end
+    if not myCar or not hum.Sit then
+        myCar = EnsureCarAvailable()
+    end
+    if myCar then
+        EnsurePlayerSeatedInCar(myCar)
+    end
 
     local pBan = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Process") and workspace.Systems.Process:FindFirstChild("Banana")
     local pPrompt = pBan and pBan:FindFirstChild("Prompt")
@@ -1606,19 +1596,20 @@ ProcessBananaAtStation = function(check)
         local anyPart = pBan:FindFirstChildWhichIsA("BasePart", true)
         if anyPart then bPos = anyPart.Position end
     end
-    local exactPos = bPos or foodData.BananaProcess
+    local exactBanPos = bPos or foodData.BananaProcess
 
-    DriveCarTo(exactPos + Vector3.new(0, 0, 5.0), check)
+    DriveCarTo(exactBanPos + Vector3.new(0, 0, 5.0), shouldContinueCheck)
     task.wait(0.1)
-    if check and not check() then return end
+    if shouldContinueCheck and not shouldContinueCheck() then return end
 
-    if hum.Sit then hum.Sit = false task.wait(0.1) end
+    if hum.Sit then
+        hum.Sit = false
+        task.wait(0.1)
+    end
 
-    local standPos = exactPos + Vector3.new(0, 0, 2.5)
-    local gy = GetGroundLevel(standPos.X, standPos.Z, standPos.Y)
-    root.CFrame = CFrame.lookAt(Vector3.new(standPos.X, gy + 3.0, standPos.Z), exactPos)
-    root.AssemblyLinearVelocity = Vector3.zero
-    root.AssemblyAngularVelocity = Vector3.zero
+    local standPos = exactBanPos + Vector3.new(0, 0, 2.5)
+    local groundY = GetGroundLevel(standPos.X, standPos.Z, standPos.Y)
+    root.CFrame = CFrame.lookAt(Vector3.new(standPos.X, groundY + 3.0, standPos.Z), exactBanPos)
     task.wait(0.1)
 
     local procPrompt = pBan and pBan:FindFirstChildWhichIsA("ProximityPrompt", true)
@@ -1630,10 +1621,12 @@ ProcessBananaAtStation = function(check)
     end
     task.wait(0.3)
 
-    local tP = os.clock()
-    while GetPlayerInventoryCount("Banana") >= 2 and (os.clock() - tP < 120) do
-        if check and not check() then break end
+    local tProc = os.clock()
+    while (GetPlayerInventoryCount("Banana") >= 2) and (os.clock() - tProc < 120) do
+        if shouldContinueCheck and not shouldContinueCheck() then break end
         GrantAntiXGrace(15)
+        
+        -- NEXUS กด ActionBtn ใน UI ทุกๆ 3.2 วินาที
         pcall(function()
             local procGui = PlayerGui:FindFirstChild("Process")
             if procGui and procGui:FindFirstChild("Group") then
@@ -1644,23 +1637,26 @@ ProcessBananaAtStation = function(check)
                 end
             end
         end)
+
         task.wait(3.2)
     end
 
     pcall(function()
-        local pg = PlayerGui:FindFirstChild("Process")
-        if pg and pg:FindFirstChild("Group") then
-            local main = pg.Group:FindFirstChild("Main")
-            if main and main:FindFirstChild("Exit") then
-                if firesignal then firesignal(main.Exit.MouseButton1Click) end
-                SafeClickGuiButton(main.Exit)
+        local procGui = PlayerGui:FindFirstChild("Process")
+        if procGui and procGui:FindFirstChild("Group") then
+            local mainFrame = procGui.Group:FindFirstChild("Main")
+            if mainFrame and mainFrame:FindFirstChild("Exit") and firesignal then
+                firesignal(mainFrame.Exit.MouseButton1Click)
             end
-            pg.Group.Visible = false
+            procGui.Group.Visible = false
         end
     end)
     task.wait(3.0)
-    local c2 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
-    if c2 then EnsurePlayerSeatedInCar(c2) end
+
+    local myCar2 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
+    if myCar2 then
+        EnsurePlayerSeatedInCar(myCar2)
+    end
     task.wait(0.3)
 end
 
@@ -2724,68 +2720,6 @@ local function RunMineFarm()
     end)
 end
 
-local function RunAutoBestPrice()
-    if not MarvenBestPrice.AutoMode then return end
-    local check = function() return MarvenBestPrice.AutoMode == true end
-    local function realTimeDynamicCheck()
-        if not check() then return false end
-        if _G.CurrentBestItemKey and _G.CurrentBestItemKey ~= _G.CurrentRunningFarmKey then return false end
-        return true
-    end
-    task.spawn(function()
-        local first = true
-        while check() do
-            if first then WarpToTownAndSpawnCar() first = false end
-            if not check() then break end
-            local k, name, price = GetBestFoodPack()
-            _G.CurrentBestItemKey = k
-            _G.CurrentRunningFarmKey = k
-            _G.BestFarmCurrentBestItem = name
-            _G.BestFarmCurrentBestPrice = price
-            MarvenBestPrice.Key = k
-            MarvenBestPrice.Name = name or "ไม่ทราบ"
-            MarvenBestPrice.Price = price or 0
-            local rt = realTimeDynamicCheck
-            if k == "Sandwich" then
-                if GetPlayerInventoryCount("Bread") < 60 then EnsureCarAvailable(TYPER_LOCATIONS.Bread.Booth) HarvestSingleCrop("Bread", 60, rt) end
-                if not check() then break end
-                if GetPlayerInventoryCount("Catchup") < 60 then EnsureCarAvailable(TYPER_LOCATIONS.Catchup.Booth) HarvestSingleCrop("Catchup", 60, rt) end
-                if not check() then break end
-                if GetPlayerInventoryCount("Pig") < 60 then EnsureCarAvailable(TYPER_LOCATIONS.Pig.Booth) HarvestSingleCrop("Pig", 60, rt) end
-                if not check() then break end
-                
-                CraftFoodAtStation("Sandwish", rt)
-                if not check() then break end
-                SellAtEconomyMarket(rt)
-            elseif k == "MangoRice" then
-                if GetPlayerInventoryCount("Mango") < 60 then EnsureCarAvailable(TYPER_LOCATIONS.Mango.Booth) HarvestSingleCrop("Mango", 60, rt) end
-                if not check() then break end
-                if GetPlayerInventoryCount("Rice") < 60 then EnsureCarAvailable(TYPER_LOCATIONS.Rice.Booth) HarvestSingleCrop("Rice", 60, rt) end
-                if not check() then break end
-                CraftFoodAtStation("MangoRice", rt)
-                if not check() then break end
-                SellAtEconomyMarket(rt)
-            elseif k == "BananaPack" then
-                if GetPlayerInventoryCount("Banana") < 60 then EnsureCarAvailable(TYPER_LOCATIONS.Banana.Booth) HarvestSingleCrop("Banana", 60, rt) end
-                if not check() then break end
-                
-                ProcessBananaAtStation(rt)
-                if not check() then break end
-                SellAtEconomyMarket(rt)
-            elseif k == "KangSom" then
-                if GetPlayerInventoryCount("Tomato") < 60 then EnsureCarAvailable(TYPER_LOCATIONS.Tomato.Booth) HarvestSingleCrop("Tomato", 60, rt) end
-                if not check() then break end
-                if GetPlayerInventoryCount("Crab") < 60 then EnsureCarAvailable(TYPER_LOCATIONS.Crab.Booth) HarvestSingleCrop("Crab", 60, rt) end
-                if not check() then break end
-                CraftFoodAtStation("KangSom", rt)
-                if not check() then break end
-                SellAtEconomyMarket(rt)
-            end
-            task.wait(1.5)
-        end
-    end)
-end
-
 -- SETTINGS
 local SettingsTab = Window:Tab({Title = "ตั้งค่า", Icon = "settings"})
 local Settings = SettingsTab:Section({Title = "ตั้งค่าทั่วไป"})
@@ -2862,7 +2796,7 @@ NormalFarm:Toggle({
 local ProcessFarm = FarmTab:Section({Title = "ฟาร์มโพสต์ (คราฟต์/แปรรูป)"})
 ProcessFarm:Dropdown({
     Title = "เลือกของ",
-    Options = {"Banana","Mango","Rice","KangSom"},
+    Options = {"BananaPack","MangoRice","RicekapaoMoo","KangSom"},
     Default = "Banana",
     Flag = "ProcessFarmType",
     Callback = function(v) MarvenSelected.ProcessFarmType = v end
@@ -2897,20 +2831,10 @@ MineFarm:Toggle({
     end
 })
 
-local BestPriceSection = FarmTab:Section({Title = "🌟 ฟาร์มตามราคาดี (Auto Best Price)"})
+local BestPriceSection = FarmTab:Section({Title = "🌟 ข้อมูลราคาตลาด (Real-Time)"})
 local BestPriceInfo = BestPriceSection:Paragraph({
-    Title = "📊 ข้อมูลตลาด Real-Time",
-    Content = "⭐ ราคาดีสุด: แซนวิช (1500฿)\n🔄 สถานะ: พร้อมทำงาน"
-})
-BestPriceSection:Toggle({
-    Title = "🚀 เปิดลูปฟาร์มตามราคาดี",
-    Default = false,
-    Flag = "AutoBestPrice",
-    Callback = function(v)
-        MarvenBestPrice.AutoMode = v
-        if v then RunAutoBestPrice()
-        else pcall(CancelGameFarm) end
-    end
+    Title = "📊 ราคาอาหารที่ดีที่สุดตอนนี้",
+    Content = "กำลังดึงข้อมูลราคา..."
 })
 
 -- Background Thread (อัปเดตราคา Real-Time)
@@ -2919,18 +2843,11 @@ task.spawn(function()
         task.wait(1.5)
         pcall(function()
             local k, name, price = GetBestFoodPack()
-            MarvenBestPrice.Key = k
-            MarvenBestPrice.Name = name or "ไม่ทราบชื่อ"
-            MarvenBestPrice.Price = price or 0
-            _G.CurrentBestItemKey = k
-            _G.BestFarmCurrentBestItem = MarvenBestPrice.Name
-            _G.BestFarmCurrentBestPrice = MarvenBestPrice.Price
             if BestPriceInfo and BestPriceInfo.SetDesc then
-                local statusText = string.format(
-                    "⭐ ราคาดีสุด: %s (%d฿)\n🔄 สถานะ: %s",
-                    tostring(MarvenBestPrice.Name),
-                    tonumber(MarvenBestPrice.Price) or 0,
-                    tostring(MarvenBestPrice.Action)
+                local statusText = string.Format(
+                    "⭐ ราคาดีที่สุด: %s\n💰 ราคา: %d฿",
+                    tostring(name or "ไม่ทราบชื่อ"),
+                    tonumber(price) or 0
                 )
                 pcall(function() BestPriceInfo:SetDesc(statusText) end)
             end
