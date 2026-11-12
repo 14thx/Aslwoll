@@ -3009,17 +3009,15 @@ MineFarm:Dropdown({
     end
 })
 
-local BestPriceSection = FarmTab:Section({Title = "🌟 ข้อมูลราคาตลาด (Real-Time)"})
-
 -- =====================================
--- ⭐ ระบบดักฟังราคาจริงจากตลาด (เงียบๆ ไม่ต้องเปิด UI)
+-- ⭐ ระบบดักฟังราคาจริง + โชว์บน UI (ครบจบในก้อนเดียว)
 -- =====================================
 local RealTimePrices = {}
 
+-- 1. ส่วนดักฟังราคา
 pcall(function()
     local remotes = require(ReplicatedStorage:WaitForChild("Systems"):WaitForChild("Modules"):WaitForChild("Core"):WaitForChild("Remotes"))
     
-    -- 1. ดักฟังข้อมูลที่เซิร์ฟเวอร์ส่งมา
     remotes.On("_economy", function(action, priceTable)
         if (action == "Update" or action == "Open") and type(priceTable) == "table" then
             for itemName, price in pairs(priceTable) do
@@ -3030,19 +3028,16 @@ pcall(function()
         end
     end)
     
-    -- 2. แอบกระตุ้นเซิร์ฟเวอร์ให้ส่งราคามาเงียบๆ ทุก 5 วินาที
     task.spawn(function()
         task.wait(3) 
         while true do
-            pcall(function()
-                remotes.Fire("_economy", "Request")
-            end)
+            pcall(function() remotes.Fire("_economy", "Request") end)
             task.wait(5)
         end
     end)
 end)
 
--- ⭐ ฟังก์ชันดึงราคาจริงมาโชว์
+-- 2. ส่วนคำนวณราคา
 local function GetBestFoodPack()
     local foodItems = {
         Sandwich = {"Sandwich", "Sandwish"},
@@ -3076,13 +3071,37 @@ local function GetBestFoodPack()
         end
     end
     
-    -- ถ้าราคาเป็น 0 (ตลาดยังไม่ส่งข้อมูลมา) ให้โชว์สถานะรอ
     if bestPrice == 0 then
         return nil, "รอข้อมูลจากตลาด (กรุณาเดินไปที่ตลาด)", 0
     end
     
     return bestKey, bestName, bestPrice
 end
+
+-- 3. ⭐ ส่วนสร้างหน้าจอโชว์ราคา (ที่คุณลืมใส่!)
+local BestPriceSection = FarmTab:Section({Title = "🌟 ข้อมูลราคาตลาด (Real-Time)"})
+local BestPriceInfo = BestPriceSection:Paragraph({
+    Title = "📊 ราคาอาหารที่ดีที่สุดตอนนี้",
+    Content = "กำลังดึงข้อมูลราคา..."
+})
+
+-- 4. ⭐ ลูปอัปเดตตัวเลขบนหน้าจอ
+task.spawn(function()
+    while true do
+        task.wait(1.5)
+        pcall(function()
+            local k, name, price = GetBestFoodPack()
+            if BestPriceInfo and BestPriceInfo.SetDesc then
+                local statusText = string.format(
+                    "⭐ ราคาดีที่สุด: %s\n💰 ราคา: %d฿",
+                    tostring(name or "ไม่ทราบชื่อ"),
+                    tonumber(price) or 0
+                )
+                pcall(function() BestPriceInfo:SetDesc(statusText) end)
+            end
+        end)
+    end
+end)
 
 -- =====================================
 -- OTHER TAB
