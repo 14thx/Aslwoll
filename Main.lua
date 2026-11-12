@@ -1423,7 +1423,7 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
     exactCraftPos = exactCraftPos or foodData.Crafting
 
     -- 3. ขับรถไปจอดหน้าโต๊ะคราฟอาหาร
-    DriveCarTo(exactCraftPos + Vector3.new(0, 0, 5.0), shouldContinueCheck)
+    DriveCarTo(exactCraftPos + Vector3.new(0, 0, 7.0), shouldContinueCheck)
     task.wait(0.2)
     if shouldContinueCheck and not shouldContinueCheck() then return end
 
@@ -1599,7 +1599,7 @@ ProcessBananaAtStation = function(check)
     end
     local exactPos = bPos or foodData.BananaProcess
 
-    DriveCarTo(exactPos + Vector3.new(0, 0, 5.0), check)
+    DriveCarTo(exactPos + Vector3.new(0, 0, 7.0), check)
     task.wait(0.1)
     if check and not check() then return end
 
