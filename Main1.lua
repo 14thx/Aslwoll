@@ -3010,47 +3010,32 @@ MineFarm:Dropdown({
 })
 
 local BestPriceSection = FarmTab:Section({Title = "🌟 ข้อมูลราคาตลาด (Real-Time)"})
--- ⭐ ฟังก์ชันดึงราคาจริงมาโชว์ (ไม่เกี่ยวกับระบบฟาร์มนะครับ)
-local function GetBestFoodPack()
-    -- ไอเทมที่ต้องการโชว์ใน UI (ชื่อในเซิร์ฟเวอร์)
-    local foodItems = {
-        Sandwich = {"Sandwich", "Sandwish"},
-        MangoRice = {"MangoRice"},
-        BananaPack = {"BananaPack"},
-        KangSom = {"KangSom"}
-    }
-    
-    local displayNames = { 
-        Sandwich = "แซนวิช", 
-        MangoRice = "ข้าวมันมะม่วง", 
-        BananaPack = "กล้วยแพ็ค", 
-        KangSom = "แกงส้ม" 
-    }
-    
-    local bestKey, bestName, bestPrice = nil, "กำลังโหลด...", 0
-    
-    -- วนลูปหาว่าตัวไหนราคาดีที่สุดในขณะนี้
-    for key, aliases in pairs(foodItems) do
-        local price = 0
-        
-        -- ดึงราคาจากที่เซิร์ฟเวอร์ส่งมา
-        for _, alias in ipairs(aliases) do
-            if RealTimePrices[alias] then
-                price = RealTimePrices[alias]
-                break
+-- ⭐ กล่องข้อความโชว์ราคา
+local BestPriceInfo = BestPriceSection:Paragraph({
+    Title = "📊 ราคาอาหารที่ดีที่สุดตอนนี้",
+    Content = "กำลังดึงข้อมูลราคา..."
+})
+
+-- ⭐ ลูปอัปเดตราคา Real-time ทุกๆ 1.5 วินาที
+task.spawn(function()
+    while true do
+        task.wait(1.5)
+        pcall(function()
+            -- เรียกใช้ฟังก์ชันที่เราดักฟังราคามา
+            local k, name, price = GetBestFoodPack()
+            
+            -- อัปเดตข้อความใน UI
+            if BestPriceInfo and BestPriceInfo.SetDesc then
+                local statusText = string.format(
+                    "⭐ ราคาดีที่สุด: %s\n💰 ราคา: %d฿",
+                    tostring(name or "ไม่ทราบชื่อ"),
+                    tonumber(price) or 0
+                )
+                pcall(function() BestPriceInfo:SetDesc(statusText) end)
             end
-        end
-        
-        -- ถ้ายังไม่ได้ราคา (เซิร์ฟเวอร์ยังไม่ตอบ) ให้โชว์เป็น 0 ไว้ก่อน
-        if price > bestPrice then
-            bestPrice = price
-            bestKey = key
-            bestName = displayNames[key]
-        end
+        end)
     end
-    
-    return bestKey, bestName, bestPrice
-end
+end)
 
 -- =====================================
 -- OTHER TAB
