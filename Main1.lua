@@ -2434,57 +2434,33 @@ end
 -- =====================================
 -- AUTO BEST PRICE
 -- =====================================
-local ItemAliases = {
-    Sandwich   = {"Sandwich","Sandwish","แซนวิช","Food_Sandwich"},
-    MangoRice  = {"MangoRice","Mango_Rice","ข้าวมันมะม่วง"},
-    BananaPack = {"BananaPack","Banana_Pack","กล้วยแพ็ค"},
-    KangSom    = {"KangSom","Kang_Som","แกงส้ม"},
-}
+-- ⭐ ตัวแปรสำหรับเก็บราคาที่ดักฟังมาจากเซิร์ฟเวอร์
+local RealTimePrices = {}
 
-local function GetBestFoodPack()
-    local prices = {}
-    local rep = ReplicatedStorage
-    local pd = LocalPlayer:FindFirstChild("PlayerData")
-    local folders = {
-        rep:FindFirstChild("Economy"), 
-        rep:FindFirstChild("Systems") and rep.Systems:FindFirstChild("Economy"), 
-        rep:FindFirstChild("Prices"), 
-        rep:FindFirstChild("Market")
-    }
-    for k, aliases in pairs(ItemAliases) do
-        local foundPrice = 0
-        if pd then
-            for _, alias in ipairs(aliases) do
-                local val = pd:GetAttribute(alias) or pd:GetAttribute("Price_" .. alias)
-                if typeof(val) == "number" and val > 0 then foundPrice = val break end
-            end
-        end
-        if foundPrice == 0 then
-            for _, f in ipairs(folders) do
-                if f then
-                    for _, alias in ipairs(aliases) do
-                        local val = f:GetAttribute(alias)
-                        if typeof(val) == "number" and val > 0 then foundPrice = val break end
-                    end
+-- ⭐ เริ่มต้นดักฟังราคาจาก Remote ของเกม
+pcall(function()
+    local remotes = require(ReplicatedStorage:WaitForChild("Systems"):WaitForChild("Modules"):WaitForChild("Core"):WaitForChild("Remotes"))
+    
+    -- ดักฟังเมื่อเซิร์ฟเวอร์ส่งข้อมูลราคามา
+    remotes.On("_economy", function(action, priceTable)
+        if (action == "Update" or action == "Open") and type(priceTable) == "table" then
+            -- อัปเดตข้อมูลราคาลงตาราง
+            for itemName, price in pairs(priceTable) do
+                if type(price) == "number" then
+                    RealTimePrices[itemName] = price
                 end
-                if foundPrice > 0 then break end
             end
         end
-        prices[k] = foundPrice
-    end
-    local basePrices = { Sandwich = 1500, MangoRice = 2000, BananaPack = 1800, KangSom = 2500 }
-    local bestKey, bestPrice, bestName = nil, -1, nil
-    local displayNames = { Sandwich = "แซนวิช", MangoRice = "ข้าวมันมะม่วง", BananaPack = "กล้วยแพ็ค", KangSom = "แกงส้ม" }
-    for k, v in pairs(prices) do
-        local finalPrice = (v > 0) and v or basePrices[k]
-        if finalPrice > bestPrice then
-            bestPrice = finalPrice
-            bestKey = k
-            bestName = displayNames[k]
+    end)
+    
+    -- ขอราคาล่าสุดจากเซิร์ฟเวอร์ทุกๆ 3 วินาที (เพื่อให้ UI อัปเดตตลอด)
+    task.spawn(function()
+        while true do
+            task.wait(3)
+            pcall(function() remotes.Fire("_economy", "Request") end)
         end
-    end
-    return bestKey, bestName, bestPrice
-end
+    end)
+end)
 
 -- =====================================
 -- SERVER HOP
@@ -3034,27 +3010,47 @@ MineFarm:Dropdown({
 })
 
 local BestPriceSection = FarmTab:Section({Title = "🌟 ข้อมูลราคาตลาด (Real-Time)"})
-local BestPriceInfo = BestPriceSection:Paragraph({
-    Title = "📊 ราคาอาหารที่ดีที่สุดตอนนี้",
-    Content = "กำลังดึงข้อมูลราคา..."
-})
-
-task.spawn(function()
-    while true do
-        task.wait(1.5)
-        pcall(function()
-            local k, name, price = GetBestFoodPack()
-            if BestPriceInfo and BestPriceInfo.SetDesc then
-                local statusText = string.Format(
-                    "⭐ ราคาดีที่สุด: %s\n💰 ราคา: %d฿",
-                    tostring(name or "ไม่ทราบชื่อ"),
-                    tonumber(price) or 0
-                )
-                pcall(function() BestPriceInfo:SetDesc(statusText) end)
+-- ⭐ ฟังก์ชันดึงราคาจริงมาโชว์ (ไม่เกี่ยวกับระบบฟาร์มนะครับ)
+local function GetBestFoodPack()
+    -- ไอเทมที่ต้องการโชว์ใน UI (ชื่อในเซิร์ฟเวอร์)
+    local foodItems = {
+        Sandwich = {"Sandwich", "Sandwish"},
+        MangoRice = {"MangoRice"},
+        BananaPack = {"BananaPack"},
+        KangSom = {"KangSom"}
+    }
+    
+    local displayNames = { 
+        Sandwich = "แซนวิช", 
+        MangoRice = "ข้าวมันมะม่วง", 
+        BananaPack = "กล้วยแพ็ค", 
+        KangSom = "แกงส้ม" 
+    }
+    
+    local bestKey, bestName, bestPrice = nil, "กำลังโหลด...", 0
+    
+    -- วนลูปหาว่าตัวไหนราคาดีที่สุดในขณะนี้
+    for key, aliases in pairs(foodItems) do
+        local price = 0
+        
+        -- ดึงราคาจากที่เซิร์ฟเวอร์ส่งมา
+        for _, alias in ipairs(aliases) do
+            if RealTimePrices[alias] then
+                price = RealTimePrices[alias]
+                break
             end
-        end)
+        end
+        
+        -- ถ้ายังไม่ได้ราคา (เซิร์ฟเวอร์ยังไม่ตอบ) ให้โชว์เป็น 0 ไว้ก่อน
+        if price > bestPrice then
+            bestPrice = price
+            bestKey = key
+            bestName = displayNames[key]
+        end
     end
-end)
+    
+    return bestKey, bestName, bestPrice
+end
 
 -- =====================================
 -- OTHER TAB
