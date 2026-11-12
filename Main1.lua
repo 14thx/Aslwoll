@@ -2881,6 +2881,36 @@ Settings:Toggle({
 })
 
 Settings:Toggle({
+    Title = "พลังงานไม่จำกัด",
+    Description = "ล็อค Stamina/Energy = 100 ตลอดเวลา",
+    Default = true,
+    Flag = "InfiniteEnergy",
+    Callback = function(v)
+        MarvenState.InfiniteEnergy = v
+        if _G._MarvenInfEnergyConn then
+            pcall(function() _G._MarvenInfEnergyConn:Disconnect() end)
+            _G._MarvenInfEnergyConn = nil
+        end
+        if v then
+            _G._MarvenInfEnergyConn = RunService.Heartbeat:Connect(function()
+                pcall(function()
+                    local s = LocalPlayer:FindFirstChild("Stats")
+                    if s then
+                        s:SetAttribute("Stamina", 100)
+                        s:SetAttribute("Energy", 100)
+                    end
+                    local pd = LocalPlayer:FindFirstChild("PlayerData")
+                    if pd then 
+                        pd:SetAttribute("Stamina", 100)
+                        pd:SetAttribute("Energy", 100)
+                    end
+                end)
+            end)
+        end
+    end
+})
+
+Settings:Toggle({
     Title = "ไม่หิวอาหาร",
     Description = "ล็อค Brain/Hunger = 100 ตลอดเวลา",
     Default = false,
@@ -2903,36 +2933,6 @@ Settings:Toggle({
                     if pd then 
                         pd:SetAttribute("Brain", 100) 
                         pd:SetAttribute("Hunger", 100)
-                    end
-                end)
-            end)
-        end
-    end
-})
-
-Settings:Toggle({
-    Title = "พลังงานไม่จำกัด",
-    Description = "ล็อค Stamina/Energy = 100 ตลอดเวลา",
-    Default = false,
-    Flag = "InfiniteEnergy",
-    Callback = function(v)
-        MarvenState.InfiniteEnergy = v
-        if _G._MarvenInfEnergyConn then
-            pcall(function() _G._MarvenInfEnergyConn:Disconnect() end)
-            _G._MarvenInfEnergyConn = nil
-        end
-        if v then
-            _G._MarvenInfEnergyConn = RunService.Heartbeat:Connect(function()
-                pcall(function()
-                    local s = LocalPlayer:FindFirstChild("Stats")
-                    if s then
-                        s:SetAttribute("Stamina", 100)
-                        s:SetAttribute("Energy", 100)
-                    end
-                    local pd = LocalPlayer:FindFirstChild("PlayerData")
-                    if pd then 
-                        pd:SetAttribute("Stamina", 100)
-                        pd:SetAttribute("Energy", 100)
                     end
                 end)
             end)
@@ -2982,6 +2982,17 @@ NormalFarm:Dropdown({
             ["อ้อย (วัตถุดิบ)"] = "Sugarcane",
         }
         MarvenSelected.NormalFarmType = map[v] or "Bread"
+    end
+})
+
+NormalFarm:Toggle({
+    Title = "ออโต้ ฟาร์มวัตถุดิบ",
+    Default = false,
+    Flag = "AutoFarmItem",
+    Callback = function(v)
+        MarvenState.AutoFarmItem = v
+        if v then RunNormalFarm()
+        else StopSession("AutoFarmItem") pcall(CancelGameFarm) end
     end
 })
 
