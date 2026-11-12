@@ -1,7 +1,7 @@
--- [MAHI68] รวมโค้ดตัวเต็มของ MarvenRiz Hub + Nexus Engine พร้อมอัปเดตระบบตรวจสอบรถใกล้ตัว (มีรถอยู่แล้วไม่ไปกดเบิกใหม่) เรียบร้อยในไฟล์เดียว พร้อมรัน
--- Title: MarvenRiz Hub + Nexus Engine — Optimized Car Check & Full Patched
+-- [MAHI68] รวมโค้ดตัวเต็มของ MarvenRiz Hub + Nexus Engine ฉบับสมบูรณ์ (พร้อมระบบเช็ครถใกล้ตัว, Global Inventory, ป้องกัน Anticheat/Kick, Throttled Input และระบบ Unload ที่สะอาดไร้ Memory Leak) เรียบร้อยในไฟล์เดียว พร้อมรัน
+-- Title: MarvenRiz Hub + Nexus Engine — Ultimate Optimized Version
 -- language: Luau, target: Roblox (Client/Executor), environment: Luau VM
--- *MarvenRiz Hub + NEXUS Engine (Optimized Car Check: Use nearby car without respawning)*
+-- *MarvenRiz Hub + NEXUS Engine (Optimized & All Patches Applied)*
 
 local Loading = nil
 pcall(function()
@@ -130,8 +130,8 @@ local function GetGroundLevel(x, z, fallbackY)
     return fallbackY
 end
 
--- ⭐ GetPlayerInventoryCount (Global)
-_G.GetPlayerInventoryCount = function(name)
+-- ⭐ GetPlayerInventoryCount (Global Scope ป้องกัน Error nil)
+getgenv().GetPlayerInventoryCount = function(name)
     local pd = LocalPlayer:FindFirstChild("PlayerData")
     if pd then
         local c = pd:GetAttribute(name)
@@ -144,7 +144,7 @@ _G.GetPlayerInventoryCount = function(name)
     end
     return 0
 end
-GetPlayerInventoryCount = _G.GetPlayerInventoryCount
+GetPlayerInventoryCount = getgenv().GetPlayerInventoryCount
 
 local function GetPlayerHunger()
     local s = LocalPlayer:FindFirstChild("Stats")
@@ -309,37 +309,24 @@ CancelGameFarm = function()
     task.wait(0.3)
 end
 
-local function ClickGuiButton(btn)
-    if not btn then return end
-    pcall(function()
-        if getconnections then
-            for _, con in ipairs(getconnections(btn.MouseButton1Click)) do
-                pcall(function() if con.Function then con.Function() elseif con.Fire then con:Fire() end end)
-            end
-        end
-    end)
+-- ⭐ Throttled SafeClickGuiButton (ป้องกัน Input Cooldown)
+local function SafeClickGuiButton(btn)
+    if not btn or not btn:IsA("GuiButton") then return end
     pcall(function()
         if firesignal then
-            pcall(function() firesignal(btn.MouseButton1Click) end)
-            pcall(function() firesignal(btn.Activated) end)
+            firesignal(btn.MouseButton1Down)
+            task.wait(0.05)
+            firesignal(btn.MouseButton1Click)
+            task.wait(0.05)
+            firesignal(btn.Activated)
         end
     end)
     pcall(function()
         if VirtualInputManager and btn.AbsolutePosition and btn.AbsoluteSize then
             local pos = btn.AbsolutePosition + (btn.AbsoluteSize / 2)
             VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 0)
-            task.wait(0.05)
+            task.wait(0.08)
             VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 0)
-        end
-    end)
-end
-
-local function SafeClickGuiButton(btn)
-    if not btn or not btn:IsA("GuiButton") then return end
-    pcall(function()
-        if firesignal then
-            firesignal(btn.MouseButton1Click)
-            firesignal(btn.Activated)
         end
     end)
 end
@@ -381,6 +368,7 @@ local function FindPromptNear(centerPos, maxDist, matchKeyword)
     return closest
 end
 
+-- ⭐ Enhanced Anticheat & Remote Kick Interceptor
 pcall(function()
     local lp = Players.LocalPlayer
     if hookmetamethod then
@@ -392,7 +380,7 @@ pcall(function()
             if method == "FireServer" or method == "InvokeServer" then
                 for _, a in ipairs(args) do
                     local str = tostring(a):lower()
-                    if str:find("kick") or str:find("anticheat") or str:find("antifall") or str:find("teleport") or str:find("exploit") or str:find("speed") or str:find("fly") then
+                    if str:find("kick") or str:find("anticheat") or str:find("antifall") or str:find("teleport") or str:find("exploit") or str:find("speed") or str:find("fly") or str:find("ban") then
                         return nil
                     end
                 end
@@ -970,7 +958,7 @@ SpawnCarAtBooth = function(boothPos)
     return nil
 end
 
--- ⭐ ปรับปรุง EnsureCarAvailable: เช็ครถใกล้ตัวก่อน ไม่ไปเบิกใหม่ถ้ามีอยู่แล้ว
+-- ⭐ EnsureCarAvailable: ตรวจสอบรถใกล้ตัวก่อน ไม่เบิกใหม่ถ้ามีอยู่แล้ว
 EnsureCarAvailable = function(booth)
     local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     
@@ -1148,7 +1136,7 @@ DriveCarTo = function(dest, check)
     return true
 end
 
-RunService.Stepped:Connect(function()
+_G._MarvenSteppedConn = RunService.Stepped:Connect(function()
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if hum and hum.Sit and hum.SeatPart then
@@ -2918,11 +2906,12 @@ UnloadSection:Button({
         pcall(CancelGameFarm)
         pcall(StopAutoFishing)
         pcall(function()
-            if _G._MarvenInfEnergyConn then _G._MarvenInfEnergyConn:Disconnect() end
+            if _G._MarvenInfEnergyConn then _G._MarvenInfEnergyConn:Disconnect() _G._MarvenInfEnergyConn = nil end
+            if _G._MarvenSteppedConn then _G._MarvenSteppedConn:Disconnect() _G._MarvenSteppedConn = nil end
         end)
         pcall(function()
-            if vehiclePlatformPart then vehiclePlatformPart:Destroy() end
-            if fishingPlatform then fishingPlatform:Destroy() end
+            if vehiclePlatformPart then vehiclePlatformPart:Destroy() vehiclePlatformPart = nil end
+            if fishingPlatform then fishingPlatform:Destroy() fishingPlatform = nil end
         end)
         pcall(function()
             if Window and Window.Destroy then Window:Destroy() end
