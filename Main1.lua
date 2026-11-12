@@ -2909,6 +2909,7 @@ Settings:Toggle({
 -- =====================================
 local FarmTab = Window:Tab({Title = "ฟาร์ม", Icon = "sprout"})
 
+local NormalFarm = FarmTab:Section({Title = "ฟาร์มปกติ"})
 NormalFarm:Dropdown({
     Title = "เลือกฟาร์ม",
     Options = {
