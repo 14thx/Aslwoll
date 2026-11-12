@@ -2881,8 +2881,8 @@ Settings:Toggle({
 })
 
 Settings:Toggle({
-    Title = "พลังงานไม่จำกัด",
-    Description = "ล็อค Stamina/Brain/Hunger = 100 ตลอดเวลา",
+    Title = "ไม่หิวอาหาร",
+    Description = "ล็อค Brain/Hunger = 100 ตลอดเวลา",
     Default = false,
     Flag = "InfiniteEnergy",
     Callback = function(v)
@@ -2898,13 +2898,39 @@ Settings:Toggle({
                     if s then 
                         s:SetAttribute("Brain", 100) 
                         s:SetAttribute("Hunger", 100)
-                        s:SetAttribute("Stamina", 100)
-                        s:SetAttribute("Energy", 100)
                     end
                     local pd = LocalPlayer:FindFirstChild("PlayerData")
                     if pd then 
                         pd:SetAttribute("Brain", 100) 
                         pd:SetAttribute("Hunger", 100)
+                    end
+                end)
+            end)
+        end
+    end
+})
+
+Settings:Toggle({
+    Title = "พลังงานไม่จำกัด",
+    Description = "ล็อค Stamina/Energy = 100 ตลอดเวลา",
+    Default = false,
+    Flag = "InfiniteEnergy",
+    Callback = function(v)
+        MarvenState.InfiniteEnergy = v
+        if _G._MarvenInfEnergyConn then
+            pcall(function() _G._MarvenInfEnergyConn:Disconnect() end)
+            _G._MarvenInfEnergyConn = nil
+        end
+        if v then
+            _G._MarvenInfEnergyConn = RunService.Heartbeat:Connect(function()
+                pcall(function()
+                    local s = LocalPlayer:FindFirstChild("Stats")
+                    if s then
+                        s:SetAttribute("Stamina", 100)
+                        s:SetAttribute("Energy", 100)
+                    end
+                    local pd = LocalPlayer:FindFirstChild("PlayerData")
+                    if pd then 
                         pd:SetAttribute("Stamina", 100)
                         pd:SetAttribute("Energy", 100)
                     end
@@ -3008,7 +3034,16 @@ MineFarm:Dropdown({
         MarvenSelected.MineFarmType = map[v] or "Rock"
     end
 })
-
+MineFarm:Toggle({
+    Title = "ออโต้ ฟาร์มเหมือง",
+    Default = false,
+    Flag = "AutoMineFarm",
+    Callback = function(v)
+        MarvenState.AutoMineFarm = v
+        if v then RunMineFarm()
+        else StopSession("AutoMineFarm") pcall(CancelGameFarm) end
+    end
+})
 -- =====================================
 -- ⭐ ระบบดักฟังราคาจริง + โชว์บน UI (ครบจบในก้อนเดียว)
 -- =====================================
@@ -3128,10 +3163,11 @@ SpeedSection:Slider({
     Title = "ความเร็วขับรถ (Studs/s)",
     Default = 150,
     Min = 10,
-    Max = 200,
+    Max = 280, -- ปรับได้ถึง 280
     Rounding = 0,
     Flag = "VehicleSpeed",
-    Callback = function(v) VehicleDriveSpeed = math.clamp(math.round(v), 10, 200) end
+    -- แก้ตัวเลข 200 ตัวหลังสุดให้เป็น 280 (หรือสูงกว่านี้ถ้าอยากแรงมาก)
+    Callback = function(v) VehicleDriveSpeed = math.clamp(math.round(v), 10, 280) end
 })
 SpeedSection:Toggle({
     Title = "รถทะลุสิ่งกีดขวาง (Vehicle NoClip)",
