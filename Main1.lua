@@ -3011,13 +3011,39 @@ MineFarm:Dropdown({
 
 local BestPriceSection = FarmTab:Section({Title = "🌟 ข้อมูลราคาตลาด (Real-Time)"})
 
--- ⭐ สร้างระบบดึงราคาใหม่ทั้งหมด
-local function GetBestFoodPack()
-    local EconomyConfig = nil
-    pcall(function()
-        EconomyConfig = require(ReplicatedStorage:WaitForChild("Systems"):WaitForChild("Config"):WaitForChild("Economy_Config"))
-    end)
+-- =====================================
+-- ⭐ ระบบดักฟังราคาจริงจากตลาด (เงียบๆ ไม่ต้องเปิด UI)
+-- =====================================
+local RealTimePrices = {}
 
+pcall(function()
+    local remotes = require(ReplicatedStorage:WaitForChild("Systems"):WaitForChild("Modules"):WaitForChild("Core"):WaitForChild("Remotes"))
+    
+    -- 1. ดักฟังข้อมูลที่เซิร์ฟเวอร์ส่งมา
+    remotes.On("_economy", function(action, priceTable)
+        if (action == "Update" or action == "Open") and type(priceTable) == "table" then
+            for itemName, price in pairs(priceTable) do
+                if type(price) == "number" then
+                    RealTimePrices[itemName] = price
+                end
+            end
+        end
+    end)
+    
+    -- 2. แอบกระตุ้นเซิร์ฟเวอร์ให้ส่งราคามาเงียบๆ ทุก 5 วินาที
+    task.spawn(function()
+        task.wait(3) 
+        while true do
+            pcall(function()
+                remotes.Fire("_economy", "Request")
+            end)
+            task.wait(5)
+        end
+    end)
+end)
+
+-- ⭐ ฟังก์ชันดึงราคาจริงมาโชว์
+local function GetBestFoodPack()
     local foodItems = {
         Sandwich = {"Sandwich", "Sandwish"},
         MangoRice = {"MangoRice"},
@@ -3032,17 +3058,14 @@ local function GetBestFoodPack()
         KangSom = "แกงส้ม" 
     }
     
-    local bestKey, bestName, bestPrice = nil, "ไม่ทราบชื่อ", 0
+    local bestKey, bestName, bestPrice = nil, "รอข้อมูลตลาด...", 0
     
     for key, aliases in pairs(foodItems) do
         local price = 0
-        if EconomyConfig then
-            for _, alias in ipairs(aliases) do
-                if EconomyConfig[alias] then
-                    local cfg = EconomyConfig[alias]
-                    price = tonumber(cfg.Normal) or math.floor(((tonumber(cfg.Min) or 0) + (tonumber(cfg.Max) or 0)) / 2)
-                    break
-                end
+        for _, alias in ipairs(aliases) do
+            if RealTimePrices[alias] then
+                price = RealTimePrices[alias]
+                break
             end
         end
         
@@ -3053,37 +3076,13 @@ local function GetBestFoodPack()
         end
     end
     
+    -- ถ้าราคาเป็น 0 (ตลาดยังไม่ส่งข้อมูลมา) ให้โชว์สถานะรอ
     if bestPrice == 0 then
-        bestPrice = 2500
-        bestName = "ไม่พบข้อมูล (รอแป๊บ)"
+        return nil, "รอข้อมูลจากตลาด (กรุณาเดินไปที่ตลาด)", 0
     end
     
     return bestKey, bestName, bestPrice
 end
-
--- ⭐ สร้างหน้าต่างโชว์ราคา
-local BestPriceInfo = BestPriceSection:Paragraph({
-    Title = "📊 ราคาอาหารที่ดีที่สุดตอนนี้",
-    Content = "กำลังดึงข้อมูลราคา..."
-})
-
--- ⭐ ลูปอัปเดตราคาบนหน้าจอ
-task.spawn(function()
-    while true do
-        task.wait(1.5)
-        pcall(function()
-            local k, name, price = GetBestFoodPack()
-            if BestPriceInfo and BestPriceInfo.SetDesc then
-                local statusText = string.Format(
-                    "⭐ ราคาดีที่สุด: %s\n💰 ราคา: %d฿",
-                    tostring(name or "ไม่ทราบชื่อ"),
-                    tonumber(price) or 0
-                )
-                pcall(function() BestPriceInfo:SetDesc(statusText) end)
-            end
-        end)
-    end
-end)
 
 -- =====================================
 -- OTHER TAB
