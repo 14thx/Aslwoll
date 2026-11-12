@@ -1587,71 +1587,99 @@ ProcessBananaAtStation = function(check)
     if not myCar or not hum.Sit then myCar = EnsureCarAvailable() end
     if myCar then EnsurePlayerSeatedInCar(myCar) end
 
-    local pBan = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Process") and workspace.Systems.Process:FindFirstChild("Banana")
-    local pPrompt = pBan and pBan:FindFirstChild("Prompt")
-    local bPos = nil
-    if pPrompt then
-        bPos = (pPrompt:IsA("Attachment") and pPrompt.WorldPosition) or (pPrompt:IsA("BasePart") and pPrompt.Position) or (pPrompt:FindFirstChildWhichIsA("BasePart") and pPrompt:FindFirstChildWhichIsA("BasePart").Position)
-    end
-    if not bPos and pBan then
-        local anyPart = pBan:FindFirstChildWhichIsA("BasePart", true)
-        if anyPart then bPos = anyPart.Position end
-    end
-    local exactPos = bPos or foodData.BananaProcess
-
-    DriveCarTo(exactPos + Vector3.new(0, 0, 7.0), check)
-    task.wait(0.1)
+    -- ขับรถไปจอดใกล้ๆ
+    local exactPos = foodData.BananaProcess
+    DriveCarTo(exactPos + Vector3.new(0, 0, 8.0), check)
+    task.wait(0.2)
     if check and not check() then return end
 
-    if hum.Sit then hum.Sit = false task.wait(0.1) end
+    -- ⭐ ปิด Prompt รถก่อนลงไปกดแปรรูป
+    if myCar then
+        for _, desc in ipairs(myCar:GetDescendants()) do
+            if desc:IsA("ProximityPrompt") then desc.Enabled = false end
+        end
+    end
 
-    local standPos = exactPos + Vector3.new(0, 0, 2.5)
-    local gy = GetGroundLevel(standPos.X, standPos.Z, standPos.Y)
-    root.CFrame = CFrame.lookAt(Vector3.new(standPos.X, gy + 3.0, standPos.Z), exactPos)
-    root.AssemblyLinearVelocity = Vector3.zero
-    root.AssemblyAngularVelocity = Vector3.zero
-    task.wait(0.1)
+    if hum.Sit then hum.Sit = false task.wait(0.5) end
 
+    -- วาปไปจุดยืน (ไม่สนใจแล้วว่าติดอะไร ขอให้กด Remote ติดก็พอ)
+    local groundY = GetGroundLevel(exactPos.X, exactPos.Z + 2.5, exactPos.Y)
+    root.CFrame = CFrame.lookAt(Vector3.new(exactPos.X, groundY + 3.0, exactPos.Z + 2.5), exactPos)
+    task.wait(0.2)
+
+    -- ⭐⭐⭐ บังคับกด Remote ตรงๆ ทันที ⭐⭐⭐
+    local pcallFire = function()
+        local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
+        if rc then
+            require(rc).Fire("_process", "Start", "Banana")
+        end
+    end
+
+    -- ยิง 3 รอบติดกันให้ชัวร์
+    pcallFire()
+    task.wait(0.5)
+    pcallFire()
+    task.wait(0.5)
+    pcallFire()
+
+    -- กด ProximityPrompt เผื่อระบบเกมต้องการ (หาในระยะไกลสุด 30 studs)
+    local pBan = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Process") and workspace.Systems.Process:FindFirstChild("Banana")
     local procPrompt = pBan and pBan:FindFirstChildWhichIsA("ProximityPrompt", true)
-    if not procPrompt then
-        procPrompt = FindPromptNear(root.Position, 15, nil)
-    end
     if procPrompt then
-        TriggerPrompt(procPrompt)
+        procPrompt.Enabled = true
+        pcall(function() fireproximityprompt(procPrompt) end)
     end
-    task.wait(0.3)
+    task.wait(0.5)
 
-    local tP = os.clock()
-    while GetPlayerInventoryCount("Banana") >= 2 and (os.clock() - tP < 120) do
-        if check and not check() then break end
-        GrantAntiXGrace(15)
-        pcall(function()
-            local procGui = PlayerGui:FindFirstChild("Process")
-            if procGui and procGui:FindFirstChild("Group") then
-                local mainFrame = procGui.Group:FindFirstChild("Main")
-                local actionBtn = mainFrame and mainFrame:FindFirstChild("ActionBtn")
-                if actionBtn and firesignal then
-                    firesignal(actionBtn.MouseButton1Click)
-                end
-            end
-        end)
-        task.wait(3.2)
-    end
-
+    -- กด ActionBtn ใน UI (ถ้ามี)
     pcall(function()
         local pg = PlayerGui:FindFirstChild("Process")
         if pg and pg:FindFirstChild("Group") then
             local main = pg.Group:FindFirstChild("Main")
-            if main and main:FindFirstChild("Exit") then
-                if firesignal then firesignal(main.Exit.MouseButton1Click) end
-                SafeClickGuiButton(main.Exit)
+            local ab = main and main:FindFirstChild("ActionBtn")
+            if ab and firesignal then firesignal(ab.MouseButton1Click) end
+        end
+    end)
+
+    -- วนรอให้ของลดลง
+    local tP = os.clock()
+    while GetPlayerInventoryCount("Banana") >= 2 and (os.clock() - tP < 120) do
+        if check and not check() then break end
+        GrantAntiXGrace(15)
+        
+        -- กดซ้ำทุกๆ 3 วิ
+        pcallFire()
+        pcall(function()
+            local pg = PlayerGui:FindFirstChild("Process")
+            if pg and pg:FindFirstChild("Group") then
+                local main = pg.Group:FindFirstChild("Main")
+                local ab = main and main:FindFirstChild("ActionBtn")
+                if ab and firesignal then firesignal(ab.MouseButton1Click) end
             end
+        end)
+        
+        task.wait(3.0)
+    end
+
+    -- ปิด UI Process
+    pcall(function()
+        local pg = PlayerGui:FindFirstChild("Process")
+        if pg and pg:FindFirstChild("Group") then
+            local main = pg.Group:FindFirstChild("Main")
+            if main and main:FindFirstChild("Exit") and firesignal then firesignal(main.Exit.MouseButton1Click) end
             pg.Group.Visible = false
         end
     end)
     task.wait(3.0)
+    
+    -- ⭐ เปิด Prompt รถกลับมา
     local c2 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
-    if c2 then EnsurePlayerSeatedInCar(c2) end
+    if c2 then
+        for _, desc in ipairs(c2:GetDescendants()) do
+            if desc:IsA("ProximityPrompt") then desc.Enabled = true end
+        end
+        EnsurePlayerSeatedInCar(c2)
+    end
     task.wait(0.3)
 end
 
