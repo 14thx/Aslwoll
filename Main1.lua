@@ -1,6 +1,6 @@
 -- =====================================
--- MARVENRIZ HUB + NEXUS ENGINE (FULL v2.3)
--- PART 1/3: Core + Constants + Utility + AutoEat + AntiCheat
+-- MARVENRIZ HUB + NEXUS ENGINE (FULL v2.4)
+-- PART 1/3 + 2/3: Core + Vehicle + Harvest + Craft + Process + Vault + Sell
 -- =====================================
 
 local Loading = nil
@@ -40,9 +40,6 @@ pcall(function() GameName = MarketplaceService:GetProductInfo(game.PlaceId).Name
 
 _G.MarvenLoadTime = os.clock()
 
--- =====================================
--- CONSTANTS
--- =====================================
 TOWN_CAR_SPAWN = Vector3.new(-311.83, 17.5, 5490.39)
 VAULT_COORDS = Vector3.new(-1.98, 26.54, 8632.61)
 VehicleDriveSpeed = 150
@@ -98,9 +95,6 @@ TYPER_LOCATIONS = {
     Economy  = {Market=Vector3.new(-462.0,18.0,5324.7)}
 }
 
--- =====================================
--- GetGroundLevel (NEXUS ต้นฉบับแท้)
--- =====================================
 local function GetGroundLevel(x, z, fallbackY)
     fallbackY = fallbackY or 20
     local rayOrigin = Vector3.new(x, fallbackY + 14, z)
@@ -132,9 +126,6 @@ GetPlayerInventoryCount = function(name)
     return 0
 end
 
--- =====================================
--- PATCH v2: GetPlayerHunger + GetPlayerEnergy (HUD Fallback)
--- =====================================
 local function GetPlayerHunger()
     local s = LocalPlayer:FindFirstChild("Stats")
     if s then
@@ -191,9 +182,6 @@ local function GetPlayerEnergy()
     return 100
 end
 
--- =====================================
--- PATCH v2: UseItem (RemoteEventA Bag Fallback)
--- =====================================
 local function UseItem(name)
     pcall(function()
         local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
@@ -213,9 +201,6 @@ local function UseItem(name)
     end)
 end
 
--- =====================================
--- PATCH v2: FindAvailableFood / FindAvailableCoffee
--- =====================================
 local function FindAvailableFood()
     local pd = LocalPlayer:FindFirstChild("PlayerData")
     local itemFolder = LocalPlayer:FindFirstChild("Item")
@@ -435,9 +420,6 @@ local function FindPromptNear(centerPos, maxDist, matchKeyword)
     return closest
 end
 
--- =====================================
--- ANTI-KICK HOOK
--- =====================================
 pcall(function()
     local lp = Players.LocalPlayer
     if hookmetamethod then
@@ -449,9 +431,7 @@ pcall(function()
             if method == "FireServer" or method == "InvokeServer" then
                 for _, a in ipairs(args) do
                     local str = tostring(a):lower()
-                    if str:find("kick") or str:find("anticheat") or str:find("antifall") or str:find("teleport") or str:find("exploit") or str:find("speed") or str:find("fly") then
-                        return nil
-                    end
+                    if str:find("kick") or str:find("anticheat") or str:find("antifall") or str:find("teleport") or str:find("exploit") or str:find("speed") or str:find("fly") then return nil end
                 end
             end
             return oldNm(self, ...)
@@ -499,12 +479,7 @@ if LocalPlayer.Character then NeutralizeCharScripts(LocalPlayer.Character) end
 LocalPlayer.CharacterAdded:Connect(NeutralizeCharScripts)
 
 -- =====================================
--- PART 2/3: Vehicle + Harvest + Craft + Process + Vault + Sell
--- ฉบับสมบูรณ์ v2.3 (ไม่มีจุดต้องแก้)
--- =====================================
-
--- =====================================
--- VEHICLE: IsMyVehicle
+-- VEHICLE
 -- =====================================
 local function IsMyVehicle(v)
     if not v or not v:IsA("Model") or not v.Parent then return false end
@@ -578,9 +553,6 @@ GetNearbyPlayerVehicle = function(dist)
     if best and bd <= dist then MY_SPAWNED_CAR = best return best end
 end
 
--- =====================================
--- VEHICLE: PressFToEnterCar
--- =====================================
 PressFToEnterCar = function(car)
     if not car or not car.Parent or not IsMyVehicle(car) then return false end
     local char = LocalPlayer.Character
@@ -699,9 +671,6 @@ ExitCarNaturally = function(car)
     task.wait(0.15)
 end
 
--- =====================================
--- SMOOTH WALK
--- =====================================
 SmoothWalkTo = function(targetPos, maxTimeout, shouldContinueCheck, stopDist)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -875,9 +844,6 @@ local function FindBlueSpawnButton(group)
     end
 end
 
--- =====================================
--- VEHICLE: StoreCarAtBooth + SpawnCarAtBooth
--- =====================================
 StoreCarAtBooth = function(boothPos)
     GrantAntiXGrace(35)
     local char = LocalPlayer.Character
@@ -1068,9 +1034,6 @@ WarpToTownAndSpawnCar = function()
     return car
 end
 
--- =====================================
--- VEHICLE PLATFORM
--- =====================================
 local function EnsureVehiclePlatform(surfaceY, carPos)
     if not isVehiclePlatformEnabled then
         if vehiclePlatformPart then vehiclePlatformPart:Destroy() vehiclePlatformPart = nil end
@@ -1116,9 +1079,6 @@ local function IsWideSolidGround(x, z)
     return true
 end
 
--- =====================================
--- PATCH v2: DriveCarTo (timeout 120s)
--- =====================================
 DriveCarTo = function(dest, check)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -1220,9 +1180,6 @@ DriveCarTo = function(dest, check)
     return true
 end
 
--- =====================================
--- VEHICLE STEPPED LOOP
--- =====================================
 RunService.Stepped:Connect(function()
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -1263,7 +1220,7 @@ RunService.Stepped:Connect(function()
 end)
 
 -- =====================================
--- HARVEST: TriggerFarmPromptDirectly (มี Fallback)
+-- HARVEST
 -- =====================================
 local function TriggerFarmPromptDirectly(cropName)
     local char = LocalPlayer.Character
@@ -1323,9 +1280,6 @@ local function TriggerFarmPromptDirectly(cropName)
     return false
 end
 
--- =====================================
--- HARVEST: GetExactFarmPromptPosition (Layer 3)
--- =====================================
 local function GetExactFarmPromptPosition(cropName)
     local locData = TYPER_LOCATIONS[cropName]
     local fallback = locData and locData.Farm
@@ -1350,9 +1304,6 @@ local function GetExactFarmPromptPosition(cropName)
     return fallback
 end
 
--- =====================================
--- HARVEST: GetHumanLikeFarmStandingSpot
--- =====================================
 local function GetHumanLikeFarmStandingSpot(centerPos)
     local farmRadius = 3.8
     local occupiedAngles = {}
@@ -1400,9 +1351,6 @@ local function GetFarmParkingPosition(cropName)
     return Vector3.new(px, gy, pz)
 end
 
--- =====================================
--- HARVEST: HarvestSingleCrop (มี task.wait(0.5))
--- =====================================
 HarvestSingleCrop = function(cropName, targetAmount, check)
     targetAmount = targetAmount or ((cropName == "Rock" or cropName == "Svibranium") and 120 or 60)
     local curCount = GetPlayerInventoryCount(cropName)
@@ -1491,7 +1439,7 @@ HarvestSingleCrop = function(cropName, targetAmount, check)
 end
 
 -- =====================================
--- CRAFT (PATCH v2.3: เพิ่ม RiceKapaoMoo ใน GetMaxCraftAmount)
+-- CRAFT (PATCH v2.4: Fallback Recipe + Craft Button + Scroll + wait)
 -- =====================================
 local function GetCraft3Prompt()
     local craftSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Crafting")
@@ -1598,7 +1546,31 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
                 SafeClickGuiButton(sandCatBtn)
                 task.wait(0.3)
             end
+            -- PATCH v2.4: Fallback Recipe (case-insensitive + Scroll)
             local recipeBtn = scroller:FindFirstChild(recipeName) or mainFrame:FindFirstChild(recipeName, true)
+            if not recipeBtn then
+                for _, ch in ipairs(scroller:GetChildren()) do
+                    if ch.Name:lower():find(recipeName:lower()) then
+                        recipeBtn = ch
+                        break
+                    end
+                end
+            end
+            if not recipeBtn and scroller then
+                pcall(function()
+                    scroller.CanvasPosition = Vector2.new(0, scroller.AbsoluteCanvasSize.Y)
+                end)
+                task.wait(0.3)
+                recipeBtn = scroller:FindFirstChild(recipeName) or mainFrame:FindFirstChild(recipeName, true)
+                if not recipeBtn then
+                    for _, ch in ipairs(scroller:GetChildren()) do
+                        if ch.Name:lower():find(recipeName:lower()) then
+                            recipeBtn = ch
+                            break
+                        end
+                    end
+                end
+            end
             if recipeBtn then
                 local clickTarget = (recipeBtn:IsA("GuiButton") and recipeBtn) or recipeBtn:FindFirstChildWhichIsA("GuiButton", true) or recipeBtn
                 if clickTarget and clickTarget:IsA("GuiButton") then SafeClickGuiButton(clickTarget) end
@@ -1610,8 +1582,20 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
             amtBox.Text = tostring(toCraft)
             task.wait(0.1)
         end
+        -- PATCH v2.4: Fallback Craft Button (For Loop)
         local craftBtn = mainFrame:FindFirstChild("Button") and mainFrame.Button:FindFirstChild("Craft")
-        if craftBtn and craftBtn:IsA("GuiButton") then SafeClickGuiButton(craftBtn) end
+        if not craftBtn then
+            for _, b in ipairs(mainFrame:GetDescendants()) do
+                if b:IsA("GuiButton") and (b.Name:lower():find("craft") or (b:IsA("TextButton") and b.Text:lower():find("craft"))) then
+                    craftBtn = b
+                    break
+                end
+            end
+        end
+        if craftBtn and craftBtn:IsA("GuiButton") then
+            SafeClickGuiButton(craftBtn)
+            task.wait(0.3)
+        end
     end
     pcall(function()
         local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
@@ -1659,7 +1643,7 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
 end
 
 -- =====================================
--- PROCESS BANANA (PATCH v2.3: TriggerFarmPromptDirectly fallback)
+-- PROCESS BANANA (PATCH v2.3)
 -- =====================================
 ProcessBananaAtStation = function(shouldContinueCheck)
     GrantAntiXGrace(30)
@@ -1690,8 +1674,6 @@ ProcessBananaAtStation = function(shouldContinueCheck)
     local groundY = GetGroundLevel(standPos.X, standPos.Z, standPos.Y)
     root.CFrame = CFrame.lookAt(Vector3.new(standPos.X, groundY + 3.0, standPos.Z), exactBanPos)
     task.wait(0.1)
-
-    -- PATCH v2.3: TriggerFarmPromptDirectly fallback
     local procPrompt = pBan and pBan:FindFirstChildWhichIsA("ProximityPrompt", true)
     if not procPrompt then procPrompt = FindPromptNear(root.Position, 15, nil) end
     if procPrompt then
@@ -1700,7 +1682,6 @@ ProcessBananaAtStation = function(shouldContinueCheck)
         TriggerFarmPromptDirectly("Banana")
     end
     task.wait(0.3)
-
     pcall(function()
         local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if rc then require(rc).Fire("_process", "Start", "Banana") end
@@ -1756,7 +1737,7 @@ ProcessBananaAtStation = function(shouldContinueCheck)
 end
 
 -- =====================================
--- PROCESS ORE (PATCH v2.2: else fallback + ActionBtn ลูป)
+-- PROCESS ORE (PATCH v2.2)
 -- =====================================
 ProcessOreAtStation = function(oreName, minP, check)
     GrantAntiXGrace(30)
@@ -1854,7 +1835,7 @@ ProcessOreAtStation = function(oreName, minP, check)
 end
 
 -- =====================================
--- VAULT: DepositAllToVault (Whitelist)
+-- VAULT
 -- =====================================
 local DEPOSITABLE_ITEMS = {
     Rock=true, Svibranium=true, Bread=true, Catchup=true, Pig=true,
@@ -1919,7 +1900,7 @@ DepositAllToVault = function(check)
 end
 
 -- =====================================
--- SELL: GetEconomyMarketPosition + SellAtEconomyMarket (For Loop Fallback)
+-- SELL
 -- =====================================
 local function GetEconomyMarketPosition()
     local systems = workspace:FindFirstChild("Systems")
@@ -2036,8 +2017,7 @@ SellAtEconomyMarket = function(check)
 end
 
 -- =====================================
--- PART 3/3: Fishing + Auto Best Price + Server Hop + UI
--- ฉบับสมบูรณ์ v2.3 (ไม่มีจุดต้องแก้)
+-- PART 3/3: Fishing + Auto Best Price + Server Hop + UI (v2.4)
 -- =====================================
 
 -- =====================================
@@ -2664,7 +2644,7 @@ local function StopSession(key) MarvenSession[key] = (MarvenSession[key] or 0) +
 local Window = UI:CreateWindow({
     Title = "MarvenRiz Hub",
     Author = "by. zems.xz",
-    Version = "Premium + Nexus Engine (Full 22 จุด) [v2.3]",
+    Version = "Premium + Nexus Engine (Full 22 จุด) [v2.4]",
     Logo = "rbxassetid://124905448303407",
     Folder = "MarvenRizHub",
     ConfigAutoSave = true,
@@ -2677,7 +2657,7 @@ Window:SetTheme({ Accent = Color3.fromRGB(0, 110, 255) })
 -- STATUS
 local StatusTab = Window:Tab({Title = "สถานะ", Icon = "activity"})
 local Status = StatusTab:Section({Title = "ข้อมูลผู้เล่น"})
-Status:Banner({Title = "MarvenRiz Hub [v2.3]", SubTitle = "🔗 NEXUS Engine + Process Farm ครบทุกสาย"})
+Status:Banner({Title = "MarvenRiz Hub [v2.4]", SubTitle = "🔗 NEXUS Engine + Craft Fallback + Process Farm ครบทุกสาย"})
 local StatsGrid = Status:StatGrid({
     {Label = "FPS", Value = "0"}, {Label = "Ping", Value = "0 ms"},
     {Label = "Executor", Value = "Unknown"}, {Label = "Players", Value = "0"},
@@ -2711,7 +2691,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- =====================================
--- FARM RUNNERS (PATCH v2.3: ProcessFarm ครบทุกสาย)
+-- FARM RUNNERS (v2.4: ProcessFarm ครบ + Dropdown map)
 -- =====================================
 local function RunNormalFarm()
     if not MarvenState.AutoFarmItem then return end
@@ -2745,7 +2725,7 @@ local function RunProcessFarm()
             if first then WarpToTownAndSpawnCar() first = false end
             if not check() then break end
 
-            -- PATCH v2.3: Map ชื่อ Dropdown → branch
+            -- v2.4: Map ชื่อ Dropdown → branch
             local k = MarvenSelected.ProcessFarmType or "Banana"
             local branchMap = {
                 BananaPack = "Banana",
@@ -2796,7 +2776,7 @@ local function RunProcessFarm()
                 if not check() then break end
                 SellAtEconomyMarket(check)
             elseif k == "RicekapaoMoo" then
-                -- PATCH v2.3: branch ใหม่
+                -- v2.4: branch ใหม่
                 if GetPlayerInventoryCount("Pig") < 60 then
                     EnsureCarAvailable(TYPER_LOCATIONS.Pig.Booth or TOWN_CAR_SPAWN)
                     HarvestSingleCrop("Pig", 60, check)
@@ -2908,7 +2888,7 @@ Settings:Toggle({
 })
 
 -- =====================================
--- FARM TAB (PATCH v2.3: Dropdown Callback map)
+-- FARM TAB (v2.4: Dropdown Callback map)
 -- =====================================
 local FarmTab = Window:Tab({Title = "ฟาร์ม", Icon = "sprout"})
 
@@ -2937,7 +2917,7 @@ ProcessFarm:Dropdown({
     Options = {"BananaPack","MangoRice","RicekapaoMoo","KangSom"},
     Default = "Banana",
     Flag = "ProcessFarmType",
-    -- PATCH v2.3: Map ชื่อ Dropdown → branch
+    -- v2.4: Map ชื่อ Dropdown → branch
     Callback = function(v)
         local map = {
             BananaPack = "Banana",
@@ -2984,7 +2964,7 @@ local BestPriceInfo = BestPriceSection:Paragraph({
     Content = "กำลังดึงข้อมูลราคา..."
 })
 
--- Background Thread (GetBestFoodPack ประกาศก่อน UI แล้ว → OK)
+-- Background Thread (GetBestFoodPack ประกาศก่อน UI → OK)
 task.spawn(function()
     while true do
         task.wait(1.5)
