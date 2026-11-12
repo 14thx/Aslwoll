@@ -3010,23 +3010,71 @@ MineFarm:Dropdown({
 })
 
 local BestPriceSection = FarmTab:Section({Title = "🌟 ข้อมูลราคาตลาด (Real-Time)"})
--- ⭐ กล่องข้อความโชว์ราคา
+
+-- ⭐ สร้างระบบดึงราคาใหม่ทั้งหมด
+local function GetBestFoodPack()
+    local EconomyConfig = nil
+    pcall(function()
+        EconomyConfig = require(ReplicatedStorage:WaitForChild("Systems"):WaitForChild("Config"):WaitForChild("Economy_Config"))
+    end)
+
+    local foodItems = {
+        Sandwich = {"Sandwich", "Sandwish"},
+        MangoRice = {"MangoRice"},
+        BananaPack = {"BananaPack"},
+        KangSom = {"KangSom"}
+    }
+    
+    local displayNames = { 
+        Sandwich = "แซนวิช", 
+        MangoRice = "ข้าวมันมะม่วง", 
+        BananaPack = "กล้วยแพ็ค", 
+        KangSom = "แกงส้ม" 
+    }
+    
+    local bestKey, bestName, bestPrice = nil, "ไม่ทราบชื่อ", 0
+    
+    for key, aliases in pairs(foodItems) do
+        local price = 0
+        if EconomyConfig then
+            for _, alias in ipairs(aliases) do
+                if EconomyConfig[alias] then
+                    local cfg = EconomyConfig[alias]
+                    price = tonumber(cfg.Normal) or math.floor(((tonumber(cfg.Min) or 0) + (tonumber(cfg.Max) or 0)) / 2)
+                    break
+                end
+            end
+        end
+        
+        if price > bestPrice then
+            bestPrice = price
+            bestKey = key
+            bestName = displayNames[key]
+        end
+    end
+    
+    if bestPrice == 0 then
+        bestPrice = 2500
+        bestName = "ไม่พบข้อมูล (รอแป๊บ)"
+    end
+    
+    return bestKey, bestName, bestPrice
+end
+
+-- ⭐ สร้างหน้าต่างโชว์ราคา
 local BestPriceInfo = BestPriceSection:Paragraph({
     Title = "📊 ราคาอาหารที่ดีที่สุดตอนนี้",
     Content = "กำลังดึงข้อมูลราคา..."
 })
 
--- ⭐ ลูปอัปเดตราคา Real-time ทุกๆ 1.5 วินาที
+-- ⭐ ลูปอัปเดตราคาบนหน้าจอ
 task.spawn(function()
     while true do
         task.wait(1.5)
         pcall(function()
-            -- เรียกใช้ฟังก์ชันที่เราดักฟังราคามา
             local k, name, price = GetBestFoodPack()
-            
-            -- อัปเดตข้อความใน UI
             if BestPriceInfo and BestPriceInfo.SetDesc then
-                local statusText = string.format(
+                local statusText = string.Format(
                     "⭐ ราคาดีที่สุด: %s\n💰 ราคา: %d฿",
                     tostring(name or "ไม่ทราบชื่อ"),
                     tonumber(price) or 0
