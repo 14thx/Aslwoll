@@ -783,7 +783,7 @@ local function CloseCarSpawnGui()
 end
 
 local function FindCarSpawnOrPoundButton(group, preferred)
-    preferred = preferred or "Buggy"
+    preferred = preferred or "R32"
     local card = group:FindFirstChild(preferred, true)
     if card then
         for _, d in ipairs(card:GetDescendants()) do
@@ -851,7 +851,7 @@ StoreCarAtBooth = function(boothPos)
     local root = char and char:FindFirstChild("HumanoidRootPart")
     local myCar = GetPlayerVehicle()
     if not myCar then return end
-    local cName = myCar.Name or "Buggy"
+    local cName = myCar.Name or "R32"
     local spPt = GetSpawnPointForBooth(boothPos)
     if myCar.PrimaryPart then
         if spPt and spPt:IsA("BasePart") then
@@ -958,10 +958,10 @@ SpawnCarAtBooth = function(boothPos)
     end
     if group and group.Visible then
         local sf = group:FindFirstChild("Main") and group.Main:FindFirstChild("Carlist") and group.Main.Carlist:FindFirstChild("ScrollingFrame")
-        local card = sf and (sf:FindFirstChild("Buggy") or sf:GetChildren()[1])
+        local card = sf and (sf:FindFirstChild("R32") or sf:GetChildren()[1])
         local pBtn = (card and card:FindFirstChild("Pound")) or FindPoundButton(group)
         local sBtn = (card and card:FindFirstChild("Spawn")) or FindBlueSpawnButton(group)
-        local cName = (card and card.Name) or "Buggy"
+        local cName = (card and card.Name) or "R32"
         if pBtn and pBtn.Visible then
             ClickGuiButton(pBtn)
             pcall(function()
