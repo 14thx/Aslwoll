@@ -1,5 +1,6 @@
 -- =====================================
 -- MARVENRIZ HUB + NEXUS ENGINE (FULL 22 จุด)
+-- GetGroundLevel = NEXUS ต้นฉบับแท้ 100%
 -- Craft & Process = NEXUS ต้นฉบับแท้ 100%
 -- PART 1/2
 -- =====================================
@@ -102,37 +103,32 @@ TYPER_LOCATIONS = {
     Economy  = {Market=Vector3.new(-462.0,18.0,5324.7)}
 }
 
+-- ⭐ GetGroundLevel (NEXUS ต้นฉบับแท้ 100%)
 local function GetGroundLevel(x, z, fallbackY)
     fallbackY = fallbackY or 20
+    local startY = fallbackY + 14
+    local rayOrigin = Vector3.new(x, startY, z)
+    local rayDir = Vector3.new(0, -70, 0)
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
     params.IgnoreWater = false
-    local fl = {}
-    if LocalPlayer.Character then table.insert(fl, LocalPlayer.Character) end
-    local vf = (workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Vehicles")) or workspace:FindFirstChild("Vehicles")
-    if vf then table.insert(fl, vf) end
-    if MY_SPAWNED_CAR then table.insert(fl, MY_SPAWNED_CAR) end
-    if vehiclePlatformPart then table.insert(fl, vehiclePlatformPart) end
-    if fishingPlatform then table.insert(fl, fishingPlatform) end
-    params.FilterDescendantsInstances = fl
 
-    -- ⭐ ค้นหาพื้นดินด้านล่างสุด โดยเริ่มจาก Y=500 ลงมา
-    local highest = nil
-    local bestResult = nil
-    
-    -- ยิง Raycast จาก Y สูง 500 ลงมา (เพื่อหาพื้นดินจริง)
-    local rayOrigin = Vector3.new(x, 500, z)
-    local rayDir = Vector3.new(0, -1000, 0)
+    local filterList = {}
+    if LocalPlayer.Character then table.insert(filterList, LocalPlayer.Character) end
+    local vehFolder = (workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Vehicles")) or workspace:FindFirstChild("Vehicles")
+    if vehFolder then table.insert(filterList, vehFolder) end
+    if MY_SPAWNED_CAR then table.insert(filterList, MY_SPAWNED_CAR) end
+    if vehiclePlatformPart then table.insert(filterList, vehiclePlatformPart) end
+    if fishingPlatform then table.insert(filterList, fishingPlatform) end
+    params.FilterDescendantsInstances = filterList
+
     local result = workspace:Raycast(rayOrigin, rayDir, params)
-
-    if result then
-        if result.Material == Enum.Material.Water then 
-            return math.max(result.Position.Y, 4.0) 
+    if result and result.Position then
+        if result.Material == Enum.Material.Water then
+            return math.max(result.Position.Y, 4.0)
         end
         return result.Position.Y
     end
-
-    -- Fallback ถ้าไม่เจออะไรเลย ให้ใช้ fallbackY
     return fallbackY
 end
 
