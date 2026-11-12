@@ -1394,7 +1394,7 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
         EnsurePlayerSeatedInCar(myCar)
     end
 
-    -- 1. ปิด UI ที่อาจค้างอยู่
+    -- 1. ปิด UI ที่อาจค้างอยู่ (เช่น Process หรือ Economy) เพื่อป้องกันการเปิด UI ผิด
     pcall(function()
         local procGui = PlayerGui:FindFirstChild("Process")
         if procGui and procGui:FindFirstChild("Group") then procGui.Group.Visible = false end
@@ -1421,8 +1421,8 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
     end
     exactCraftPos = exactCraftPos or foodData.Crafting
 
-    -- 3. ขับรถไปจอดหน้าโต๊ะคราฟอาหาร
-    DriveCarTo(exactCraftPos + Vector3.new(0, 0, 8.0), shouldContinueCheck)
+    -- 3. ขับรถไปจอดหน้าโต๊ะคราฟอาหาร Craft_3
+    DriveCarTo(exactCraftPos + Vector3.new(0, 0, 5.0), shouldContinueCheck)
     task.wait(0.2)
     if shouldContinueCheck and not shouldContinueCheck() then return end
 
@@ -1437,7 +1437,7 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
     root.CFrame = CFrame.lookAt(standPos, exactCraftPos)
     task.wait(0.15)
 
-    -- 5. กด ProximityPrompt
+    -- 5. กด ProximityPrompt เฉพาะของโต๊ะ Craft_3 เท่านั้น
     cPrompt = cPrompt or GetCraft3Prompt()
     if cPrompt then
         TriggerPrompt(cPrompt)
@@ -1491,7 +1491,7 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
         return
     end
 
-    -- 8. กดเลือกหมวดหมู่ Sand (อาหาร) และเลือกเมนู
+    -- 8. เลือกหมวดหมู่ Sand (อาหาร) และเลือกเมนูใน UI Crafting
     local mainFrame = cg and cg:FindFirstChild("Group") and cg.Group:FindFirstChild("Main")
     if mainFrame then
         local scroller = mainFrame:FindFirstChild("Left_Tab") and mainFrame.Left_Tab:FindFirstChild("ScrollingFrame")
@@ -1507,7 +1507,7 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
                 if clickTarget and clickTarget:IsA("GuiButton") then
                     SafeClickGuiButton(clickTarget)
                 end
-                task.wait(0.4)
+                task.wait(0.2)
             end
         end
 
@@ -1523,12 +1523,17 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
         end
     end
 
-    -- 9. ยิง Remote Request
+    -- 9. ยิง Remote Request เพื่อสั่งคราฟกับเซิร์ฟเวอร์โดยตรง
     pcall(function()
         local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if remCore then
             local Remotes_m = require(remCore)
             Remotes_m.Fire("_crafting", "Request", "Craft_3", recipeName, toCraft, false)
+        else
+            local rem = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Remotes")
+            if rem and rem:FindFirstChild("_crafting") then
+                rem._crafting:FireServer("Request", "Craft_3", recipeName, toCraft, false)
+            end
         end
     end)
 
@@ -1541,12 +1546,17 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
     end
     task.wait(0.2)
 
-    -- 10. ยิง Remote Complete
+    -- 10. ยิง Remote Complete เพื่อรับไอเทมอาหารสำเร็จ
     pcall(function()
         local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if remCore then
             local Remotes_m = require(remCore)
             Remotes_m.Fire("_crafting", "Complete", "Craft_3", recipeName, toCraft, false)
+        else
+            local rem = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Remotes")
+            if rem and rem:FindFirstChild("_crafting") then
+                rem._crafting:FireServer("Complete", "Craft_3", recipeName, toCraft, false)
+            end
         end
     end)
     task.wait(0.3)
