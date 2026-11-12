@@ -2091,7 +2091,6 @@ end
 -- BuyBaitMaxAtShop (NEXUS ต้นฉบับแท้ 100%)
 -- =====================================
 local function BuyBaitMaxAtShop(shopPos)
-local function BuyBaitMaxAtShop(shopPos)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     local root = char and char:FindFirstChild("HumanoidRootPart")
