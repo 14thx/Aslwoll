@@ -1422,7 +1422,7 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
     exactCraftPos = exactCraftPos or foodData.Crafting
 
     -- 3. ขับรถไปจอดหน้าโต๊ะคราฟอาหาร Craft_3
-    DriveCarTo(exactCraftPos + Vector3.new(0, 0, 5.0), shouldContinueCheck)
+    DriveCarTo(exactCraftPos + Vector3.new(0, 0, 8.0), shouldContinueCheck)
     task.wait(0.2)
     if shouldContinueCheck and not shouldContinueCheck() then return end
 
