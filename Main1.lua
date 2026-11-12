@@ -2091,31 +2091,55 @@ end
 -- BuyBaitMaxAtShop (NEXUS ต้นฉบับแท้ 100%)
 -- =====================================
 local function BuyBaitMaxAtShop(shopPos)
+local function BuyBaitMaxAtShop(shopPos)
     local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
     local root = char and char:FindFirstChild("HumanoidRootPart")
-    if not root then return end
+    if not root or not hum then return end
 
-    -- วาร์ปไปหน้าร้าน
-    root.CFrame = CFrame.new(shopPos.X, shopPos.Y + 1.2, shopPos.Z)
+    -- 1. ถ้านั่งรถอยู่ ให้ลงจากรถและเอารถไปจอดห่างๆ ก่อน
+    if hum.Sit then
+        hum.Sit = false
+        task.wait(0.2)
+    end
+    
+    -- (วาร์ปตัวละครไปยืนห่างจากจุดร้าน 4 studs เพื่อไม่ให้รถทับ)
+    local safeStandPos = shopPos + Vector3.new(0, 2.5, 4) 
+    root.CFrame = CFrame.lookAt(safeStandPos, shopPos)
     root.AssemblyLinearVelocity = Vector3.zero
-    task.wait(0.3)
+    task.wait(0.5)
 
-    -- กด ProximityPrompt เปิดร้าน
+    -- 2. ค้นหาและกด ProximityPrompt เปิดร้าน
     local prompt = FindPromptNear(shopPos, 20, "shop") or FindPromptNear(root.Position, 20, nil)
     if prompt then
         prompt.Enabled = true
         pcall(function() prompt:InputHoldBegin() end)
         task.wait(0.2)
         pcall(function() prompt:InputHoldEnd() end)
-        task.wait(0.4)
     end
 
-    -- คำนวณเงินและจำนวนที่ซื้อ (สูตรเดาของ NEXUS)
+    -- 3. รอจนกว่า UI ร้านค้าจะเด้งขึ้นมา (รอสูงสุด 3 วินาที)
+    local pgui = LocalPlayer:FindFirstChild("PlayerGui")
+    local shopGui = nil
+    local tWait = os.clock()
+    while os.clock() - tWait < 3.0 do
+        shopGui = pgui:FindFirstChild("Shop")
+        if shopGui and shopGui:FindFirstChild("Group") and shopGui.Group.Visible then
+            break -- ร้านเปิดแล้ว!
+        end
+        -- ถ้าร้านยังไม่เปิด ให้กด Prompt ซ้ำ
+        if prompt then
+            pcall(function() fireproximityprompt(prompt) end)
+        end
+        task.wait(0.2)
+    end
+
+    -- 4. คำนวณเงิน (ซื้อสูงสุด 100 ชิ้นเพื่อไม่ให้เงินขาด)
     local pData = LocalPlayer:FindFirstChild("PlayerData")
     local money = (pData and pData:GetAttribute("Money")) or 1000
-    local toBuy = math.clamp(math.floor(money / 10), 10, 200)
+    local toBuy = math.clamp(math.floor(money / 10), 10, 100) 
 
-    -- ยิง Remote ซื้อของ
+    -- 5. ลองยิง Remote ซื้อของ
     pcall(function()
         local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if remCore then
@@ -2124,18 +2148,28 @@ local function BuyBaitMaxAtShop(shopPos)
             Remotes_m.Fire("_shop", "Buy", { Bait = toBuy }, "Money")
         end
     end)
-    task.wait(0.6)
+    task.wait(0.5)
 
-    -- กดปุ่มใน UI (หาแค่ 2 ชื่อตาม NEXUS)
+    -- 6. กดปุ่มใน UI
     pcall(function()
-        local pgui = LocalPlayer:FindFirstChild("PlayerGui")
-        local shop = pgui and pgui:FindFirstChild("Shop")
-        if shop and shop:FindFirstChild("Group") and shop.Group:FindFirstChild("Main") then
-            local main = shop.Group.Main
+        if shopGui and shopGui:FindFirstChild("Group") and shopGui.Group:FindFirstChild("Main") then
+            local main = shopGui.Group.Main
             local sf = main:FindFirstChild("ScrollingFrame")
+            
+            -- หาปุ่มเหยื่อ
             local baitBtn = sf and (sf:FindFirstChild("FishingBait") or sf:FindFirstChild("Bait"))
+            if not baitBtn and sf then
+                for _, b in ipairs(sf:GetDescendants()) do
+                    if b:IsA("GuiButton") and (b.Name:lower():find("bait") or b.Name:lower():find("worm")) then
+                        baitBtn = b
+                        break
+                    end
+                end
+            end
+            
             local payBtn = main:FindFirstChild("Pay") and main.Pay:FindFirstChild("Money")
             
+            -- กดปุ่มแบบ firesignal
             if baitBtn and payBtn then
                 SafeClickGuiButton(baitBtn)
                 task.wait(0.2)
@@ -2143,13 +2177,14 @@ local function BuyBaitMaxAtShop(shopPos)
                 task.wait(0.3)
             end
             
+            -- ปิดร้าน
             local closeBtn = main:FindFirstChild("Closed") or main:FindFirstChild("Close")
             if closeBtn then SafeClickGuiButton(closeBtn) end
-            shop.Group.Visible = false
+            shopGui.Group.Visible = false
         end
     end)
     task.wait(0.4)
-end
+    end
 
 local function SellAllFishAtShop(shopPos)
     local char = LocalPlayer.Character
