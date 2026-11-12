@@ -2,7 +2,7 @@
 -- MARVENRIZ HUB + NEXUS ENGINE (FULL 22 จุด)
 -- GetGroundLevel = NEXUS ต้นฉบับแท้ 100%
 -- Craft & Process = NEXUS ต้นฉบับแท้ 100%
--- PART 1/2
+-- Project = สำเร็จ 80%
 -- =====================================
 
 local Loading = nil
@@ -2012,9 +2012,12 @@ local function BuyBaitMaxAtShop(shopPos)
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not root then return end
+
+    -- เดินเข้าหาร้าน
     root.CFrame = CFrame.new(shopPos.X, shopPos.Y + 1.2, shopPos.Z)
-    root.AssemblyLinearVelocity = Vector3.zero
     task.wait(0.3)
+
+    -- หา Prompt ร้านค้า
     local prompt = FindPromptNear(shopPos, 20, "shop") or FindPromptNear(root.Position, 20, nil)
     if prompt then
         prompt.Enabled = true
@@ -2023,18 +2026,22 @@ local function BuyBaitMaxAtShop(shopPos)
         pcall(function() prompt:InputHoldEnd() end)
         task.wait(0.4)
     end
+
+    -- คำนวณเงินและยิง Remote
     local pData = LocalPlayer:FindFirstChild("PlayerData")
     local money = (pData and pData:GetAttribute("Money")) or 1000
     local toBuy = math.clamp(math.floor(money / 10), 10, 200)
+    
     pcall(function()
         local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if rc then
             local R = require(rc)
             R.Fire("_shop", "Buy", {FishingBait = toBuy}, "Money")
-            R.Fire("_shop", "Buy", {Bait = toBuy}, "Money")
         end
     end)
     task.wait(0.6)
+
+    -- สแกน UI ปุ่มซื้อ
     pcall(function()
         local pgui = LocalPlayer:FindFirstChild("PlayerGui")
         local shop = pgui and pgui:FindFirstChild("Shop")
@@ -2061,6 +2068,8 @@ local function SellAllFishAtShop(shopPos)
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not root then return end
+
+    -- หา Prompt ขายของ
     local prompt = FindPromptNear(shopPos, 20, "sell") or FindPromptNear(shopPos, 20, "economy") or FindPromptNear(root.Position, 20, nil)
     if prompt then
         prompt.Enabled = true
@@ -2069,6 +2078,8 @@ local function SellAllFishAtShop(shopPos)
         pcall(function() prompt:InputHoldEnd() end)
         task.wait(0.3)
     end
+
+    -- ยิง Remote ขาย
     pcall(function()
         local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if rc then
@@ -2079,6 +2090,8 @@ local function SellAllFishAtShop(shopPos)
         end
     end)
     task.wait(0.4)
+
+    -- กดปุ่ม SellAll ใน UI
     pcall(function()
         local pgui = LocalPlayer:FindFirstChild("PlayerGui")
         local econ = pgui and pgui:FindFirstChild("Economy")
