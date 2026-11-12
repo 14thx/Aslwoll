@@ -1,6 +1,6 @@
 -- =====================================
 -- MARVENRIZ HUB + NEXUS ENGINE (FULL)
--- Craft/Process/GetGroundLevel/Fishing = NEXUS ต้นฉบับแท้ 100%
+-- Craft/Process/GetGroundLevel = NEXUS ต้นฉบับแท้ 100%
 -- PART 1/2
 -- =====================================
 
@@ -2744,16 +2744,9 @@ local function RunAutoBestPrice()
                 if GetPlayerInventoryCount("Pig") < 60 then EnsureCarAvailable(TYPER_LOCATIONS.Pig.Booth) HarvestSingleCrop("Pig", 60, rt) end
                 if not check() then break end
                 
-                local craftRetry = 0
-                while GetPlayerInventoryCount("Sandwish") < 1 and craftRetry < 3 do
-                    CraftFoodAtStation("Sandwish", rt)
-                    task.wait(2.0)
-                    craftRetry = craftRetry + 1
-                end
+                CraftFoodAtStation("Sandwish", rt)
                 if not check() then break end
-                if GetPlayerInventoryCount("Sandwish") > 0 or GetPlayerInventoryCount("Bread") < 3 then
-                    SellAtEconomyMarket(rt)
-                end
+                SellAtEconomyMarket(rt)
             elseif k == "MangoRice" then
                 if GetPlayerInventoryCount("Mango") < 60 then EnsureCarAvailable(TYPER_LOCATIONS.Mango.Booth) HarvestSingleCrop("Mango", 60, rt) end
                 if not check() then break end
@@ -2766,16 +2759,9 @@ local function RunAutoBestPrice()
                 if GetPlayerInventoryCount("Banana") < 60 then EnsureCarAvailable(TYPER_LOCATIONS.Banana.Booth) HarvestSingleCrop("Banana", 60, rt) end
                 if not check() then break end
                 
-                local processRetry = 0
-                while GetPlayerInventoryCount("Banana") >= 2 and processRetry < 3 do
-                    ProcessBananaAtStation(rt)
-                    task.wait(2.0)
-                    processRetry = processRetry + 1
-                end
+                ProcessBananaAtStation(rt)
                 if not check() then break end
-                if GetPlayerInventoryCount("Banana") < 2 then
-                    SellAtEconomyMarket(rt)
-                end
+                SellAtEconomyMarket(rt)
             elseif k == "KangSom" then
                 if GetPlayerInventoryCount("Tomato") < 60 then EnsureCarAvailable(TYPER_LOCATIONS.Tomato.Booth) HarvestSingleCrop("Tomato", 60, rt) end
                 if not check() then break end
