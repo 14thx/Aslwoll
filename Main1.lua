@@ -3,12 +3,22 @@
 -- PART 1/3 + 2/3: Core + Vehicle + Harvest + Craft + Process + Vault + Sell
 -- =====================================
 
+-- =====================================
+-- เริ่มกระบวนการโหลดจริง
+-- =====================================
+
+UpdateProgress(5, "Starting Engine...")
+task.wait(0.5)
+
+UpdateProgress(15, "Loading Core UI...")
 local Loading = nil
 pcall(function()
     Loading = loadstring(game:HttpGet("https://raw.githubusercontent.com/14thx/Aslwoll/main/Loading.lua"))()
     if Loading and Loading.Start then Loading.Start() end
 end)
+task.wait(0.4)
 
+UpdateProgress(35, "Fetching RayVinz Library...")
 local UI = nil
 for _, url in ipairs({"https://raw.githubusercontent.com/14thx/Aslwoll/main/RayVinzUI.lua"}) do
     local ok, res = pcall(function()
@@ -18,11 +28,33 @@ for _, url in ipairs({"https://raw.githubusercontent.com/14thx/Aslwoll/main/RayV
     end)
     if ok and res then UI = res break end
 end
+
 if not UI then
+    UpdateProgress(100, "Failed to load UI!")
+    task.wait(2)
+    LoaderGui:Destroy()
     pcall(function() if Loading and Loading.Hide then Loading.Hide() end end)
     return
 end
+
+UpdateProgress(65, "Injecting Icons...")
 pcall(function() if UI.LoadLucide then UI:LoadLucide() end end)
+task.wait(0.4)
+
+UpdateProgress(85, "Building Interface...")
+-- (คุณสามารถใส่ UpdateProgress(90, "Creating Menu...") ในสคริปต์หลักได้)
+
+task.wait(0.5)
+UpdateProgress(100, "Ready! Launching Hub...")
+task.wait(1) -- โชว์ 100% แป๊บนึงเพื่อให้ดูน่าเชื่อถือ
+
+-- ปิดหน้าโหลดอย่างนุ่มนวล
+local fadeOut = TweenService:Create(MainFrame, TweenInfo.new(0.5), {BackgroundTransparency = 1})
+local fadeBg = TweenService:Create(BgFrame, TweenInfo.new(0.5), {BackgroundTransparency = 1})
+fadeOut:Play()
+fadeBg:Play()
+task.wait(0.5)
+LoaderGui:Destroy()
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
