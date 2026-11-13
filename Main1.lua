@@ -4,49 +4,50 @@
 -- =====================================
 
 -- =====================================
--- เริ่มกระบวนการโหลดจริง
+-- Loading Screen (English Version)
 -- =====================================
+local Loading = loadstring(game:HttpGet("https://raw.githubusercontent.com/14thx/Aslwoll/main/Loading.lua"))()
 
-UpdateProgress(5, "Starting Engine...")
-task.wait(0.5)
+Loading.Start()
+Loading.SetProgress(5, "Initializing system...")
 
-UpdateProgress(15, "Loading Core UI...")
-local Loading = nil
-pcall(function()
-    Loading = loadstring(game:HttpGet("https://raw.githubusercontent.com/14thx/Aslwoll/main/Loading.lua"))()
-    if Loading and Loading.Start then Loading.Start() end
-end)
-task.wait(0.4)
+Loading.SetProgress(15, "Fetching UI library...")
+local UI = loadstring(game:HttpGet("https://raw.githubusercontent.com/14thx/Aslwoll/main/RayVinzUI.lua"))()
+UI:LoadLucide()
 
-UpdateProgress(35, "Fetching RayVinz Library...")
-local UI = nil
-for _, url in ipairs({"https://raw.githubusercontent.com/14thx/Aslwoll/main/RayVinzUI.lua"}) do
-    local ok, res = pcall(function()
-        local src = game:HttpGet(url)
-        if not src or #src < 1000 then error("empty") end
-        return loadstring(src)()
-    end)
-    if ok and res then UI = res break end
-end
+Loading.SetProgress(25, "Preparing interface...")
 
-if not UI then
-    UpdateProgress(100, "Failed to load UI!")
-    task.wait(2)
-    LoaderGui:Destroy()
-    pcall(function() if Loading and Loading.Hide then Loading.Hide() end end)
-    return
-end
+-- =====================================
+-- ⭐ สร้าง UI ของคุณ
+-- =====================================
+-- 1. สร้าง Window
+local Window = UI:CreateWindow({
+    Title = "MarvenRiz Hub",
+    -- ... ข้อมูลอื่นๆ ...
+})
 
-UpdateProgress(65, "Injecting Icons...")
-pcall(function() if UI.LoadLucide then UI:LoadLucide() end end)
-task.wait(0.4)
+Loading.SetProgress(40, "Building tabs...")
 
-UpdateProgress(85, "Building Interface...")
--- (คุณสามารถใส่ UpdateProgress(90, "Creating Menu...") ในสคริปต์หลักได้)
+-- 2. สร้าง Tabs
+local Tabs = {
+    Main = Window:AddTab({Title = "Farm Loop", Icon = "repeat"}),
+    -- ... แท็บอื่นๆ ...
+}
 
-task.wait(0.5)
-UpdateProgress(100, "Ready! Launching Hub...")
-task.wait(1) -- โชว์ 100% แป๊บนึงเพื่อให้ดูน่าเชื่อถือ
+Loading.SetProgress(60, "Loading farm modules...")
+
+-- 3. สร้างฟังก์ชันฟาร์ม, ปุ่มกด, Dropdown
+-- ... (วางโค้ด UI ทั้งหมดของคุณตรงนี้) ...
+
+Loading.SetProgress(85, "Configuring advanced systems...")
+task.wait(0.3) -- ให้ UI พักหายใจนิดนึง
+
+-- =====================================
+-- ⭐ ปิดหน้าโหลด (สำคัญมาก!)
+-- =====================================
+Loading.SetProgress(100, "Ready! Launching Hub...")
+task.wait(1)       -- โชว์ 100% แป๊บนึง
+Loading.Hide()     -- สั่งปิดหน้าโหลด (จางหาย)
 
 -- ปิดหน้าโหลดอย่างนุ่มนวล
 local fadeOut = TweenService:Create(MainFrame, TweenInfo.new(0.5), {BackgroundTransparency = 1})
