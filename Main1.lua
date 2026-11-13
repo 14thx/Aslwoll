@@ -3314,6 +3314,7 @@ ConfigSection:ConfigManager()
 -- =====================================
 -- FINISHED
 -- =====================================
-pcall(function()
-    if Loading and Loading.Hide then Loading.Hide() end
-end)
+-- ⭐ สั่งปิดหน้าโหลด (วางไว้ล่างสุดของไฟล์)
+Loading.SetProgress(100, "✅ Ready! Launching Hub...")
+task.wait(1)
+Loading.Hide()
