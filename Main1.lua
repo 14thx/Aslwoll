@@ -2695,6 +2695,10 @@ end)
 -- =====================================
 -- MARVENRIZ UI
 -- =====================================
+pcall(function()
+    if Loading and Loading.SetProgress then Loading.SetProgress(80, "Building interface...") end
+end)
+
 local MarvenState = {
     AutoEat         = true,
     AutoFarmItem    = false,
@@ -2715,10 +2719,6 @@ local function StartSession(key)
     return function() return MarvenState[key] == true and MarvenSession[key] == id end
 end
 local function StopSession(key) MarvenSession[key] = (MarvenSession[key] or 0) + 1 end
-
-pcall(function()
-    if Loading and Loading.SetProgress then Loading.SetProgress(80, "Building interface...") end
-end)
 
 local Window = UI:CreateWindow({
     Title = "MarvenRiz Hub",
