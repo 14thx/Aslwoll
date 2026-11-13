@@ -1,5 +1,5 @@
 -- ==============================================================================
--- MARVENRIZ HUB + NEXUS ENGINE (ULTIMATE MASTER 100% - ORIGINAL SOURCE STRUCTURE)
+-- MARVENRIZ HUB + NEXUS ENGINE (ULTIMATE MASTER 100% - REAL-TIME ECONOMY SYNCED)
 -- ==============================================================================
 
 local Loading = nil
@@ -518,39 +518,6 @@ local function CloseCarSpawnGui()
             cs.Group.Visible = false
         end
     end)
-end
-
-local function SetVehicleAltitude(newOffset)
-    VehicleHeightOffset = tonumber(newOffset) or 0
-    local char = LocalPlayer.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    local seat = hum and hum.SeatPart
-    if hum and hum.Sit and seat then
-        local myCar = seat:FindFirstAncestorOfClass("Model")
-        if myCar then
-            local seatPos = seat.Position
-            local groundY = GetGroundLevel(seatPos.X, seatPos.Z, seatPos.Y)
-            local naturalRideHeight = 2.8
-            local targetPlatformY = (VehicleHeightOffset > 0 and (groundY + VehicleHeightOffset)) or (groundY - 0.2)
-            local targetCarY = groundY + naturalRideHeight + VehicleHeightOffset
-            local curPivot = myCar:GetPivot()
-
-            if isVehiclePlatformEnabled then
-                EnsureVehiclePlatform(targetPlatformY, seatPos)
-            elseif vehiclePlatformPart then
-                vehiclePlatformPart:Destroy()
-                vehiclePlatformPart = nil
-            end
-
-            local targetCF = CFrame.new(curPivot.Position.X, targetCarY, curPivot.Position.Z) * curPivot.Rotation
-            myCar:PivotTo(targetCF)
-
-            if myCar.PrimaryPart then
-                myCar.PrimaryPart.AssemblyLinearVelocity = Vector3.new(myCar.PrimaryPart.AssemblyLinearVelocity.X, -5, myCar.PrimaryPart.AssemblyLinearVelocity.Z)
-                myCar.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
-            end
-        end
-    end
 end
 
 -- =====================================
@@ -1932,7 +1899,7 @@ DepositAllToVault = function(check)
 end
 
 -- =====================================
--- MARKET SELL SYSTEM
+-- MARKET SELL SYSTEM (ซิงค์ตามเกมแท้ 100%)
 -- =====================================
 local function GetEconomyMarketPosition()
     local systems = workspace:FindFirstChild("Systems")
@@ -2442,15 +2409,26 @@ StopAutoFishing = function()
     end)
 end
 
+-- =====================================
+-- REAL-TIME ECONOMY SYNC (อัปเดตตาม Decompiled Script แท้)
+-- =====================================
 pcall(function()
-    local remotes = require(ReplicatedStorage:WaitForChild("Systems"):WaitForChild("Modules"):WaitForChild("Core"):WaitForChild("Remotes"))
-    remotes.On("_economy", function(action, priceTable)
-        if (action == "Update" or action == "Open") and type(priceTable) == "table" then
-            for itemName, price in pairs(priceTable) do
-                if type(price) == "number" then RealTimePrices[itemName] = price end
+    local modules = ReplicatedStorage:WaitForChild("Systems"):WaitForChild("Modules")
+    local remotes = require(modules:WaitForChild("Core"):WaitForChild("Remotes"))
+    
+    remotes.On("_economy", function(p1, p2, p3, p4)
+        if p3 then
+            _G.EconomyTimer = p3
+        end
+        if (p1 == "Update" or p1 == "Open") and type(p2) == "table" then
+            for itemName, price in pairs(p2) do
+                if type(price) == "number" then 
+                    RealTimePrices[itemName] = price 
+                end
             end
         end
     end)
+    
     task.spawn(function()
         while true do
             task.wait(3)
