@@ -1,10 +1,11 @@
 -- =====================================
--- MARVENRIZ HUB + NEXUS ENGINE (FULL v2.5)
+-- MARVENRIZ HUB + NEXUS ENGINE (FULL v2.6 - FIXED)
 -- PART 1/3 + 2/3: Core + Vehicle + Harvest + Craft + Process + Vault + Sell
+-- รวมทุกการแก้จาก v2.5 → v2.6
 -- =====================================
 
 -- =====================================
--- 1. ส่วนโหลด UI (ใช้ตามที่คุณต้องการเป๊ะๆ)
+-- 1. ส่วนโหลด UI
 -- =====================================
 local Loading = loadstring(game:HttpGet(
     "https://raw.githubusercontent.com/14thx/Aslwoll/main/Loading.lua"
@@ -222,7 +223,7 @@ local function FindAvailableFood()
     local itemFolder = LocalPlayer:FindFirstChild("Item")
     local bp = LocalPlayer:FindFirstChild("Backpack")
     local char = LocalPlayer.Character
-    for _, food in ipairs({"Sushi","RiceKapaoMoo","MangoRice","Rice","Sandwish","Burger","Bread","Watermelon","Curry","Ramen","Onigiri"}) do
+    for _, food in ipairs({"Sushi","RiceKapaoMoo","MangoRice","Rice","Sandwish","Sandwich","Burger","Bread","Watermelon","Curry","Ramen","Onigiri"}) do
         if pd then
             local n = pd:GetAttribute(food)
             if typeof(n) == "number" and n > 0 then return food end
@@ -236,7 +237,7 @@ local function FindAvailableFood()
             if typeof(val) == "number" and val > 0 then
                 local low = attr:lower()
                 if low:find("rice") or low:find("khao") or low:find("food") or low:find("kapao")
-                   or low:find("sushi") or low:find("sandwich") or low:find("burger") then
+                   or low:find("sushi") or low:find("sandwich") or low:find("sandwish") or low:find("burger") then
                     return attr
                 end
             end
@@ -1455,7 +1456,7 @@ HarvestSingleCrop = function(cropName, targetAmount, check)
 end
 
 -- =====================================
--- CRAFT (PATCH v2.5: สูตร Rice Kapao Moo + ค้นหาปุ่มยืดหยุ่น)
+-- CRAFT (v2.6: รองรับ Sandwich/Sandwish + KangSom)
 -- =====================================
 local function GetCraft3Prompt()
     local craftSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Crafting")
@@ -1526,7 +1527,7 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
     end
     task.wait(0.2)
     
-    -- ⭐ PATCH v2.5: สูตรคำนวณอัปเดตใหม่
+    -- ⭐ PATCH v2.6: สูตรคำนวณ (รองรับ Sandwich/Sandwish + KangSom)
     local function GetMaxCraftAmount()
         local b = GetPlayerInventoryCount("Bread")
         local c = GetPlayerInventoryCount("Catchup")
@@ -1534,7 +1535,7 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
         local m = GetPlayerInventoryCount("Mango")
         local r = GetPlayerInventoryCount("Rice")
         
-        if recipeName == "Sandwish" then
+        if recipeName == "Sandwish" or recipeName == "Sandwich" then
             return math.min(math.floor(b / 3), math.floor(c / 2), math.floor(p / 2))
         elseif recipeName == "MangoRice" then
             return math.min(math.floor(m / 2), math.floor(r / 3))
@@ -1568,7 +1569,7 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
                 task.wait(0.3)
             end
             
-            -- ⭐ PATCH v2.5: ค้นหาชื่อ Recipe แบบยืดหยุ่น (ตัดช่องว่าง/ตัวพิมพ์)
+            -- ⭐ PATCH v2.6: ค้นหาชื่อ Recipe แบบยืดหยุ่น
             local cleanName = recipeName:gsub("%s+", ""):lower()
             local recipeBtn = nil
             
@@ -1750,7 +1751,7 @@ ProcessBananaAtStation = function(shouldContinueCheck)
 end
 
 -- =====================================
--- PROCESS ORE (เวอร์ชันสมบูรณ์ หาเตาชั้นล่าง + กด ActionBtn)
+-- PROCESS ORE (v2.6: FIXED - ไม่มีโค้ดซ้ำ)
 -- =====================================
 ProcessOreAtStation = function(oreName, minP, check)
     GrantAntiXGrace(30)
@@ -1759,6 +1760,7 @@ ProcessOreAtStation = function(oreName, minP, check)
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not root or not hum then return end
 
+    -- 1. กำหนดพิกัดเตาหลอม
     local locData = TYPER_LOCATIONS[oreName]
     local exactProcPos = (oreName == "Svibranium" and Vector3.new(-930.91, 6.93, 6760.56)) or (locData and locData.Process) or Vector3.new(-935.29, 6.93, 6786.66)
     
@@ -1766,15 +1768,15 @@ ProcessOreAtStation = function(oreName, minP, check)
     if not myCar or not hum.Sit then myCar = EnsureCarAvailable() end
     if myCar then EnsurePlayerSeatedInCar(myCar) end
 
-    -- 1. ขับรถไปที่เตาหลอม
+    -- 2. ขับรถไปที่เตาหลอม
     DriveCarTo(exactProcPos + Vector3.new(0,0,5.0), check)
     task.wait(0.1)
     if check and not check() then return end
 
-    -- 2. ลงจากรถ
+    -- 3. ลงจากรถ
     if hum.Sit then hum.Sit = false task.wait(0.1) end
 
-    -- 3. ค้นหา ProximityPrompt ของเตาหลอม
+    -- 4. หาตำแหน่งเตา (หาเตาที่อยู่ชั้นล่างสุด)
     local pFolder = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Process") and workspace.Systems.Process:FindFirstChild(oreName)
     local procPrompt = nil
     local targetProcPos = exactProcPos
@@ -1786,7 +1788,6 @@ ProcessOreAtStation = function(oreName, minP, check)
                 local p = desc.Parent
                 local pPos = (p:IsA("Attachment") and p.WorldPosition) or (p:IsA("BasePart") and p.Position)
                 if pPos then
-                    -- ⭐ หาเตาที่อยู่ชั้นล่างสุด (Y ต่ำสุด)
                     if pPos.Y < lowestY then
                         lowestY = pPos.Y
                         procPrompt = desc
@@ -1803,35 +1804,19 @@ ProcessOreAtStation = function(oreName, minP, check)
         procPrompt = FindPromptNear(targetProcPos, 25, nil) or FindPromptNear(root.Position, 25, nil) 
     end
 
-    -- 4. ยืนหันหน้าเข้าเตา
+    -- 5. ยืนหันหน้าเข้าเตา
     local fy = targetProcPos.Y
     root.CFrame = CFrame.lookAt(Vector3.new(targetProcPos.X, fy+1.2, targetProcPos.Z+2.5), Vector3.new(targetProcPos.X, fy+1.2, targetProcPos.Z))
     root.AssemblyLinearVelocity = Vector3.zero
     task.wait(0.2)
 
-    -- 5. กดเปิด UI เตาหลอม
+    -- 6. กดเปิด UI เตาหลอม
     if procPrompt then 
         TriggerPrompt(procPrompt) 
         task.wait(0.5)
     end
 
-    -- ⭐ ยิง Remote Start ตรงๆ
-    pcall(function()
-        local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
-        if rc then require(rc).Fire("_process", "Start", oreName) end
-    end)
-
-    -- ⭐ บังคับเปิด UI ถ้ามันไม่เด้ง
-    pcall(function()
-        local pg = PlayerGui:FindFirstChild("Process")
-        if pg and pg:FindFirstChild("Group") then
-            pg.Group.Visible = true
-            pg.Group.GroupTransparency = 0
-        end
-    end)
-    task.wait(0.3)
-
-    -- 6. ลูปกดปุ่ม ActionBtn (หลอมแร่)
+    -- 7. ลูปแปรรูป (รอจนของลดลงจริงๆ)
     minP = minP or (oreName == "Svibranium" and 4 or 2)
     local tP = os.clock()
     
@@ -1839,24 +1824,32 @@ ProcessOreAtStation = function(oreName, minP, check)
         if check and not check() then break end
         GrantAntiXGrace(15)
         
-        -- กด ActionBtn ทุกๆ 3.2 วินาที
+        local beforeCount = GetPlayerInventoryCount(oreName)
+
+        -- ⭐ ยิง Start 1 ครั้ง
+        pcall(function()
+            local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
+            if rc then require(rc).Fire("_process", "Start", oreName) end
+        end)
+        
+        -- ⭐ กดปุ่ม ActionBtn สำรอง (เผื่อ UI ต้องใช้)
         pcall(function()
             local pg = PlayerGui:FindFirstChild("Process")
             if pg and pg:FindFirstChild("Group") then
                 local main = pg.Group:FindFirstChild("Main")
                 local ab = main and (main:FindFirstChild("ActionBtn") or main:FindFirstChild("ActionBtn", true))
-                if ab and firesignal then 
-                    firesignal(ab.MouseButton1Click) 
-                end
+                if ab and firesignal then firesignal(ab.MouseButton1Click) end
             end
         end)
-        task.wait(3.2)
+
+        -- รอ 3.5 วิ ให้เซิร์ฟเวอร์ทำงาน
+        task.wait(3.5)
     end
 
-    -- 7. ยิง Remote Stop และปิด UI
+    -- 8. หยุดแปรรูป + ปิด UI (⭐ v2.6: ส่ง oreName ด้วย)
     pcall(function()
         local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
-        if rc then require(rc).Fire("_process", "Stop") end
+        if rc then require(rc).Fire("_process", "Stop", oreName) end
     end)
 
     pcall(function()
@@ -1870,9 +1863,9 @@ ProcessOreAtStation = function(oreName, minP, check)
         end
     end)
     
-    task.wait(3.0)
+    task.wait(2.0)
 
-    -- 8. กลับขึ้นรถ
+    -- 9. กลับขึ้นรถ
     local c2 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(Vector3.new(-876.62, 10.52, 6662.98))
     if c2 then EnsurePlayerSeatedInCar(c2) end
 end
@@ -1884,7 +1877,7 @@ local DEPOSITABLE_ITEMS = {
     Rock=true, Svibranium=true, Iron=true, Gold=true, Bread=true, Catchup=true, Pig=true,
     Mango=true, Rice=true, Tomato=true, Banana=true, Crab=true,
     Coconut=true, Corn=true, Egg=true, Milk=true, Sugarcane=true,
-    Sandwich=true, MangoRice=true, BananaPack=true, KangSom=true,
+    Sandwich=true, Sandwish=true, MangoRice=true, BananaPack=true, KangSom=true,
     Sushi=true, RiceKapaoMoo=true, Burger=true, Ramen=true, Onigiri=true,
     Watermelon=true, Curry=true, Water=true, HotCocoa=true, Coffee=true,
     Bettafish=true, Anglerfish=true, FishingBait=true, Bait=true,
@@ -2060,7 +2053,7 @@ SellAtEconomyMarket = function(check)
 end
 
 -- =====================================
--- PART 3/3: Fishing + Auto Best Price + Server Hop + UI (v2.5)
+-- PART 3/3: Fishing + Auto Best Price + Server Hop + UI (v2.6)
 -- =====================================
 
 -- =====================================
@@ -2134,7 +2127,7 @@ local function EnsureFishingPlatform(pos)
 end
 
 -- =====================================
--- BuyBaitMaxAtShop (NEXUS ต้นฉบับแท้ 100%)
+-- BuyBaitMaxAtShop (v2.6: ลบ Remote ซื้อซ้ำ - ใช้ UI อย่างเดียว)
 -- =====================================
 local function BuyBaitMaxAtShop(shopPos)
     local char = LocalPlayer.Character
@@ -2142,19 +2135,16 @@ local function BuyBaitMaxAtShop(shopPos)
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not root or not hum then return end
 
-    -- 1. ถ้านั่งรถอยู่ ให้ลงจากรถและเอารถไปจอดห่างๆ ก่อน
     if hum.Sit then
         hum.Sit = false
         task.wait(0.2)
     end
     
-    -- (วาร์ปตัวละครไปยืนห่างจากจุดร้าน 4 studs เพื่อไม่ให้รถทับ)
     local safeStandPos = shopPos + Vector3.new(0, 2.5, 4) 
     root.CFrame = CFrame.lookAt(safeStandPos, shopPos)
     root.AssemblyLinearVelocity = Vector3.zero
     task.wait(0.5)
 
-    -- 2. ค้นหาและกด ProximityPrompt เปิดร้าน
     local prompt = FindPromptNear(shopPos, 20, "shop") or FindPromptNear(root.Position, 20, nil)
     if prompt then
         prompt.Enabled = true
@@ -2163,45 +2153,30 @@ local function BuyBaitMaxAtShop(shopPos)
         pcall(function() prompt:InputHoldEnd() end)
     end
 
-    -- 3. รอจนกว่า UI ร้านค้าจะเด้งขึ้นมา (รอสูงสุด 3 วินาที)
     local pgui = LocalPlayer:FindFirstChild("PlayerGui")
     local shopGui = nil
     local tWait = os.clock()
     while os.clock() - tWait < 3.0 do
         shopGui = pgui:FindFirstChild("Shop")
         if shopGui and shopGui:FindFirstChild("Group") and shopGui.Group.Visible then
-            break -- ร้านเปิดแล้ว!
+            break
         end
-        -- ถ้าร้านยังไม่เปิด ให้กด Prompt ซ้ำ
         if prompt then
             pcall(function() fireproximityprompt(prompt) end)
         end
         task.wait(0.2)
     end
 
-    -- 4. คำนวณเงิน (ซื้อสูงสุด 100 ชิ้นเพื่อไม่ให้เงินขาด)
+    -- ⭐ v2.6: เอา Remote ซื้อออก เหลือแค่คำนวณจำนวน
     local pData = LocalPlayer:FindFirstChild("PlayerData")
     local money = (pData and pData:GetAttribute("Money")) or 1000
     local toBuy = math.clamp(math.floor(money / 10), 10, 100) 
 
-    -- 5. ลองยิง Remote ซื้อของ
-    pcall(function()
-        local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
-        if remCore then
-            local Remotes_m = require(remCore)
-            Remotes_m.Fire("_shop", "Buy", { FishingBait = toBuy }, "Money")
-            Remotes_m.Fire("_shop", "Buy", { Bait = toBuy }, "Money")
-        end
-    end)
-    task.wait(0.5)
-
-    -- 6. กดปุ่มใน UI
     pcall(function()
         if shopGui and shopGui:FindFirstChild("Group") and shopGui.Group:FindFirstChild("Main") then
             local main = shopGui.Group.Main
             local sf = main:FindFirstChild("ScrollingFrame")
             
-            -- หาปุ่มเหยื่อ
             local baitBtn = sf and (sf:FindFirstChild("FishingBait") or sf:FindFirstChild("Bait"))
             if not baitBtn and sf then
                 for _, b in ipairs(sf:GetDescendants()) do
@@ -2214,7 +2189,6 @@ local function BuyBaitMaxAtShop(shopPos)
             
             local payBtn = main:FindFirstChild("Pay") and main.Pay:FindFirstChild("Money")
             
-            -- กดปุ่มแบบ firesignal
             if baitBtn and payBtn then
                 SafeClickGuiButton(baitBtn)
                 task.wait(0.2)
@@ -2222,7 +2196,6 @@ local function BuyBaitMaxAtShop(shopPos)
                 task.wait(0.3)
             end
             
-            -- ปิดร้าน
             local closeBtn = main:FindFirstChild("Closed") or main:FindFirstChild("Close")
             if closeBtn then SafeClickGuiButton(closeBtn) end
             shopGui.Group.Visible = false
@@ -2231,6 +2204,9 @@ local function BuyBaitMaxAtShop(shopPos)
     task.wait(0.4)
 end
 
+-- =====================================
+-- SellAllFishAtShop (v2.6: เช็คของก่อน)
+-- =====================================
 local function SellAllFishAtShop(shopPos)
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -2248,8 +2224,11 @@ local function SellAllFishAtShop(shopPos)
         if rc then
             local R = require(rc)
             R.Fire("_economy", "SellAll")
-            R.Fire("_economy", "Sell", "Anglerfish", 999)
-            R.Fire("_economy", "Sell", "Bettafish", 999)
+            -- ⭐ v2.6: เช็คก่อนว่ามีปลาจริง
+            local angler = GetPlayerInventoryCount("Anglerfish")
+            local betta = GetPlayerInventoryCount("Bettafish")
+            if angler > 0 then R.Fire("_economy", "Sell", "Anglerfish", angler) end
+            if betta > 0 then R.Fire("_economy", "Sell", "Bettafish", betta) end
         end
     end)
     task.wait(0.4)
@@ -2478,19 +2457,25 @@ StopAutoFishing = function()
 end
 
 -- =====================================
--- AUTO BEST PRICE
+-- AUTO BEST PRICE (v2.6: ระบบดักฟังราคาแบบมี warn debug)
 -- =====================================
--- ⭐ ตัวแปรสำหรับเก็บราคาที่ดักฟังมาจากเซิร์ฟเวอร์
 local RealTimePrices = {}
 
--- ⭐ เริ่มต้นดักฟังราคาจาก Remote ของเกม
+local priceRemotes = nil
 pcall(function()
-    local remotes = require(ReplicatedStorage:WaitForChild("Systems", 5):WaitForChild("Modules", 5):WaitForChild("Core", 5):WaitForChild("Remotes", 5))
-    
-    -- ดักฟังเมื่อเซิร์ฟเวอร์ส่งข้อมูลราคามา
-    remotes.On("_economy", function(action, priceTable)
+    local systems = ReplicatedStorage:WaitForChild("Systems", 5)
+    if not systems then warn("[Marven] ไม่พบ Systems") return end
+    local modules = systems:WaitForChild("Modules", 5)
+    if not modules then warn("[Marven] ไม่พบ Modules") return end
+    local core = modules:WaitForChild("Core", 5)
+    if not core then warn("[Marven] ไม่พบ Core") return end
+    local remotesMod = core:WaitForChild("Remotes", 5)
+    if not remotesMod then warn("[Marven] ไม่พบ Remotes") return end
+
+    priceRemotes = require(remotesMod)
+
+    priceRemotes.On("_economy", function(action, priceTable)
         if (action == "Update" or action == "Open") and type(priceTable) == "table" then
-            -- อัปเดตข้อมูลราคาลงตาราง
             for itemName, price in pairs(priceTable) do
                 if type(price) == "number" then
                     RealTimePrices[itemName] = price
@@ -2498,15 +2483,19 @@ pcall(function()
             end
         end
     end)
-    
-    -- ขอราคาล่าสุดจากเซิร์ฟเวอร์ทุกๆ 3 วินาที (เพื่อให้ UI อัปเดตตลอด)
+
     task.spawn(function()
         while true do
             task.wait(3)
-            pcall(function() remotes.Fire("_economy", "Request") end)
+            pcall(function() priceRemotes.Fire("_economy", "Request") end)
         end
     end)
+
+    warn("[Marven] ✅ ระบบดักฟังราคาทำงานแล้ว")
 end)
+if not priceRemotes then
+    warn("[Marven] ⚠️ โหลด Remotes ไม่ได้ - ราคาตลาดจะไม่ทำงาน")
+end
 
 -- =====================================
 -- SERVER HOP
@@ -2693,6 +2682,7 @@ local MarvenState = {
     AutoFish        = false,
     InfiniteEnergy  = false,
     InfiniteStamina = false,
+    InfiniteHunger  = false,   -- ⭐ v2.6: เพิ่ม
     ServerHop       = true,
 }
 local MarvenSelected = { NormalFarmType = "Bread", ProcessFarmType = "Banana", MineFarmType = "Rock" }
@@ -2709,7 +2699,7 @@ local function StopSession(key) MarvenSession[key] = (MarvenSession[key] or 0) +
 local Window = UI:CreateWindow({
     Title = "MarvenRiz Hub",
     Author = "by. zems.xz",
-    Version = "Premium + Nexus Engine (Full 22 จุด) [v2.5]",
+    Version = "Premium + Nexus Engine (Full 22 จุด) [v2.6]",
     Logo = "rbxassetid://124905448303407",
     Folder = "MarvenRizHub",
     ConfigAutoSave = true,
@@ -2722,7 +2712,7 @@ Window:SetTheme({ Accent = Color3.fromRGB(0, 110, 255) })
 -- STATUS
 local StatusTab = Window:Tab({Title = "สถานะ", Icon = "activity"})
 local Status = StatusTab:Section({Title = "ข้อมูลผู้เล่น"})
-Status:Banner({Title = "MarvenRiz Hub [v2.5]", SubTitle = "🔗 NEXUS Engine + ระบบคราฟสมบูรณ์ + เมนูภาษาไทย"})
+Status:Banner({Title = "MarvenRiz Hub [v2.6]", SubTitle = "🔗 NEXUS Engine + ระบบคราฟสมบูรณ์ + เมนูภาษาไทย"})
 local StatsGrid = Status:StatGrid({
     {Label = "FPS", Value = "0"}, {Label = "Ping", Value = "0 ms"},
     {Label = "Executor", Value = "Unknown"}, {Label = "Players", Value = "0"},
@@ -2756,7 +2746,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- =====================================
--- FARM RUNNERS (v2.5: ProcessFarm ครบ + Sandwich + RiceKapaoMoo)
+-- FARM RUNNERS (v2.6)
 -- =====================================
 local function RunNormalFarm()
     if not MarvenState.AutoFarmItem then return end
@@ -2844,7 +2834,6 @@ local function RunProcessFarm()
                 if not check() then break end
                 SellAtEconomyMarket(check)
             elseif k == "Sandwich" then
-                -- ⭐ v2.5: ฟาร์มแซนวิช
                 if GetPlayerInventoryCount("Bread") < 60 then
                     EnsureCarAvailable(TYPER_LOCATIONS.Bread.Booth or TOWN_CAR_SPAWN)
                     HarvestSingleCrop("Bread", 60, check)
@@ -2860,7 +2849,7 @@ local function RunProcessFarm()
                     HarvestSingleCrop("Pig", 60, check)
                 end
                 if not check() then break end
-                CraftFoodAtStation("Sandwish", check)
+                CraftFoodAtStation("Sandwish", check)  -- ถ้าเกมใช้ Sandwich ให้เปลี่ยนเป็น "Sandwich"
                 if not check() then break end
                 SellAtEconomyMarket(check)
             elseif k == "KangSom" then
@@ -2892,22 +2881,18 @@ local function RunMineFarm()
             if first then WarpToTownAndSpawnCar() first = false end
             if not check() then break end
             
-            -- ⭐ ดึงค่าชื่อแร่ที่เลือกมาจาก Dropdown โดยตรง
             local ore = MarvenSelected.MineFarmType or "Rock"
             local minP = (ore == "Svibranium") and 4 or 2
             
-            -- 1. ไปฟาร์มแร่
             if GetPlayerInventoryCount(ore) < 120 then
                 EnsureCarAvailable(TYPER_LOCATIONS[ore].Booth or TOWN_CAR_SPAWN)
                 HarvestSingleCrop(ore, 120, check)
             end
             if not check() then break end
             
-            -- 2. เอาแร่ที่ฟาร์มได้ ไปหลอมที่เตา (สคริปต์จะส่งชื่อ ore ที่เลือกไปให้เอง)
             ProcessOreAtStation(ore, minP, check)
             if not check() then break end
             
-            -- 3. เอาของไปฝากตู้เซฟ
             DepositAllToVault(check)
             if not check() then break end
             
@@ -2996,7 +2981,7 @@ Settings:Toggle({
 })
 
 -- =====================================
--- FARM TAB (v2.5: Dropdown ภาษาไทย + Sandwich)
+-- FARM TAB (v2.6: Dropdown ภาษาไทย + Sandwich + KangSom)
 -- =====================================
 local FarmTab = Window:Tab({Title = "ฟาร์ม", Icon = "sprout"})
 
@@ -3058,7 +3043,8 @@ ProcessFarm:Dropdown({
         "กล้วยแพ็ค (แปรรูป)", 
         "ข้าวมันมะม่วง (คราฟต์)", 
         "ข้าวกะเพราหมู (คราฟต์)", 
-        "แซนวิช (คราฟต์)"
+        "แซนวิช (คราฟต์)",
+        "แกงส้ม (คราฟต์)"      -- ⭐ v2.6: เพิ่ม
     },
     Default = "กล้วยแพ็ค (แปรรูป)",
     Flag = "ProcessFarmType",
@@ -3068,6 +3054,7 @@ ProcessFarm:Dropdown({
             ["ข้าวมันมะม่วง (คราฟต์)"] = "Mango",
             ["ข้าวกะเพราหมู (คราฟต์)"] = "RiceKapaoMoo",
             ["แซนวิช (คราฟต์)"] = "Sandwich",
+            ["แกงส้ม (คราฟต์)"] = "KangSom",   -- ⭐ v2.6: เพิ่ม
         }
         MarvenSelected.ProcessFarmType = map[v] or "Banana"
     end
@@ -3107,42 +3094,17 @@ MineFarm:Toggle({
     Callback = function(v)
         MarvenState.AutoMineFarm = v
         if v then 
-            RunMineFarm() -- ⭐ สั่งให้เริ่มฟาร์มเหมือง
+            RunMineFarm()
         else 
             StopSession("AutoMineFarm") 
             pcall(CancelGameFarm) 
         end
     end
 })
--- =====================================
--- ⭐ ระบบดักฟังราคาจริง + โชว์บน UI (ครบจบในก้อนเดียว)
--- =====================================
-local RealTimePrices = {}
 
--- 1. ส่วนดักฟังราคา
-pcall(function()
-    local remotes = require(ReplicatedStorage:WaitForChild("Systems"):WaitForChild("Modules"):WaitForChild("Core"):WaitForChild("Remotes"))
-    
-    remotes.On("_economy", function(action, priceTable)
-        if (action == "Update" or action == "Open") and type(priceTable) == "table" then
-            for itemName, price in pairs(priceTable) do
-                if type(price) == "number" then
-                    RealTimePrices[itemName] = price
-                end
-            end
-        end
-    end)
-    
-    task.spawn(function()
-        task.wait(3) 
-        while true do
-            pcall(function() remotes.Fire("_economy", "Request") end)
-            task.wait(5)
-        end
-    end)
-end)
-
--- 2. ส่วนคำนวณราคา
+-- =====================================
+-- ⭐ ระบบคำนวณราคา + โชว์บน UI (v2.6: ใช้ RealTimePrices ที่ดักไว้ด้านบน)
+-- =====================================
 local function GetBestFoodPack()
     local foodItems = {
         Sandwich = {"Sandwich", "Sandwish"},
@@ -3183,14 +3145,12 @@ local function GetBestFoodPack()
     return bestKey, bestName, bestPrice
 end
 
--- 3. ⭐ ส่วนสร้างหน้าจอโชว์ราคา
 local BestPriceSection = FarmTab:Section({Title = "🌟 ข้อมูลราคาตลาด (Real-Time)"})
 local BestPriceInfo = BestPriceSection:Paragraph({
     Title = "📊 ราคาอาหารที่ดีที่สุดตอนนี้",
     Content = "กำลังดึงข้อมูลราคา..."
 })
 
--- 4. ⭐ ลูปอัปเดตตัวเลขบนหน้าจอ
 task.spawn(function()
     while true do
         task.wait(1.5)
@@ -3286,6 +3246,10 @@ UnloadSection:Button({
             if _G._MarvenInfEnergyConn then _G._MarvenInfEnergyConn:Disconnect() end
         end)
         pcall(function()
+            if _G._MarvenStaminaConn then _G._MarvenStaminaConn:Disconnect() end
+            if _G._MarvenHungerConn then _G._MarvenHungerConn:Disconnect() end
+        end)
+        pcall(function()
             if vehiclePlatformPart then vehiclePlatformPart:Destroy() end
             if fishingPlatform then fishingPlatform:Destroy() end
         end)
@@ -3305,8 +3269,8 @@ ConfigSection:ConfigManager()
 
 pcall(function()
     game:GetService("StarterGui"):SetCore("SendNotification", {
-        Title = "MarvenRiz Hub",
-        Text = "✅ Ready! Launching Hub...",
+        Title = "MarvenRiz Hub v2.6",
+        Text = "✅ Ready! ระบบพร้อมใช้งาน",
         Duration = 5
     })
 end)
