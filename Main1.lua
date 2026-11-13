@@ -1,5 +1,5 @@
 -- ==============================================================================
--- MARVENRIZ HUB + NEXUS ENGINE (ULTIMATE MASTER 100% - REAL-TIME ECONOMY SYNCED)
+-- MARVENRIZ HUB + NEXUS ENGINE (ULTIMATE MASTER 100% - NO TRUNCATION FULL CODE)
 -- ==============================================================================
 
 local Loading = nil
@@ -71,6 +71,22 @@ safeFloorPart = nil
 _G.RealTimePrices = _G.RealTimePrices or {}
 local RealTimePrices = _G.RealTimePrices
 
+-- ==============================================================================
+-- 🌟 ระบบตรวจวัดราคาตลาด & ฟาร์มตามราคาดี (Real-Time Auto Best Price & Instant Switch)
+-- ==============================================================================
+_G.BestFarmCurrentBestItem = "กำลังตรวจสอบ..."
+_G.BestFarmCurrentBestPrice = 0
+_G.BestFarmCurrentAction = "พร้อมทำงาน"
+_G.CurrentBestItemKey = nil
+_G.CurrentRunningFarmKey = nil
+
+local ItemAliases = {
+    Sandwich = {"Sandwich", "Sandwish", "แซนวิช", "Food_Sandwich", "FoodSandwich"},
+    MangoRice = {"MangoRice", "Mango_Rice", "Mango Rice", "ข้าวมันมะม่วง", "Food_MangoRice", "FoodMangoRice"},
+    BananaPack = {"BananaPack", "Banana_Pack", "Banana Pack", "Pack_Banana", "PackBanana", "กล้วยแพ็ค"},
+    KangSom = {"KangSom", "Kang_Som", "Kang Som", "แกงส้ม", "Food_KangSom", "FoodKangSom"}
+}
+
 TYPER_LOCATIONS = {
     Bread    = {Booth=Vector3.new(872.19,15.90,4682.54),   Farm=Vector3.new(828.31,11.21,4817.85)},
     Catchup  = {Booth=Vector3.new(1763.23,14.23,4206.70),  Farm=Vector3.new(1803.05,12.65,4236.79)},
@@ -90,6 +106,154 @@ TYPER_LOCATIONS = {
     Food     = {Crafting=Vector3.new(3442.48,56.40,3925.24),BananaProcess=Vector3.new(3429.20,56.80,3911.80)},
     Economy  = {Market=Vector3.new(-462.0,18.0,5324.7)}
 }
+
+local function GetRealMarketPrices()
+    local detectedPrices = {}
+    local rep = game:GetService("ReplicatedStorage")
+    local pgui = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+
+    -- 0. ดึงจากตาราง RealTimePrices กลางที่ซิงค์กับ Remote _economy ของเกมแท้
+    pcall(function()
+        if _G.RealTimePrices and type(_G.RealTimePrices) == "table" then
+            for itemKey, aliases in pairs(ItemAliases) do
+                for _, alias in ipairs(aliases) do
+                    local priceVal = _G.RealTimePrices[alias] or _G.RealTimePrices[itemKey]
+                    if type(priceVal) == "number" and priceVal > 0 then
+                        detectedPrices[itemKey] = priceVal
+                    end
+                end
+            end
+        end
+    end)
+
+    -- 1. ตรวจสอบจาก PlayerGui (UI ตลาด / Economy / Shop / Market)
+    pcall(function()
+        if pgui then
+            for _, gui in ipairs(pgui:GetChildren()) do
+                if gui:IsA("ScreenGui") then
+                    local gName = gui.Name:lower()
+                    if gName:find("econ") or gName:find("market") or gName:find("shop") or gName:find("price") or gName:find("food") then
+                        for _, desc in ipairs(gui:GetDescendants()) do
+                            if desc:IsA("TextLabel") or desc:IsA("TextBox") or desc:IsA("TextButton") then
+                                local txt = desc.Text or ""
+                                for itemKey, aliases in pairs(ItemAliases) do
+                                    for _, alias in ipairs(aliases) do
+                                        if txt:lower():find(alias:lower(), 1, true) then
+                                            local parent = desc.Parent
+                                            if parent then
+                                                for _, sib in ipairs(parent:GetChildren()) do
+                                                    if sib:IsA("TextLabel") and sib ~= desc then
+                                                        local sTxt = sib.Text or ""
+                                                        local clean = sTxt:gsub(",", ""):gsub("฿", ""):gsub("%$", "")
+                                                        local num = tonumber(clean:match("%d+"))
+                                                        if num and num >= 100 and num <= 20000 then
+                                                            if not detectedPrices[itemKey] or num > detectedPrices[itemKey] then
+                                                                detectedPrices[itemKey] = num
+                                                            end
+                                                        end
+                                                    end
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+
+    -- 2. ตรวจสอบจาก ReplicatedStorage (Economy / Systems / Attributes / ValueBases)
+    pcall(function()
+        local folders = {
+            rep:FindFirstChild("Economy"),
+            rep:FindFirstChild("Systems") and rep.Systems:FindFirstChild("Economy"),
+            rep:FindFirstChild("Prices"),
+            rep:FindFirstChild("Market"),
+            rep:FindFirstChild("FoodPrices"),
+            rep:FindFirstChild("Systems") and rep.Systems:FindFirstChild("Prices")
+        }
+        for _, f in ipairs(folders) do
+            if f then
+                for attrName, val in pairs(f:GetAttributes()) do
+                    local num = tonumber(val)
+                    if num and num > 0 then
+                        for itemKey, aliases in pairs(ItemAliases) do
+                            for _, alias in ipairs(aliases) do
+                                if attrName:lower() == alias:lower() or attrName:lower():find(alias:lower(), 1, true) then
+                                    detectedPrices[itemKey] = num
+                                end
+                            end
+                        end
+                    end
+                end
+                for _, obj in ipairs(f:GetChildren()) do
+                    if obj:IsA("ValueBase") then
+                        local num = tonumber(obj.Value)
+                        if num and num > 0 then
+                            for itemKey, aliases in pairs(ItemAliases) do
+                                for _, alias in ipairs(aliases) do
+                                    if obj.Name:lower() == alias:lower() or obj.Name:lower():find(alias:lower(), 1, true) then
+                                        detectedPrices[itemKey] = num
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+
+    -- 3. ตรวจสอบจาก ป้ายตลาดใน Workspace (SurfaceGui / BillboardGui หน้า Economy NPC Phineas)
+    pcall(function()
+        local marketPos = TYPER_LOCATIONS.Economy.Market
+        for _, desc in ipairs(workspace:GetDescendants()) do
+            if desc:IsA("SurfaceGui") or desc:IsA("BillboardGui") then
+                local part = desc.Adornee or desc.Parent
+                if part and part:IsA("BasePart") then
+                    if (part.Position - marketPos).Magnitude <= 180 then
+                        for _, lbl in ipairs(desc:GetDescendants()) do
+                            if lbl:IsA("TextLabel") then
+                                local txt = lbl.Text or ""
+                                for itemKey, aliases in pairs(ItemAliases) do
+                                    for _, alias in ipairs(aliases) do
+                                        if txt:lower():find(alias:lower(), 1, true) then
+                                            local parent = lbl.Parent
+                                            if parent then
+                                                for _, sib in ipairs(parent:GetChildren()) do
+                                                    if sib:IsA("TextLabel") then
+                                                        local sTxt = sib.Text or ""
+                                                        local clean = sTxt:gsub(",", ""):gsub("฿", "")
+                                                        local num = tonumber(clean:match("%d+"))
+                                                        if num and num >= 100 and num <= 20000 then
+                                                            detectedPrices[itemKey] = num
+                                                        end
+                                                    end
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+
+    -- 4. ฐานราคามาตรฐาน (Default Equal Base: 2500฿) กรณีเกมยังไม่โหลด UI
+    for itemKey, _ in pairs(ItemAliases) do
+        if not detectedPrices[itemKey] then
+            detectedPrices[itemKey] = 2500
+        end
+    end
+
+    return detectedPrices
+end
 
 local function GetGroundLevel(x, z, fallbackY)
     fallbackY = fallbackY or 20
@@ -1503,9 +1667,9 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
         local m = GetPlayerInventoryCount("Mango")
         local r = GetPlayerInventoryCount("Rice")
         
-        if recipeName == "Sandwish" then
+        if recipeName == "Sandwish" or recipeName == "Sandwich" then
             return math.min(math.floor(b / 3), math.floor(c / 2), math.floor(p / 2))
-        elseif recipeName == "MangoRice" then
+        elseif recipeName == "MangoRice" or recipeName == "Mango" then
             return math.min(math.floor(m / 2), math.floor(r / 3))
         elseif recipeName == "RiceKapaoMoo" then
             return math.min(math.floor(r / 3), math.floor(p / 2))
@@ -1576,15 +1740,16 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
         end
     end
     
+    local actualRecipe = (recipeName == "Sandwich" and "Sandwish") or (recipeName == "Mango" and "MangoRice") or recipeName
     pcall(function()
         local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if remCore then
             local Remotes_m = require(remCore)
-            Remotes_m.Fire("_crafting", "Request", "Craft_3", recipeName, toCraft, false)
+            Remotes_m.Fire("_crafting", "Request", "Craft_3", actualRecipe, toCraft, false)
         else
             local rem = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Remotes")
             if rem and rem:FindFirstChild("_crafting") then
-                rem._crafting:FireServer("Request", "Craft_3", recipeName, toCraft, false)
+                rem._crafting:FireServer("Request", "Craft_3", actualRecipe, toCraft, false)
             end
         end
     end)
@@ -1601,11 +1766,11 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
         local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if remCore then
             local Remotes_m = require(remCore)
-            Remotes_m.Fire("_crafting", "Complete", "Craft_3", recipeName, toCraft, false)
+            Remotes_m.Fire("_crafting", "Complete", "Craft_3", actualRecipe, toCraft, false)
         else
             local rem = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Remotes")
             if rem and rem:FindFirstChild("_crafting") then
-                rem._crafting:FireServer("Complete", "Craft_3", recipeName, toCraft, false)
+                rem._crafting:FireServer("Complete", "Craft_3", actualRecipe, toCraft, false)
             end
         end
     end)
@@ -2410,7 +2575,7 @@ StopAutoFishing = function()
 end
 
 -- =====================================
--- REAL-TIME ECONOMY SYNC (อัปเดตตาม Decompiled Script แท้)
+-- REAL-TIME ECONOMY SYNC (ซิงค์ตาม Decompiled Script แท้)
 -- =====================================
 pcall(function()
     local modules = ReplicatedStorage:WaitForChild("Systems"):WaitForChild("Modules")
@@ -2456,8 +2621,6 @@ local function IsInMainGame()
     return false
 end
 
-local function IsServerSelectionScreen() return not IsInMainGame() end
-
 local function ExitToServerSelectionScreen(reason)
     if isHopping then return end
     isHopping = true
@@ -2498,10 +2661,10 @@ task.spawn(function()
 end)
 
 local MarvenState = {
-    AutoEat = true, AutoFarmItem = false, AutoProcessFarm = false, AutoMineFarm = false, AutoFish = false, InfiniteStamina = false, InfiniteHunger = false
+    AutoEat = true, AutoFarmItem = false, AutoProcessFarm = false, AutoBestPriceFarm = false, AutoMineFarm = false, AutoFish = false, InfiniteStamina = false, InfiniteHunger = false
 }
 local MarvenSelected = { NormalFarmType = "Bread", ProcessFarmType = "Banana", MineFarmType = "Rock" }
-local MarvenSession = { AutoFarmItem = 0, AutoProcessFarm = 0, AutoMineFarm = 0 }
+local MarvenSession = { AutoFarmItem = 0, AutoProcessFarm = 0, AutoBestPriceFarm = 0, AutoMineFarm = 0 }
 
 local function StartSession(key)
     MarvenSession[key] = (MarvenSession[key] or 0) + 1
@@ -2510,6 +2673,9 @@ local function StartSession(key)
 end
 local function StopSession(key) MarvenSession[key] = (MarvenSession[key] or 0) + 1 end
 
+-- =====================================
+-- UI & WINDOW CREATION
+-- =====================================
 local Window = UI:CreateWindow({
     Title = "MarvenRiz Hub",
     Author = "by. zems.xz",
@@ -2523,9 +2689,10 @@ local Window = UI:CreateWindow({
 })
 Window:SetTheme({ Accent = Color3.fromRGB(0, 110, 255) })
 
+-- STATUS
 local StatusTab = Window:Tab({Title = "สถานะ", Icon = "activity"})
 local Status = StatusTab:Section({Title = "ข้อมูลผู้เล่น"})
-Status:Banner({Title = "MarvenRiz Hub [v2.5]", SubTitle = "🔗 NEXUS Engine + สมบูรณ์แบบ 100% ไม่มีตัดทอน"})
+Status:Banner({Title = "MarvenRiz Hub [v2.5]", SubTitle = "🔗 NEXUS Engine + ระบบคราฟสมบูรณ์ + เมนูภาษาไทย"})
 local StatsGrid = Status:StatGrid({
     {Label = "FPS", Value = "0"}, {Label = "Ping", Value = "0 ms"},
     {Label = "Executor", Value = "Unknown"}, {Label = "Players", Value = "0"},
@@ -2535,7 +2702,7 @@ local StatsGrid = Status:StatGrid({
 local MarketTab = Window:Tab({Title = "ตลาด Real-Time", Icon = "trending-up"})
 local MarketSection = MarketTab:Section({Title = "ราคาสินค้าในตลาดสด (อัปเดตอัตโนมัติ)"})
 local MarketPriceDisplay = MarketSection:Paragraph({
-    Title = "ราคาตลาดปัจจุบัน",
+    Title = "ราคาตลาดปัจจุบัน & สินค้าราคาสูงสุด",
     Content = "กำลังเชื่อมต่อข้อมูลราคาจากเซิร์ฟเวอร์..."
 })
 
@@ -2543,14 +2710,19 @@ task.spawn(function()
     while true do
         task.wait(1.5)
         pcall(function()
-            local text = ""
-            if next(RealTimePrices) == nil then
-                text = "⏳ กำลังรอข้อมูลราคา Real-Time จากเซิร์ฟเวอร์..."
-            else
-                for item, price in pairs(RealTimePrices) do
-                    text = text .. "🔹 " .. tostring(item) .. " : 💰 " .. tostring(price) .. " บาท\n"
+            local currentPrices = GetRealMarketPrices()
+            local bestItem, bestPrice = "None", 0
+            local text = "📊 [ราคาสินค้าหลัก]\n"
+            for item, price in pairs(currentPrices) do
+                text = text .. "🔹 " .. tostring(item) .. " : 💰 " .. tostring(price) .. " บาท\n"
+                if price > bestPrice then
+                    bestPrice = price
+                    bestItem = item
                 end
             end
+            _G.BestFarmCurrentBestItem = bestItem
+            _G.BestFarmCurrentBestPrice = bestPrice
+            text = text .. "\n👑 ราคาดีที่สุดตอนนี้: " .. tostring(bestItem) .. " (" .. tostring(bestPrice) .. " บาท)"
             MarketPriceDisplay:Set(text)
         end)
     end
@@ -2573,6 +2745,9 @@ RunService.RenderStepped:Connect(function()
     end)
 end)
 
+-- =====================================
+-- FARM RUNNERS
+-- =====================================
 local function RunNormalFarm()
     if not MarvenState.AutoFarmItem then return end
     local check = StartSession("AutoFarmItem")
@@ -2617,6 +2792,51 @@ local function RunProcessFarm()
     end)
 end
 
+local function RunBestPriceFarm()
+    if not MarvenState.AutoBestPriceFarm then return end
+    local check = StartSession("AutoBestPriceFarm")
+    task.spawn(function()
+        local first = true
+        while check() do
+            if first then WarpToTownAndSpawnCar() first = false end
+            if not check() then break end
+            local prices = GetRealMarketPrices()
+            local bestKey, bestVal = "BananaPack", 0
+            for k, v in pairs(prices) do
+                if v > bestVal then
+                    bestVal = v
+                    bestKey = k
+                end
+            end
+            _G.CurrentBestItemKey = bestKey
+            if bestKey == "BananaPack" then
+                if GetPlayerInventoryCount("Banana") < 60 then HarvestSingleCrop("Banana", 60, check) end
+                if not check() then break end
+                ProcessBananaAtStation(check)
+            elseif bestKey == "Sandwich" then
+                if GetPlayerInventoryCount("Bread") < 30 then HarvestSingleCrop("Bread", 30, check) end
+                if GetPlayerInventoryCount("Catchup") < 20 then HarvestSingleCrop("Catchup", 20, check) end
+                if GetPlayerInventoryCount("Pig") < 20 then HarvestSingleCrop("Pig", 20, check) end
+                if not check() then break end
+                CraftFoodAtStation("Sandwish", check)
+            elseif bestKey == "MangoRice" then
+                if GetPlayerInventoryCount("Mango") < 20 then HarvestSingleCrop("Mango", 20, check) end
+                if GetPlayerInventoryCount("Rice") < 30 then HarvestSingleCrop("Rice", 30, check) end
+                if not check() then break end
+                CraftFoodAtStation("MangoRice", check)
+            elseif bestKey == "KangSom" then
+                if GetPlayerInventoryCount("Tomato") < 20 then HarvestSingleCrop("Tomato", 20, check) end
+                if GetPlayerInventoryCount("Crab") < 20 then HarvestSingleCrop("Crab", 20, check) end
+                if not check() then break end
+                CraftFoodAtStation("KangSom", check)
+            end
+            if not check() then break end
+            SellAtEconomyMarket(check)
+            task.wait(0.5)
+        end
+    end)
+end
+
 local function RunMineFarm()
     if not MarvenState.AutoMineFarm then return end
     local check = StartSession("AutoMineFarm")
@@ -2637,6 +2857,9 @@ local function RunMineFarm()
     end)
 end
 
+-- =====================================
+-- TABS & CONTROLS
+-- =====================================
 local SettingsTab = Window:Tab({Title = "ตั้งค่า", Icon = "settings"})
 local Settings = SettingsTab:Section({Title = "ตั้งค่าทั่วไป"})
 Settings:Toggle({
@@ -2667,6 +2890,12 @@ Settings:Toggle({
 })
 
 local FarmTab = Window:Tab({Title = "ฟาร์ม", Icon = "sprout"})
+local BestFarmSection = FarmTab:Section({Title = "👑 ฟาร์มตามราคาตลาดที่ดีที่สุด (Real-Time Auto Best)"})
+BestFarmSection:Toggle({
+    Title = "ออโต้ ฟาร์มตามราคาดีที่สุด (สลับอัตโนมัติ)", Default = false, Flag = "AutoBestPriceFarm",
+    Callback = function(v) MarvenState.AutoBestPriceFarm = v if v then RunBestPriceFarm() else StopSession("AutoBestPriceFarm") end end
+})
+
 local NormalFarm = FarmTab:Section({Title = "ฟาร์มปกติ"})
 NormalFarm:Dropdown({
     Title = "เลือกฟาร์ม",
@@ -2729,6 +2958,10 @@ SpeedSection:Toggle({
     Title = "รถทะลุสิ่งกีดขวาง (Vehicle NoClip)", Default = true, Flag = "VehicleNoclip",
     Callback = function(v) isVehicleNoclipEnabled = v end
 })
+SpeedSection:Toggle({
+    Title = "หนีเซิร์ฟเวอร์อัตโนมัติเมื่อมีคนเข้าใกล้", Default = true, Flag = "AutoHopNearby",
+    Callback = function(v) isAutoHopOnPlayerNearbyEnabled = v end
+})
 
 local UnloadSection = AdvTab:Section({Title = "ปิดสคริปต์"})
 UnloadSection:Button({
@@ -2736,10 +2969,12 @@ UnloadSection:Button({
     Callback = function()
         MarvenState.AutoFarmItem = false
         MarvenState.AutoProcessFarm = false
+        MarvenState.AutoBestPriceFarm = false
         MarvenState.AutoMineFarm = false
         MarvenState.AutoFish = false
         StopSession("AutoFarmItem")
         StopSession("AutoProcessFarm")
+        StopSession("AutoBestPriceFarm")
         StopSession("AutoMineFarm")
         pcall(StopAutoFishing)
         pcall(function()
