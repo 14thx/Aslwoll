@@ -1,5 +1,5 @@
 -- ==============================================================================
--- MARVENRIZ HUB + NEXUS ENGINE (FULL MASTER 100% - NO TRUNCATION v2.5)
+-- MARVENRIZ HUB + NEXUS ENGINE (ULTIMATE MASTER 100% - NO SHORTCUTS)
 -- ==============================================================================
 
 local Loading = nil
@@ -388,7 +388,7 @@ local function TriggerPrompt(prompt)
         if fireproximityprompt then pcall(function() fireproximityprompt(prompt) end) end
         pcall(function()
             prompt:InputHoldBegin()
-            task.wait(prompt.HoldDuration > 0 and (prompt.HoldDuration + 0.05) or 0.1)
+            task.wait(prompt.HoldDuration > 0 and (prompt.HoldDuration + 0.05) or 0.15)
             prompt:InputHoldEnd()
         end)
     end)
@@ -477,9 +477,6 @@ end
 if LocalPlayer.Character then NeutralizeCharScripts(LocalPlayer.Character) end
 LocalPlayer.CharacterAdded:Connect(NeutralizeCharScripts)
 
--- ==============================================================================
--- [ส่วนที่เติมเพิ่มจาก NEXUS ต้นฉบับแท้]: เติมเต็มฟังก์ชันจัดการเบิกรถและพิกัด
--- ==============================================================================
 local function GetSpawnPointForBooth(boothPos)
     local bestPt = nil
     local bestDist = math.huge
@@ -588,7 +585,7 @@ local function SetVehicleAltitude(newOffset)
 end
 
 -- =====================================
--- VEHICLE
+-- VEHICLE SYSTEM
 -- =====================================
 local function IsMyVehicle(v)
     if not v or not v:IsA("Model") or not v.Parent then return false end
@@ -1273,7 +1270,7 @@ RunService.Stepped:Connect(function()
 end)
 
 -- =====================================
--- HARVEST
+-- HARVEST SYSTEM
 -- =====================================
 local function TriggerFarmPromptDirectly(cropName)
     local char = LocalPlayer.Character
@@ -1492,7 +1489,7 @@ HarvestSingleCrop = function(cropName, targetAmount, check)
 end
 
 -- =====================================
--- CRAFT
+-- CRAFT SYSTEM
 -- =====================================
 local function GetCraft3Prompt()
     local craftSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Crafting")
@@ -1785,7 +1782,7 @@ ProcessBananaAtStation = function(shouldContinueCheck)
 end
 
 -- =====================================
--- PROCESS ORE
+-- PROCESS ORE SYSTEM
 -- =====================================
 ProcessOreAtStation = function(oreName, minP, check)
     GrantAntiXGrace(30)
@@ -1901,7 +1898,7 @@ ProcessOreAtStation = function(oreName, minP, check)
 end
 
 -- =====================================
--- VAULT
+-- VAULT SYSTEM
 -- =====================================
 local DEPOSITABLE_ITEMS = {
     Rock=true, Svibranium=true, Bread=true, Catchup=true, Pig=true,
@@ -1966,7 +1963,7 @@ DepositAllToVault = function(check)
 end
 
 -- =====================================
--- SELL
+-- MARKET SELL SYSTEM
 -- =====================================
 local function GetEconomyMarketPosition()
     local systems = workspace:FindFirstChild("Systems")
@@ -2570,7 +2567,7 @@ local function StopSession(key) MarvenSession[key] = (MarvenSession[key] or 0) +
 local Window = UI:CreateWindow({
     Title = "MarvenRiz Hub",
     Author = "by. zems.xz",
-    Version = "Premium + Nexus Engine (Master Final 100%) [v2.5]",
+    Version = "Premium + Nexus Engine (Ultimate Master 100%) [v2.5]",
     Logo = "rbxassetid://124905448303407",
     Folder = "MarvenRizHub",
     ConfigAutoSave = true,
@@ -2582,7 +2579,7 @@ Window:SetTheme({ Accent = Color3.fromRGB(0, 110, 255) })
 
 local StatusTab = Window:Tab({Title = "สถานะ", Icon = "activity"})
 local Status = StatusTab:Section({Title = "ข้อมูลผู้เล่น"})
-Status:Banner({Title = "MarvenRiz Hub [v2.5]", SubTitle = "🔗 NEXUS Engine + ระบบครบถ้วนสมบูรณ์ 100%"})
+Status:Banner({Title = "MarvenRiz Hub [v2.5]", SubTitle = "🔗 NEXUS Engine + สมบูรณ์แบบ 100% ไม่มีตัดทอน"})
 local StatsGrid = Status:StatGrid({
     {Label = "FPS", Value = "0"}, {Label = "Ping", Value = "0 ms"},
     {Label = "Executor", Value = "Unknown"}, {Label = "Players", Value = "0"},
