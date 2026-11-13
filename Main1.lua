@@ -479,7 +479,7 @@ if LocalPlayer.Character then NeutralizeCharScripts(LocalPlayer.Character) end
 LocalPlayer.CharacterAdded:Connect(NeutralizeCharScripts)
 
 -- ==============================================================================
--- [ส่วนที่เติมเพิ่มจาก NEXUS ต้นฉบับแท้]: ฟังก์ชันที่ขาดหายไป
+-- [ส่วนที่เติมเพิ่มจาก NEXUS ต้นฉบับแท้]: เติมเต็มฟังก์ชันจัดการเบิกรถและพิกัด
 -- ==============================================================================
 local function GetSpawnPointForBooth(boothPos)
     local bestPt = nil
@@ -1493,7 +1493,7 @@ HarvestSingleCrop = function(cropName, targetAmount, check)
 end
 
 -- =====================================
--- CRAFT (PATCH v2.5: สูตร Rice Kapao Moo + ค้นหาปุ่มยืดหยุ่น)
+-- CRAFT
 -- =====================================
 local function GetCraft3Prompt()
     local craftSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Crafting")
@@ -1786,7 +1786,7 @@ ProcessBananaAtStation = function(shouldContinueCheck)
 end
 
 -- =====================================
--- PROCESS ORE
+-- PROCESS ORE (อัปเกรดระบบหลอมแร่จากต้นฉบับแท้)
 -- =====================================
 ProcessOreAtStation = function(oreName, minP, check)
     GrantAntiXGrace(30)
