@@ -478,6 +478,116 @@ end
 if LocalPlayer.Character then NeutralizeCharScripts(LocalPlayer.Character) end
 LocalPlayer.CharacterAdded:Connect(NeutralizeCharScripts)
 
+-- ==============================================================================
+-- [ส่วนที่เติมเพิ่มจาก NEXUS ต้นฉบับแท้]: ฟังก์ชันที่ขาดหายไป
+-- ==============================================================================
+local function GetSpawnPointForBooth(boothPos)
+    local bestPt = nil
+    local bestDist = math.huge
+    local farmSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Farm")
+    if farmSys then
+        for _, farm in ipairs(farmSys:GetChildren()) do
+            local sp = farm:FindFirstChild("Prompt") and farm.Prompt:FindFirstChild("Spawn")
+            local ptFolder = sp and sp:FindFirstChild("Point")
+            if ptFolder then
+                for _, pt in ipairs(ptFolder:GetChildren()) do
+                    if pt:IsA("BasePart") then
+                        local d = (pt.Position - boothPos).Magnitude
+                        if d < bestDist then
+                            bestDist = d
+                            bestPt = pt
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return bestPt
+end
+
+local function FindCarSpawnOrPoundButton(group, preferredCarName)
+    preferredCarName = preferredCarName or "R32"
+    local carFrame = group:FindFirstChild(preferredCarName, true)
+    if carFrame then
+        for _, desc in ipairs(carFrame:GetDescendants()) do
+            if desc:IsA("GuiButton") and desc.Visible then
+                local txt = (desc:IsA("TextButton") and desc.Text:lower()) or ""
+                local name = desc.Name:lower()
+                if name:find("spawn") or txt:find("spawn") then
+                    return desc, "spawn", carFrame
+                elseif name:find("pound") or txt:find("pound") then
+                    return desc, "pound", carFrame
+                end
+            end
+        end
+    end
+    for _, desc in ipairs(group:GetDescendants()) do
+        if desc:IsA("GuiButton") and desc.Visible then
+            local txt = (desc:IsA("TextButton") and desc.Text:lower()) or ""
+            local name = desc.Name:lower()
+            if name:find("spawn") or txt:find("spawn") then
+                return desc, "spawn", desc.Parent
+            end
+        end
+    end
+    for _, desc in ipairs(group:GetDescendants()) do
+        if desc:IsA("GuiButton") and desc.Visible then
+            local txt = (desc:IsA("TextButton") and desc.Text:lower()) or ""
+            local name = desc.Name:lower()
+            if name:find("pound") or txt:find("pound") then
+                return desc, "pound", desc.Parent
+            end
+        end
+    end
+    return nil, nil, nil
+end
+
+local function CloseCarSpawnGui()
+    pcall(function()
+        local cs = PlayerGui:FindFirstChild("Car_Spawn")
+        if cs and cs:FindFirstChild("Group") then
+            local exitBtn = cs.Group:FindFirstChild("Exit", true)
+            if exitBtn and exitBtn:IsA("GuiButton") then
+                if firesignal then firesignal(exitBtn.MouseButton1Click) end
+            end
+            cs.Group.Visible = false
+        end
+    end)
+end
+
+local function SetVehicleAltitude(newOffset)
+    VehicleHeightOffset = tonumber(newOffset) or 0
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local seat = hum and hum.SeatPart
+    if hum and hum.Sit and seat then
+        local myCar = seat:FindFirstAncestorOfClass("Model")
+        if myCar then
+            local seatPos = seat.Position
+            local groundY = GetGroundLevel(seatPos.X, seatPos.Z, seatPos.Y)
+            local naturalRideHeight = 2.8
+            local targetPlatformY = (VehicleHeightOffset > 0 and (groundY + VehicleHeightOffset)) or (groundY - 0.2)
+            local targetCarY = groundY + naturalRideHeight + VehicleHeightOffset
+            local curPivot = myCar:GetPivot()
+
+            if isVehiclePlatformEnabled then
+                EnsureVehiclePlatform(targetPlatformY, seatPos)
+            elseif vehiclePlatformPart then
+                vehiclePlatformPart:Destroy()
+                vehiclePlatformPart = nil
+            end
+
+            local targetCF = CFrame.new(curPivot.Position.X, targetCarY, curPivot.Position.Z) * curPivot.Rotation
+            myCar:PivotTo(targetCF)
+
+            if myCar.PrimaryPart then
+                myCar.PrimaryPart.AssemblyLinearVelocity = Vector3.new(myCar.PrimaryPart.AssemblyLinearVelocity.X, -5, myCar.PrimaryPart.AssemblyLinearVelocity.Z)
+                myCar.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
+            end
+        end
+    end
+end
+
 -- =====================================
 -- VEHICLE
 -- =====================================
@@ -753,63 +863,6 @@ FindBoothPromptNear = function(fromPos, maxDist)
             end
         end
     end
-end
-
-local function GetSpawnPointForBooth(boothPos)
-    local best, bd = nil, math.huge
-    local farmSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Farm")
-    if farmSys then
-        for _, farm in ipairs(farmSys:GetChildren()) do
-            local sp = farm:FindFirstChild("Prompt") and farm.Prompt:FindFirstChild("Spawn")
-            local ptF = sp and sp:FindFirstChild("Point")
-            if ptF then
-                for _, pt in ipairs(ptF:GetChildren()) do
-                    if pt:IsA("BasePart") then
-                        local d = (pt.Position - boothPos).Magnitude
-                        if d < bd then bd, best = d, pt end
-                    end
-                end
-            end
-        end
-    end
-    return best
-end
-
-local function CloseCarSpawnGui()
-    pcall(function()
-        local cs = PlayerGui:FindFirstChild("Car_Spawn")
-        if cs and cs:FindFirstChild("Group") then cs.Group.Visible = false end
-    end)
-end
-
-local function FindCarSpawnOrPoundButton(group, preferred)
-    preferred = preferred or "R32"
-    local card = group:FindFirstChild(preferred, true)
-    if card then
-        for _, d in ipairs(card:GetDescendants()) do
-            if d:IsA("GuiButton") and d.Visible then
-                local nm = d.Name:lower()
-                local txt = (d:IsA("TextButton") and d.Text:lower()) or ""
-                if nm:find("spawn") or txt:find("spawn") then return d, "spawn", card end
-                if nm:find("pound") or txt:find("pound") then return d, "pound", card end
-            end
-        end
-    end
-    for _, d in ipairs(group:GetDescendants()) do
-        if d:IsA("GuiButton") and d.Visible then
-            local nm = d.Name:lower()
-            local txt = (d:IsA("TextButton") and d.Text:lower()) or ""
-            if nm:find("spawn") or txt:find("spawn") then return d, "spawn", d.Parent end
-        end
-    end
-    for _, d in ipairs(group:GetDescendants()) do
-        if d:IsA("GuiButton") and d.Visible then
-            local nm = d.Name:lower()
-            local txt = (d:IsA("TextButton") and d.Text:lower()) or ""
-            if nm:find("pound") or txt:find("pound") then return d, "pound", d.Parent end
-        end
-    end
-    return nil, nil, nil
 end
 
 local function FindPoundButton(group)
@@ -1119,7 +1172,7 @@ DriveCarTo = function(dest, check)
         if not hum.Sit or hum.SeatPart ~= seat then
             pcall(function() root.CFrame = seat.CFrame + Vector3.new(0,0.8,0) seat:Sit(hum) end)
         end
-        local spd = math.clamp(tonumber(VehicleDriveSpeed) or 150, 10, 200)
+        local spd = math.clamp(tonumber(VehicleDriveSpeed) or 150, 10, 280)
         local rem = distT - trav
         if rem < 80 then spd = math.max(spd * math.clamp(rem/80, 0.2, 1), 30) end
         local now = os.clock()
@@ -1191,7 +1244,8 @@ RunService.Stepped:Connect(function()
             if isVehiclePlatformEnabled then
                 EnsureVehiclePlatform(gy - 0.2, sp)
             elseif vehiclePlatformPart then
-                vehiclePlatformPart:Destroy() vehiclePlatformPart = nil
+                vehiclePlatformPart:Destroy()
+                vehiclePlatformPart = nil
             end
             if isVehicleNoclipEnabled then
                 for _, part in ipairs(myCar:GetDescendants()) do
@@ -1510,7 +1564,6 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
     end
     task.wait(0.2)
     
-    -- ⭐ PATCH v2.5: สูตรคำนวณอัปเดตใหม่
     local function GetMaxCraftAmount()
         local b = GetPlayerInventoryCount("Bread")
         local c = GetPlayerInventoryCount("Catchup")
@@ -1552,7 +1605,6 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
                 task.wait(0.3)
             end
             
-            -- ⭐ PATCH v2.5: ค้นหาชื่อ Recipe แบบยืดหยุ่น (ตัดช่องว่าง/ตัวพิมพ์)
             local cleanName = recipeName:gsub("%s+", ""):lower()
             local recipeBtn = nil
             
@@ -1734,7 +1786,7 @@ ProcessBananaAtStation = function(shouldContinueCheck)
 end
 
 -- =====================================
--- PROCESS ORE (อัปเกรดระบบหลอมแร่ให้ชัวร์ขึ้น) ระบบแปรรูปแร่
+-- PROCESS ORE
 -- =====================================
 ProcessOreAtStation = function(oreName, minP, check)
     GrantAntiXGrace(30)
@@ -1744,22 +1796,18 @@ ProcessOreAtStation = function(oreName, minP, check)
     if not root or not hum then return end
 
     local locData = TYPER_LOCATIONS[oreName]
-    -- กำหนดพิกัดเตาหลอม (ชั้นล่าง)
     local exactProcPos = (oreName == "Svibranium" and Vector3.new(-930.91, 6.93, 6760.56)) or (locData and locData.Process) or Vector3.new(-935.29, 6.93, 6786.66)
     
     local myCar = GetPlayerVehicle()
     if not myCar or not hum.Sit then myCar = EnsureCarAvailable() end
     if myCar then EnsurePlayerSeatedInCar(myCar) end
 
-    -- 1. ขับรถไปที่เตาหลอม
     DriveCarTo(exactProcPos + Vector3.new(0,0,5.0), check)
     task.wait(0.1)
     if check and not check() then return end
 
-    -- 2. ลงจากรถ
     if hum.Sit then hum.Sit = false task.wait(0.1) end
 
-    -- 3. ค้นหา ProximityPrompt ของเตาหลอม
     local pFolder = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Process") and workspace.Systems.Process:FindFirstChild(oreName)
     local procPrompt = nil
     local targetProcPos = exactProcPos
@@ -1771,43 +1819,37 @@ ProcessOreAtStation = function(oreName, minP, check)
                 local p = desc.Parent
                 local pPos = (p:IsA("Attachment") and p.WorldPosition) or (p:IsA("BasePart") and p.Position)
                 if pPos then
-                    -- ⭐ หาเตาที่อยู่ชั้นล่างสุด (Y ต่ำสุด)
                     if pPos.Y < lowestY then
                         lowestY = pPos.Y
                         procPrompt = desc
                         targetProcPos = pPos
                     end
                 else
-                    procPrompt = procPrompt or desc -- ⭐ Fallback ถ้าหาตำแหน่งไม่ได้
+                    procPrompt = procPrompt or desc
                 end
             end
         end
     end
 
-    -- ⭐ Fallback: ถ้าหาใน Folder ไม่เจอ ให้หาจุดที่ใกล้ที่สุดรอบตัว
     if not procPrompt then 
         procPrompt = FindPromptNear(targetProcPos, 25, nil) or FindPromptNear(root.Position, 25, nil) 
     end
 
-    -- 4. ยืนหันหน้าเข้าเตา
     local fy = targetProcPos.Y
     root.CFrame = CFrame.lookAt(Vector3.new(targetProcPos.X, fy+1.2, targetProcPos.Z+2.5), Vector3.new(targetProcPos.X, fy+1.2, targetProcPos.Z))
     root.AssemblyLinearVelocity = Vector3.zero
     task.wait(0.2)
 
-    -- 5. กดเปิด UI เตาหลอม
     if procPrompt then 
         TriggerPrompt(procPrompt) 
-        task.wait(0.5) -- ⭐ รอให้ UI เด้ง
+        task.wait(0.5)
     end
 
-    -- ⭐ ยิง Remote Start (ให้เซิร์ฟเวอร์รู้ว่าเริ่มหลอม)
     pcall(function()
         local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if rc then require(rc).Fire("_process", "Start", oreName) end
     end)
 
-    -- ⭐ บังคับเปิด UI ถ้ามันไม่เด้ง
     pcall(function()
         local pg = PlayerGui:FindFirstChild("Process")
         if pg and pg:FindFirstChild("Group") then
@@ -1817,7 +1859,6 @@ ProcessOreAtStation = function(oreName, minP, check)
     end)
     task.wait(0.3)
 
-    -- 6. ลูปกดปุ่ม ActionBtn (หลอมแร่)
     minP = minP or (oreName == "Svibranium" and 4 or 2)
     local tP = os.clock()
     
@@ -1825,12 +1866,10 @@ ProcessOreAtStation = function(oreName, minP, check)
         if check and not check() then break end
         GrantAntiXGrace(15)
         
-        -- กด ActionBtn ทุกๆ 3.2 วินาที
         pcall(function()
             local pg = PlayerGui:FindFirstChild("Process")
             if pg and pg:FindFirstChild("Group") then
                 local main = pg.Group:FindFirstChild("Main")
-                -- ⭐ ค้นหาปุ่มแบบละเอียด (เผื่อปุ่มซ่อนอยู่ข้างใน)
                 local ab = main and (main:FindFirstChild("ActionBtn") or main:FindFirstChild("ActionBtn", true))
                 if ab and firesignal then 
                     firesignal(ab.MouseButton1Click) 
@@ -1840,7 +1879,6 @@ ProcessOreAtStation = function(oreName, minP, check)
         task.wait(3.2)
     end
 
-    -- 7. ยิง Remote Stop และปิด UI
     pcall(function()
         local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if rc then require(rc).Fire("_process", "Stop", oreName) end
@@ -1859,7 +1897,6 @@ ProcessOreAtStation = function(oreName, minP, check)
     
     task.wait(3.0)
 
-    -- 8. กลับขึ้นรถเพื่อไปขั้นตอนต่อไป
     local c2 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(Vector3.new(-876.62, 10.52, 6662.98))
     if c2 then EnsurePlayerSeatedInCar(c2) end
 end
@@ -2049,10 +2086,6 @@ end
 -- =====================================
 -- PART 3/3: Fishing + Auto Best Price + Server Hop + UI (v2.5)
 -- =====================================
-
--- =====================================
--- FISHING: Rod Tools
--- =====================================
 local function GetFishingRodTool()
     local char = LocalPlayer.Character
     local bp = LocalPlayer:FindFirstChild("Backpack")
@@ -2120,28 +2153,22 @@ local function EnsureFishingPlatform(pos)
     end
 end
 
--- =====================================
--- BuyBaitMaxAtShop (NEXUS ต้นฉบับแท้ 100%)
--- =====================================
 local function BuyBaitMaxAtShop(shopPos)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not root or not hum then return end
 
-    -- 1. ถ้านั่งรถอยู่ ให้ลงจากรถและเอารถไปจอดห่างๆ ก่อน
     if hum.Sit then
         hum.Sit = false
         task.wait(0.2)
     end
     
-    -- (วาร์ปตัวละครไปยืนห่างจากจุดร้าน 4 studs เพื่อไม่ให้รถทับ)
     local safeStandPos = shopPos + Vector3.new(0, 2.5, 4) 
     root.CFrame = CFrame.lookAt(safeStandPos, shopPos)
     root.AssemblyLinearVelocity = Vector3.zero
     task.wait(0.5)
 
-    -- 2. ค้นหาและกด ProximityPrompt เปิดร้าน
     local prompt = FindPromptNear(shopPos, 20, "shop") or FindPromptNear(root.Position, 20, nil)
     if prompt then
         prompt.Enabled = true
@@ -2150,28 +2177,24 @@ local function BuyBaitMaxAtShop(shopPos)
         pcall(function() prompt:InputHoldEnd() end)
     end
 
-    -- 3. รอจนกว่า UI ร้านค้าจะเด้งขึ้นมา (รอสูงสุด 3 วินาที)
     local pgui = LocalPlayer:FindFirstChild("PlayerGui")
     local shopGui = nil
     local tWait = os.clock()
     while os.clock() - tWait < 3.0 do
         shopGui = pgui:FindFirstChild("Shop")
         if shopGui and shopGui:FindFirstChild("Group") and shopGui.Group.Visible then
-            break -- ร้านเปิดแล้ว!
+            break
         end
-        -- ถ้าร้านยังไม่เปิด ให้กด Prompt ซ้ำ
         if prompt then
             pcall(function() fireproximityprompt(prompt) end)
         end
         task.wait(0.2)
     end
 
-    -- 4. คำนวณเงิน (ซื้อสูงสุด 100 ชิ้นเพื่อไม่ให้เงินขาด)
     local pData = LocalPlayer:FindFirstChild("PlayerData")
     local money = (pData and pData:GetAttribute("Money")) or 1000
     local toBuy = math.clamp(math.floor(money / 10), 10, 100) 
 
-    -- 5. ลองยิง Remote ซื้อของ
     pcall(function()
         local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if remCore then
@@ -2182,13 +2205,11 @@ local function BuyBaitMaxAtShop(shopPos)
     end)
     task.wait(0.5)
 
-    -- 6. กดปุ่มใน UI
     pcall(function()
         if shopGui and shopGui:FindFirstChild("Group") and shopGui.Group:FindFirstChild("Main") then
             local main = shopGui.Group.Main
             local sf = main:FindFirstChild("ScrollingFrame")
             
-            -- หาปุ่มเหยื่อ
             local baitBtn = sf and (sf:FindFirstChild("FishingBait") or sf:FindFirstChild("Bait"))
             if not baitBtn and sf then
                 for _, b in ipairs(sf:GetDescendants()) do
@@ -2201,7 +2222,6 @@ local function BuyBaitMaxAtShop(shopPos)
             
             local payBtn = main:FindFirstChild("Pay") and main.Pay:FindFirstChild("Money")
             
-            -- กดปุ่มแบบ firesignal
             if baitBtn and payBtn then
                 SafeClickGuiButton(baitBtn)
                 task.wait(0.2)
@@ -2209,14 +2229,13 @@ local function BuyBaitMaxAtShop(shopPos)
                 task.wait(0.3)
             end
             
-            -- ปิดร้าน
             local closeBtn = main:FindFirstChild("Closed") or main:FindFirstChild("Close")
             if closeBtn then SafeClickGuiButton(closeBtn) end
             shopGui.Group.Visible = false
         end
     end)
     task.wait(0.4)
-    end
+end
 
 local function SellAllFishAtShop(shopPos)
     local char = LocalPlayer.Character
@@ -2257,9 +2276,6 @@ local function SellAllFishAtShop(shopPos)
     task.wait(0.3)
 end
 
--- =====================================
--- FISHING: Minigame Solver
--- =====================================
 local function SolveFishingMinigame()
     local pgui = LocalPlayer:FindFirstChild("PlayerGui")
     local vim = VirtualInputManager
@@ -2322,9 +2338,6 @@ pcall(function()
     end
 end)
 
--- =====================================
--- FISHING: Start / Stop
--- =====================================
 StartAutoFishing = function()
     if fishingThread then return end
     isAutoFishingEnabled = true
@@ -2464,20 +2477,13 @@ StopAutoFishing = function()
     end)
 end
 
--- =====================================
--- AUTO BEST PRICE
--- =====================================
--- ⭐ ตัวแปรสำหรับเก็บราคาที่ดักฟังมาจากเซิร์ฟเวอร์
 local RealTimePrices = {}
 
--- ⭐ เริ่มต้นดักฟังราคาจาก Remote ของเกม
 pcall(function()
     local remotes = require(ReplicatedStorage:WaitForChild("Systems"):WaitForChild("Modules"):WaitForChild("Core"):WaitForChild("Remotes"))
     
-    -- ดักฟังเมื่อเซิร์ฟเวอร์ส่งข้อมูลราคามา
     remotes.On("_economy", function(action, priceTable)
         if (action == "Update" or action == "Open") and type(priceTable) == "table" then
-            -- อัปเดตข้อมูลราคาลงตาราง
             for itemName, price in pairs(priceTable) do
                 if type(price) == "number" then
                     RealTimePrices[itemName] = price
@@ -2486,7 +2492,6 @@ pcall(function()
         end
     end)
     
-    -- ขอราคาล่าสุดจากเซิร์ฟเวอร์ทุกๆ 3 วินาที (เพื่อให้ UI อัปเดตตลอด)
     task.spawn(function()
         while true do
             task.wait(3)
@@ -2495,9 +2500,6 @@ pcall(function()
     end)
 end)
 
--- =====================================
--- SERVER HOP
--- =====================================
 getgenv().VisitedTyperServers = getgenv().VisitedTyperServers or {}
 pcall(function()
     local now = os.clock()
@@ -2669,9 +2671,6 @@ task.spawn(function()
     end
 end)
 
--- =====================================
--- MARVENRIZ UI
--- =====================================
 local MarvenState = {
     AutoEat         = true,
     AutoFarmItem    = false,
@@ -2706,7 +2705,6 @@ local Window = UI:CreateWindow({
 })
 Window:SetTheme({ Accent = Color3.fromRGB(0, 110, 255) })
 
--- STATUS
 local StatusTab = Window:Tab({Title = "สถานะ", Icon = "activity"})
 local Status = StatusTab:Section({Title = "ข้อมูลผู้เล่น"})
 Status:Banner({Title = "MarvenRiz Hub [v2.5]", SubTitle = "🔗 NEXUS Engine + ระบบคราฟสมบูรณ์ + เมนูภาษาไทย"})
@@ -2742,9 +2740,6 @@ RunService.RenderStepped:Connect(function()
     end)
 end)
 
--- =====================================
--- FARM RUNNERS (v2.5: ProcessFarm ครบ + Sandwich + RiceKapaoMoo)
--- =====================================
 local function RunNormalFarm()
     if not MarvenState.AutoFarmItem then return end
     local check = StartSession("AutoFarmItem")
@@ -2831,7 +2826,6 @@ local function RunProcessFarm()
                 if not check() then break end
                 SellAtEconomyMarket(check)
             elseif k == "Sandwich" then
-                -- ⭐ v2.5: ฟาร์มแซนวิช
                 if GetPlayerInventoryCount("Bread") < 60 then
                     EnsureCarAvailable(TYPER_LOCATIONS.Bread.Booth or TOWN_CAR_SPAWN)
                     HarvestSingleCrop("Bread", 60, check)
@@ -2894,9 +2888,6 @@ local function RunMineFarm()
     end)
 end
 
--- =====================================
--- SETTINGS TAB
--- =====================================
 local SettingsTab = Window:Tab({Title = "ตั้งค่า", Icon = "settings"})
 local Settings = SettingsTab:Section({Title = "ตั้งค่าทั่วไป"})
 
@@ -2973,9 +2964,6 @@ Settings:Toggle({
     end
 })
 
--- =====================================
--- FARM TAB (v2.5: Dropdown ภาษาไทย + Sandwich)
--- =====================================
 local FarmTab = Window:Tab({Title = "ฟาร์ม", Icon = "sprout"})
 
 local NormalFarm = FarmTab:Section({Title = "ฟาร์มปกติ"})
@@ -3088,35 +3076,7 @@ MineFarm:Toggle({
         else StopSession("AutoMineFarm") pcall(CancelGameFarm) end
     end
 })
--- =====================================
--- ⭐ ระบบดักฟังราคาจริง + โชว์บน UI (ครบจบในก้อนเดียว)
--- =====================================
-local RealTimePrices = {}
 
--- 1. ส่วนดักฟังราคา
-pcall(function()
-    local remotes = require(ReplicatedStorage:WaitForChild("Systems"):WaitForChild("Modules"):WaitForChild("Core"):WaitForChild("Remotes"))
-    
-    remotes.On("_economy", function(action, priceTable)
-        if (action == "Update" or action == "Open") and type(priceTable) == "table" then
-            for itemName, price in pairs(priceTable) do
-                if type(price) == "number" then
-                    RealTimePrices[itemName] = price
-                end
-            end
-        end
-    end)
-    
-    task.spawn(function()
-        task.wait(3) 
-        while true do
-            pcall(function() remotes.Fire("_economy", "Request") end)
-            task.wait(5)
-        end
-    end)
-end)
-
--- 2. ส่วนคำนวณราคา
 local function GetBestFoodPack()
     local foodItems = {
         Sandwich = {"Sandwich", "Sandwish"},
@@ -3157,14 +3117,12 @@ local function GetBestFoodPack()
     return bestKey, bestName, bestPrice
 end
 
--- 3. ⭐ ส่วนสร้างหน้าจอโชว์ราคา (ที่คุณลืมใส่!)
 local BestPriceSection = FarmTab:Section({Title = "🌟 ข้อมูลราคาตลาด (Real-Time)"})
 local BestPriceInfo = BestPriceSection:Paragraph({
     Title = "📊 ราคาอาหารที่ดีที่สุดตอนนี้",
     Content = "กำลังดึงข้อมูลราคา..."
 })
 
--- 4. ⭐ ลูปอัปเดตตัวเลขบนหน้าจอ
 task.spawn(function()
     while true do
         task.wait(1.5)
@@ -3182,9 +3140,6 @@ task.spawn(function()
     end
 end)
 
--- =====================================
--- OTHER TAB
--- =====================================
 local OtherTab = Window:Tab({Title = "อื่นๆ", Icon = "layers"})
 local FishSection = OtherTab:Section({Title = "ระบบตกปลา"})
 FishSection:Toggle({
@@ -3197,9 +3152,6 @@ FishSection:Toggle({
     end
 })
 
--- =====================================
--- ADVANCED TAB
--- =====================================
 local AdvTab = Window:Tab({Title = "ขั้นสูง", Icon = "sliders"})
 
 local SpeedSection = AdvTab:Section({Title = "ความเร็วยานพาหนะ"})
@@ -3207,10 +3159,9 @@ SpeedSection:Slider({
     Title = "ความเร็วขับรถ (Studs/s)",
     Default = 150,
     Min = 10,
-    Max = 280, -- ปรับได้ถึง 280
+    Max = 280,
     Rounding = 0,
     Flag = "VehicleSpeed",
-    -- แก้ตัวเลข 200 ตัวหลังสุดให้เป็น 280 (หรือสูงกว่านี้ถ้าอยากแรงมาก)
     Callback = function(v) VehicleDriveSpeed = math.clamp(math.round(v), 10, 280) end
 })
 SpeedSection:Toggle({
@@ -3271,16 +3222,10 @@ UnloadSection:Button({
     end
 })
 
--- =====================================
--- CONFIG TAB
--- =====================================
 local ConfigTab = Window:Tab({Title = "Config", Icon = "folder-cog"})
 local ConfigSection = ConfigTab:Section({Title = "CONFIG"})
 ConfigSection:ConfigManager()
 
--- =====================================
--- FINISHED
--- =====================================
 pcall(function()
     if Loading and Loading.Hide then Loading.Hide() end
 end)
