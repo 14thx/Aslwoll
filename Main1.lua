@@ -2894,17 +2894,26 @@ local function RunMineFarm()
         while check() do
             if first then WarpToTownAndSpawnCar() first = false end
             if not check() then break end
+            
+            -- ⭐ ดึงค่าชื่อแร่ที่เลือกมาจาก Dropdown โดยตรง
             local ore = MarvenSelected.MineFarmType or "Rock"
             local minP = (ore == "Svibranium") and 4 or 2
+            
+            -- 1. ไปฟาร์มแร่
             if GetPlayerInventoryCount(ore) < 120 then
                 EnsureCarAvailable(TYPER_LOCATIONS[ore].Booth or TOWN_CAR_SPAWN)
                 HarvestSingleCrop(ore, 120, check)
             end
             if not check() then break end
+            
+            -- 2. เอาแร่ที่ฟาร์มได้ ไปหลอมที่เตา (สคริปต์จะส่งชื่อ ore ที่เลือกไปให้เอง)
             ProcessOreAtStation(ore, minP, check)
             if not check() then break end
+            
+            -- 3. เอาของไปฝากตู้เซฟ
             DepositAllToVault(check)
             if not check() then break end
+            
             task.wait(1.0)
         end
     end)
