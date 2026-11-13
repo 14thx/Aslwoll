@@ -4,48 +4,41 @@
 -- =====================================
 
 -- =====================================
--- ⭐ 1. ส่วนโหลด (อยู่บนสุดของไฟล์)
+-- 1. ส่วนโหลด UI (ใช้ตามที่คุณต้องการเป๊ะๆ)
 -- =====================================
-local Loading = nil
-local UI = nil
+local Loading = loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/14thx/Aslwoll/main/Loading.lua"
+))()
 
-pcall(function()
-    Loading = loadstring(game:HttpGet("https://raw.githubusercontent.com/14thx/Aslwoll/main/Loading.lua"))()
-    if Loading and Loading.Start then 
-        Loading.Start() 
-        Loading.SetProgress(5, "Initializing system...")
-    end
-end)
-task.wait(0.3)
+Loading.Start()
+task.wait(0.5)
 
-pcall(function()
-    if Loading and Loading.SetProgress then Loading.SetProgress(15, "Fetching UI library...") end
-end)
+Loading.SetProgress(10, "กำลังเริ่มต้นระบบ...")
+task.wait(0.5)
 
-for _, url in ipairs({"https://raw.githubusercontent.com/14thx/Aslwoll/main/RayVinzUI.lua"}) do
-    local ok, res = pcall(function()
-        local src = game:HttpGet(url)
-        if not src or #src < 1000 then error("empty") end
-        return loadstring(src)()
-    end)
-    if ok and res then UI = res break end
-end
+Loading.SetProgress(30, "กำลังเตรียมความพร้อม...")
+task.wait(0.5)
 
-if not UI then
-    pcall(function() 
-        if Loading and Loading.SetProgress then Loading.SetProgress(100, "❌ Failed to load UI") end
-        task.wait(2)
-        if Loading and Loading.Hide then Loading.Hide() end
-    end)
-    return
-end
-task.wait(0.3)
+Loading.SetProgress(50, "กำลังตรวจสอบแพ็กเกจ...")
+task.wait(0.5)
 
-pcall(function()
-    if Loading and Loading.SetProgress then Loading.SetProgress(50, "Loading icons...") end
-    if UI.LoadLucide then UI:LoadLucide() end
-end)
-task.wait(0.3)
+Loading.SetProgress(70, "กำลังโหลดโมดูล...")
+task.wait(0.5)
+
+Loading.SetProgress(90, "กำลังเตรียมหน้าต่างหลัก...")
+task.wait(0.5)
+
+Loading.SetProgress(100, "โหลดเสร็จสมบูรณ์!")
+task.wait(0.6) 
+
+Loading.Hide()
+
+-- =====================================
+-- 2. โหลด UI Library (RayVinz)
+-- =====================================
+local UI = loadstring(game:HttpGet("https://raw.githubusercontent.com/14thx/Aslwoll/main/RayVinzUI.lua"))()
+UI:LoadLucide()
+task.wait(0.2)
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -2695,10 +2688,6 @@ end)
 -- =====================================
 -- MARVENRIZ UI
 -- =====================================
-pcall(function()
-    if Loading and Loading.SetProgress then Loading.SetProgress(80, "Building interface...") end
-end)
-
 local MarvenState = {
     AutoEat         = true,
     AutoFarmItem    = false,
@@ -3305,14 +3294,10 @@ local ConfigTab = Window:Tab({Title = "Config", Icon = "folder-cog"})
 local ConfigSection = ConfigTab:Section({Title = "CONFIG"})
 ConfigSection:ConfigManager()
 
--- =====================================
--- FINISHED
--- =====================================
--- ⭐ สั่งปิดหน้าโหลด (วางไว้ล่างสุดของไฟล์)
 pcall(function()
-    if Loading and Loading.SetProgress then 
-        Loading.SetProgress(100, "✅ Ready! Launching Hub...") 
-        task.wait(1)
-        Loading.Hide() 
-    end
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "MarvenRiz Hub",
+        Text = "✅ Ready! Launching Hub...",
+        Duration = 5
+    })
 end)
