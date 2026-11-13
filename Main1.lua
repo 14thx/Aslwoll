@@ -1135,7 +1135,7 @@ DriveCarTo = function(dest, check)
         if not hum.Sit or hum.SeatPart ~= seat then
             pcall(function() root.CFrame = seat.CFrame + Vector3.new(0,0.8,0) seat:Sit(hum) end)
         end
-        local spd = math.clamp(tonumber(VehicleDriveSpeed) or 150, 10, 200)
+        local spd = math.clamp(tonumber(VehicleDriveSpeed) or 150, 10, 280)
         local rem = distT - trav
         if rem < 80 then spd = math.max(spd * math.clamp(rem/80, 0.2, 1), 30) end
         local now = os.clock()
@@ -2232,7 +2232,7 @@ local function BuyBaitMaxAtShop(shopPos)
         end
     end)
     task.wait(0.4)
-    end
+end
 
 local function SellAllFishAtShop(shopPos)
     local char = LocalPlayer.Character
@@ -2488,7 +2488,7 @@ local RealTimePrices = {}
 
 -- ⭐ เริ่มต้นดักฟังราคาจาก Remote ของเกม
 pcall(function()
-    local remotes = require(ReplicatedStorage:WaitForChild("Systems"):WaitForChild("Modules"):WaitForChild("Core"):WaitForChild("Remotes"))
+    local remotes = require(ReplicatedStorage:WaitForChild("Systems", 5):WaitForChild("Modules", 5):WaitForChild("Core", 5):WaitForChild("Remotes", 5))
     
     -- ดักฟังเมื่อเซิร์ฟเวอร์ส่งข้อมูลราคามา
     remotes.On("_economy", function(action, priceTable)
@@ -3100,8 +3100,12 @@ MineFarm:Toggle({
     Flag = "AutoMineFarm",
     Callback = function(v)
         MarvenState.AutoMineFarm = v
-        if v then RunMineFarm()
-        else StopSession("AutoMineFarm") pcall(CancelGameFarm) end
+        if v then 
+            RunMineFarm() -- ⭐ สั่งให้เริ่มฟาร์มเหมือง
+        else 
+            StopSession("AutoMineFarm") 
+            pcall(CancelGameFarm) 
+        end
     end
 })
 -- =====================================
@@ -3173,7 +3177,7 @@ local function GetBestFoodPack()
     return bestKey, bestName, bestPrice
 end
 
--- 3. ⭐ ส่วนสร้างหน้าจอโชว์ราคา (ที่คุณลืมใส่!)
+-- 3. ⭐ ส่วนสร้างหน้าจอโชว์ราคา
 local BestPriceSection = FarmTab:Section({Title = "🌟 ข้อมูลราคาตลาด (Real-Time)"})
 local BestPriceInfo = BestPriceSection:Paragraph({
     Title = "📊 ราคาอาหารที่ดีที่สุดตอนนี้",
@@ -3223,10 +3227,9 @@ SpeedSection:Slider({
     Title = "ความเร็วขับรถ (Studs/s)",
     Default = 150,
     Min = 10,
-    Max = 280, -- ปรับได้ถึง 280
+    Max = 280,
     Rounding = 0,
     Flag = "VehicleSpeed",
-    -- แก้ตัวเลข 200 ตัวหลังสุดให้เป็น 280 (หรือสูงกว่านี้ถ้าอยากแรงมาก)
     Callback = function(v) VehicleDriveSpeed = math.clamp(math.round(v), 10, 280) end
 })
 SpeedSection:Toggle({
