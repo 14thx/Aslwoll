@@ -1734,7 +1734,7 @@ ProcessBananaAtStation = function(shouldContinueCheck)
 end
 
 -- =====================================
--- PROCESS ORE
+-- PROCESS ORE (อัปเกรดระบบหลอมแร่ให้ชัวร์ขึ้น) ระบบแปรรูปแร่
 -- =====================================
 ProcessOreAtStation = function(oreName, minP, check)
     GrantAntiXGrace(30)
@@ -1742,18 +1742,28 @@ ProcessOreAtStation = function(oreName, minP, check)
     local root = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not root or not hum then return end
+
     local locData = TYPER_LOCATIONS[oreName]
+    -- กำหนดพิกัดเตาหลอม (ชั้นล่าง)
     local exactProcPos = (oreName == "Svibranium" and Vector3.new(-930.91, 6.93, 6760.56)) or (locData and locData.Process) or Vector3.new(-935.29, 6.93, 6786.66)
+    
     local myCar = GetPlayerVehicle()
     if not myCar or not hum.Sit then myCar = EnsureCarAvailable() end
     if myCar then EnsurePlayerSeatedInCar(myCar) end
+
+    -- 1. ขับรถไปที่เตาหลอม
     DriveCarTo(exactProcPos + Vector3.new(0,0,5.0), check)
     task.wait(0.1)
     if check and not check() then return end
+
+    -- 2. ลงจากรถ
     if hum.Sit then hum.Sit = false task.wait(0.1) end
+
+    -- 3. ค้นหา ProximityPrompt ของเตาหลอม
     local pFolder = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Process") and workspace.Systems.Process:FindFirstChild(oreName)
     local procPrompt = nil
     local targetProcPos = exactProcPos
+
     if pFolder then
         local lowestY = math.huge
         for _, desc in ipairs(pFolder:GetDescendants()) do
@@ -1761,28 +1771,43 @@ ProcessOreAtStation = function(oreName, minP, check)
                 local p = desc.Parent
                 local pPos = (p:IsA("Attachment") and p.WorldPosition) or (p:IsA("BasePart") and p.Position)
                 if pPos then
+                    -- ⭐ หาเตาที่อยู่ชั้นล่างสุด (Y ต่ำสุด)
                     if pPos.Y < lowestY then
                         lowestY = pPos.Y
                         procPrompt = desc
                         targetProcPos = pPos
                     end
                 else
-                    procPrompt = procPrompt or desc
+                    procPrompt = procPrompt or desc -- ⭐ Fallback ถ้าหาตำแหน่งไม่ได้
                 end
             end
         end
     end
-    if not procPrompt then procPrompt = FindPromptNear(targetProcPos, 25, nil) or FindPromptNear(root.Position, 25, nil) end
+
+    -- ⭐ Fallback: ถ้าหาใน Folder ไม่เจอ ให้หาจุดที่ใกล้ที่สุดรอบตัว
+    if not procPrompt then 
+        procPrompt = FindPromptNear(targetProcPos, 25, nil) or FindPromptNear(root.Position, 25, nil) 
+    end
+
+    -- 4. ยืนหันหน้าเข้าเตา
     local fy = targetProcPos.Y
     root.CFrame = CFrame.lookAt(Vector3.new(targetProcPos.X, fy+1.2, targetProcPos.Z+2.5), Vector3.new(targetProcPos.X, fy+1.2, targetProcPos.Z))
     root.AssemblyLinearVelocity = Vector3.zero
     task.wait(0.2)
-    if procPrompt then TriggerPrompt(procPrompt) end
-    task.wait(0.3)
+
+    -- 5. กดเปิด UI เตาหลอม
+    if procPrompt then 
+        TriggerPrompt(procPrompt) 
+        task.wait(0.5) -- ⭐ รอให้ UI เด้ง
+    end
+
+    -- ⭐ ยิง Remote Start (ให้เซิร์ฟเวอร์รู้ว่าเริ่มหลอม)
     pcall(function()
         local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if rc then require(rc).Fire("_process", "Start", oreName) end
     end)
+
+    -- ⭐ บังคับเปิด UI ถ้ามันไม่เด้ง
     pcall(function()
         local pg = PlayerGui:FindFirstChild("Process")
         if pg and pg:FindFirstChild("Group") then
@@ -1790,43 +1815,51 @@ ProcessOreAtStation = function(oreName, minP, check)
             pg.Group.GroupTransparency = 0
         end
     end)
-    task.wait(0.2)
-    pcall(function()
-        local pg = PlayerGui:FindFirstChild("Process")
-        if pg and pg:FindFirstChild("Group") then
-            local main = pg.Group:FindFirstChild("Main")
-            local ab = main and (main:FindFirstChild("ActionBtn") or main:FindFirstChild("ActionBtn", true))
-            if ab and firesignal then firesignal(ab.MouseButton1Click) end
-        end
-    end)
+    task.wait(0.3)
+
+    -- 6. ลูปกดปุ่ม ActionBtn (หลอมแร่)
     minP = minP or (oreName == "Svibranium" and 4 or 2)
     local tP = os.clock()
+    
     while GetPlayerInventoryCount(oreName) >= minP and (os.clock() - tP < 180) do
         if check and not check() then break end
         GrantAntiXGrace(15)
+        
+        -- กด ActionBtn ทุกๆ 3.2 วินาที
         pcall(function()
             local pg = PlayerGui:FindFirstChild("Process")
             if pg and pg:FindFirstChild("Group") then
                 local main = pg.Group:FindFirstChild("Main")
+                -- ⭐ ค้นหาปุ่มแบบละเอียด (เผื่อปุ่มซ่อนอยู่ข้างใน)
                 local ab = main and (main:FindFirstChild("ActionBtn") or main:FindFirstChild("ActionBtn", true))
-                if ab and firesignal then firesignal(ab.MouseButton1Click) end
+                if ab and firesignal then 
+                    firesignal(ab.MouseButton1Click) 
+                end
             end
         end)
         task.wait(3.2)
     end
+
+    -- 7. ยิง Remote Stop และปิด UI
     pcall(function()
         local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if rc then require(rc).Fire("_process", "Stop", oreName) end
     end)
+
     pcall(function()
         local pg = PlayerGui:FindFirstChild("Process")
         if pg and pg:FindFirstChild("Group") then
             local main = pg.Group:FindFirstChild("Main")
-            if main and main:FindFirstChild("Exit") and firesignal then firesignal(main.Exit.MouseButton1Click) end
+            if main and main:FindFirstChild("Exit") and firesignal then 
+                firesignal(main.Exit.MouseButton1Click) 
+            end
             pg.Group.Visible = false
         end
     end)
+    
     task.wait(3.0)
+
+    -- 8. กลับขึ้นรถเพื่อไปขั้นตอนต่อไป
     local c2 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(Vector3.new(-876.62, 10.52, 6662.98))
     if c2 then EnsurePlayerSeatedInCar(c2) end
 end
@@ -2884,15 +2917,15 @@ Settings:Toggle({
     Title = "พลังงานไม่จำกัด",
     Description = "ล็อค Stamina/Energy = 100 ตลอดเวลา",
     Default = true,
-    Flag = "InfiniteEnergy",
+    Flag = "InfiniteStamina",
     Callback = function(v)
-        MarvenState.InfiniteEnergy = v
-        if _G._MarvenInfEnergyConn then
-            pcall(function() _G._MarvenInfEnergyConn:Disconnect() end)
-            _G._MarvenInfEnergyConn = nil
+        MarvenState.InfiniteStamina = v
+        if _G._MarvenStaminaConn then
+            pcall(function() _G._MarvenStaminaConn:Disconnect() end)
+            _G._MarvenStaminaConn = nil
         end
         if v then
-            _G._MarvenInfEnergyConn = RunService.Heartbeat:Connect(function()
+            _G._MarvenStaminaConn = RunService.Heartbeat:Connect(function()
                 pcall(function()
                     local s = LocalPlayer:FindFirstChild("Stats")
                     if s then
@@ -2914,15 +2947,15 @@ Settings:Toggle({
     Title = "ไม่หิวอาหาร",
     Description = "ล็อค Brain/Hunger = 100 ตลอดเวลา",
     Default = false,
-    Flag = "InfiniteEnergy",
+    Flag = "InfiniteHunger",
     Callback = function(v)
-        MarvenState.InfiniteEnergy = v
-        if _G._MarvenInfEnergyConn then
-            pcall(function() _G._MarvenInfEnergyConn:Disconnect() end)
-            _G._MarvenInfEnergyConn = nil
+        MarvenState.InfiniteHunger = v
+        if _G._MarvenHungerConn then
+            pcall(function() _G._MarvenHungerConn:Disconnect() end)
+            _G._MarvenHungerConn = nil
         end
         if v then
-            _G._MarvenInfEnergyConn = RunService.Heartbeat:Connect(function()
+            _G._MarvenHungerConn = RunService.Heartbeat:Connect(function()
                 pcall(function()
                     local s = LocalPlayer:FindFirstChild("Stats")
                     if s then 
