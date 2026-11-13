@@ -1750,7 +1750,7 @@ ProcessBananaAtStation = function(shouldContinueCheck)
 end
 
 -- =====================================
--- PROCESS ORE (อัปเกรดระบบหลอมแร่ให้ชัวร์ขึ้น) ระบบแปรรูปแร่
+-- PROCESS ORE (ของแท้ 100%: หลอมหิน + ไวเบรเนียม)
 -- =====================================
 ProcessOreAtStation = function(oreName, minP, check)
     GrantAntiXGrace(30)
@@ -1814,7 +1814,7 @@ ProcessOreAtStation = function(oreName, minP, check)
     -- 5. กดเปิด UI เตาหลอม
     if procPrompt then 
         TriggerPrompt(procPrompt) 
-        task.wait(0.5) -- ⭐ รอให้ UI เด้ง
+        task.wait(0.5) -- รอให้ UI เด้ง
     end
 
     -- ⭐ ยิง Remote Start (ให้เซิร์ฟเวอร์รู้ว่าเริ่มหลอม)
