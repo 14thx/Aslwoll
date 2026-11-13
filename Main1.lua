@@ -47,13 +47,6 @@ pcall(function()
 end)
 task.wait(0.3)
 
--- =====================================
--- ⭐ 2. โค้ด UI ของคุณทั้งหมด (Window, Tabs, ปุ่มกด)
--- =====================================
-pcall(function()
-    if Loading and Loading.SetProgress then Loading.SetProgress(80, "Building interface...") end
-end)
-
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -2722,6 +2715,10 @@ local function StartSession(key)
     return function() return MarvenState[key] == true and MarvenSession[key] == id end
 end
 local function StopSession(key) MarvenSession[key] = (MarvenSession[key] or 0) + 1 end
+
+pcall(function()
+    if Loading and Loading.SetProgress then Loading.SetProgress(80, "Building interface...") end
+end)
 
 local Window = UI:CreateWindow({
     Title = "MarvenRiz Hub",
