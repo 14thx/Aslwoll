@@ -1,5 +1,5 @@
 -- ==============================================================================
--- MARVENRIZ HUB + NEXUS ENGINE (ULTIMATE MASTER 100% - ORIGINAL PURE CODE)
+-- MARVENRIZ HUB + NEXUS ENGINE (ULTIMATE MASTER 100% - ORIGINAL SOURCE STRUCTURE)
 -- ==============================================================================
 
 local Loading = nil
@@ -70,12 +70,6 @@ safeFloorPart = nil
 
 _G.RealTimePrices = _G.RealTimePrices or {}
 local RealTimePrices = _G.RealTimePrices
-
-_G.BestFarmCurrentBestItem = "กำลังตรวจสอบ..."
-_G.BestFarmCurrentBestPrice = 0
-_G.BestFarmCurrentAction = "พร้อมทำงาน"
-_G.CurrentBestItemKey = nil
-_G.CurrentRunningFarmKey = nil
 
 TYPER_LOCATIONS = {
     Bread    = {Booth=Vector3.new(872.19,15.90,4682.54),   Farm=Vector3.new(828.31,11.21,4817.85)},
