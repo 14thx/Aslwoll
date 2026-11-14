@@ -513,7 +513,7 @@ local function FindPromptNear(centerPos, maxDist, matchKeyword)
 end
 
 -- ==============================================================================
--- 0. ANTI-KICK & ANTI-BAN SHIELD (ป้องกันโดนเตะออกจากเกม 100%)
+-- ANTI-KICK v5 — บล็อกเฉพาะ Kick + _antix (ไม่บล็อกกว้าง)
 -- ==============================================================================
 pcall(function()
     local lp = Players.LocalPlayer
@@ -524,18 +524,19 @@ pcall(function()
             local method = getnamecallmethod()
             local args = {...}
 
-            if (method == "Kick" or method == "kick") and (self == lp or self == Players) then
-                local reason = tostring(args[1] or "Unknown")
-                warn("🛡️ [NEXUS HUB ANTI-KICK] บล็อกคำสั่ง Kick จากเกมสำเร็จ: " .. reason)
+            -- ⭐ บล็อก Kick เท่านั้น
+            if method == "Kick" and (self == lp or self == Players) then
                 return nil
             end
 
+            -- ⭐ บล็อกเฉพาะ _antix Kick + remote อันตราย
             if method == "FireServer" or method == "InvokeServer" then
-                for _, a in ipairs(args) do
-                    local str = tostring(a):lower()
-                    if str:find("kick") or str:find("anticheat") or str:find("antifall") or str:find("teleport") or str:find("exploit") or str:find("speed") or str:find("fly") then
-                        return nil
-                    end
+                if args[1] == "_antix" and args[2] == "Kick" then
+                    return nil
+                end
+                if args[1] == "_anticheat" or args[1] == "_report" 
+                   or args[1] == "_kickplayer" or args[1] == "_ban" then
+                    return nil
                 end
             end
 
@@ -543,25 +544,17 @@ pcall(function()
         end))
     end
 
-    if hookfunction and lp and lp.Kick then
-        hookfunction(lp.Kick, newcclosure(function(self, ...)
-            local args = {...}
-            local reason = tostring(args[1] or "Unknown")
-            warn("🛡️ [NEXUS HUB ANTI-KICK] บล็อก LocalPlayer:Kick: " .. reason)
-            return nil
-        end))
-    end
+    -- ⭐ ไม่ hook lp.Kick โดยตรง (เกมตรวจ debug.info)
+    -- ใช้ hookmetamethod ด้านบนแทน
 
     local function NeutralizeCharScripts(char)
         if not char then return end
         for _, desc in ipairs(char:GetDescendants()) do
             if desc:IsA("Script") or desc:IsA("LocalScript") then
                 local name = desc.Name:lower()
-                if name:find("antifall") or name:find("fall") or name:find("ragdoll") or name:find("anti") then
-                    pcall(function()
-                        desc.Disabled = true
-                        desc:Destroy()
-                    end)
+                if name == "antifall" or name == "antifallscript" 
+                   or name == "ragdollscript" or name == "antiteleport" then
+                    pcall(function() desc.Disabled = true end)
                 end
             end
         end
