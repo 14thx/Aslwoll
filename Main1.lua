@@ -1,6 +1,5 @@
 -- ==============================================================================
--- MARVENRIZ HUB + NEXUS ENGINE (ULTIMATE MASTER 100% - REAL-TIME ECONOMY SYNCED)
--- (รวมฟังก์ชัน WarpToTownAndSpawnCar และ ProcessBananaAtStation จากต้นฉบับ 100%)
+-- MARVENRIZ HUB + NEXUS ENGINE (ULTIMATE MASTER 100% - NO TRUNCATION FULL CODE)
 -- ==============================================================================
 
 local Loading = nil
@@ -72,6 +71,16 @@ safeFloorPart = nil
 _G.RealTimePrices = _G.RealTimePrices or {}
 local RealTimePrices = _G.RealTimePrices
 
+-- ==============================================================================
+-- 🌟 พิกัดสถานที่ & ข้อมูลไอเทมในเกม
+-- ==============================================================================
+local ItemAliases = {
+    Sandwich = {"Sandwich", "Sandwish", "แซนวิช", "Food_Sandwich", "FoodSandwich"},
+    MangoRice = {"MangoRice", "Mango_Rice", "Mango Rice", "ข้าวมันมะม่วง", "Food_MangoRice", "FoodMangoRice"},
+    BananaPack = {"BananaPack", "Banana_Pack", "Banana Pack", "Pack_Banana", "PackBanana", "กล้วยแพ็ค"},
+    KangSom = {"KangSom", "Kang_Som", "Kang Som", "แกงส้ม", "Food_KangSom", "FoodKangSom"}
+}
+
 TYPER_LOCATIONS = {
     Bread    = {Booth=Vector3.new(872.19,15.90,4682.54),   Farm=Vector3.new(828.31,11.21,4817.85)},
     Catchup  = {Booth=Vector3.new(1763.23,14.23,4206.70),  Farm=Vector3.new(1803.05,12.65,4236.79)},
@@ -91,6 +100,71 @@ TYPER_LOCATIONS = {
     Food     = {Crafting=Vector3.new(3442.48,56.40,3925.24),BananaProcess=Vector3.new(3429.20,56.80,3911.80)},
     Economy  = {Market=Vector3.new(-462.0,18.0,5324.7)}
 }
+
+local function GetRealMarketPrices()
+    local detectedPrices = {}
+    local rep = game:GetService("ReplicatedStorage")
+    local pgui = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+
+    pcall(function()
+        if _G.RealTimePrices and type(_G.RealTimePrices) == "table" then
+            for itemKey, aliases in pairs(ItemAliases) do
+                for _, alias in ipairs(aliases) do
+                    local priceVal = _G.RealTimePrices[alias] or _G.RealTimePrices[itemKey]
+                    if type(priceVal) == "number" and priceVal > 0 then
+                        detectedPrices[itemKey] = priceVal
+                    end
+                end
+            end
+        end
+    end)
+
+    pcall(function()
+        if pgui then
+            for _, gui in ipairs(pgui:GetChildren()) do
+                if gui:IsA("ScreenGui") then
+                    local gName = gui.Name:lower()
+                    if gName:find("econ") or gName:find("market") or gName:find("shop") or gName:find("price") or gName:find("food") then
+                        for _, desc in ipairs(gui:GetDescendants()) do
+                            if desc:IsA("TextLabel") or desc:IsA("TextBox") or desc:IsA("TextButton") then
+                                local txt = desc.Text or ""
+                                for itemKey, aliases in pairs(ItemAliases) do
+                                    for _, alias in ipairs(aliases) do
+                                        if txt:lower():find(alias:lower(), 1, true) then
+                                            local parent = desc.Parent
+                                            if parent then
+                                                for _, sib in ipairs(parent:GetChildren()) do
+                                                    if sib:IsA("TextLabel") and sib ~= desc then
+                                                        local sTxt = sib.Text or ""
+                                                        local clean = sTxt:gsub(",", ""):gsub("฿", ""):gsub("%$", "")
+                                                        local num = tonumber(clean:match("%d+"))
+                                                        if num and num >= 100 and num <= 20000 then
+                                                            if not detectedPrices[itemKey] or num > detectedPrices[itemKey] then
+                                                                detectedPrices[itemKey] = num
+                                                            end
+                                                        end
+                                                    end
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+
+    for itemKey, _ in pairs(ItemAliases) do
+        if not detectedPrices[itemKey] then
+            detectedPrices[itemKey] = 2500
+        end
+    end
+
+    return detectedPrices
+end
 
 local function GetGroundLevel(x, z, fallbackY)
     fallbackY = fallbackY or 20
@@ -1003,55 +1077,20 @@ EnsureCarAvailable = function(booth)
     return car
 end
 
--- =====================================
--- WarpToTownAndSpawnCar (เหมือนต้นฉบับ 100% + เปลี่ยน Fluent -> UI)
--- =====================================
 WarpToTownAndSpawnCar = function()
     GrantAntiXGrace(45)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not root then return nil end
-
-    -- ลุกออกจากเก้าอี้เสมอ เพื่อเบิกรถคันใหม่
-    if hum and hum.Sit then
-        hum.Sit = false
-        task.wait(0.15)
-    end
-
-    pcall(function()
-        UI:Notify({
-            Title = "NEXUS HUB",
-            Content = "🚀 วาปไปจุดเบิกรถในเมืองเพื่อเบิกรถใหม่...",
-            Duration = 2.0
-        })
-    end)
-
-    pcall(function()
-        game:GetService("ProximityPromptService").Enabled = true
-    end)
-
-    pcall(function()
-        LocalPlayer:RequestStreamAroundAsync(TOWN_CAR_SPAWN, 45)
-    end)
-
-    -- วาปไปที่หน้าตู้เบิกรถในเมืองเท่านั้น
-    local groundY = GetGroundLevel(TOWN_CAR_SPAWN.X, TOWN_CAR_SPAWN.Z, TOWN_CAR_SPAWN.Y)
-    local townPos = Vector3.new(TOWN_CAR_SPAWN.X, groundY + 1.2, TOWN_CAR_SPAWN.Z)
-    root.CFrame = CFrame.new(townPos)
-    root.AssemblyLinearVelocity = Vector3.zero
-    root.AssemblyAngularVelocity = Vector3.zero
+    if hum and hum.Sit then hum.Sit = false task.wait(0.15) end
+    pcall(function() game:GetService("ProximityPromptService").Enabled = true end)
+    pcall(function() LocalPlayer:RequestStreamAroundAsync(TOWN_CAR_SPAWN, 45) end)
+    local gy = GetGroundLevel(TOWN_CAR_SPAWN.X, TOWN_CAR_SPAWN.Z, TOWN_CAR_SPAWN.Y)
+    root.CFrame = CFrame.new(TOWN_CAR_SPAWN.X, gy + 1.2, TOWN_CAR_SPAWN.Z)
     task.wait(0.4)
-
-    -- สั่งเบิกรถผ่านตู้ในเมืองตามสเต็ป POUND -> SPAWN
     local car = SpawnCarAtBooth(TOWN_CAR_SPAWN)
-    if not car then
-        car = GetNearbyPlayerVehicle(80)
-    end
-    if car then
-        EnsurePlayerSeatedInCar(car)
-        CloseCarSpawnGui()
-    end
+    if car then EnsurePlayerSeatedInCar(car) end
     return car
 end
 
@@ -1539,9 +1578,9 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
         local m = GetPlayerInventoryCount("Mango")
         local r = GetPlayerInventoryCount("Rice")
         
-        if recipeName == "Sandwish" then
+        if recipeName == "Sandwish" or recipeName == "Sandwich" then
             return math.min(math.floor(b / 3), math.floor(c / 2), math.floor(p / 2))
-        elseif recipeName == "MangoRice" then
+        elseif recipeName == "MangoRice" or recipeName == "Mango" then
             return math.min(math.floor(m / 2), math.floor(r / 3))
         elseif recipeName == "RiceKapaoMoo" then
             return math.min(math.floor(r / 3), math.floor(p / 2))
@@ -1612,15 +1651,16 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
         end
     end
     
+    local actualRecipe = (recipeName == "Sandwich" and "Sandwish") or (recipeName == "Mango" and "MangoRice") or recipeName
     pcall(function()
         local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if remCore then
             local Remotes_m = require(remCore)
-            Remotes_m.Fire("_crafting", "Request", "Craft_3", recipeName, toCraft, false)
+            Remotes_m.Fire("_crafting", "Request", "Craft_3", actualRecipe, toCraft, false)
         else
             local rem = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Remotes")
             if rem and rem:FindFirstChild("_crafting") then
-                rem._crafting:FireServer("Request", "Craft_3", recipeName, toCraft, false)
+                rem._crafting:FireServer("Request", "Craft_3", actualRecipe, toCraft, false)
             end
         end
     end)
@@ -1637,11 +1677,11 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
         local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if remCore then
             local Remotes_m = require(remCore)
-            Remotes_m.Fire("_crafting", "Complete", "Craft_3", recipeName, toCraft, false)
+            Remotes_m.Fire("_crafting", "Complete", "Craft_3", actualRecipe, toCraft, false)
         else
             local rem = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Remotes")
             if rem and rem:FindFirstChild("_crafting") then
-                rem._crafting:FireServer("Complete", "Craft_3", recipeName, toCraft, false)
+                rem._crafting:FireServer("Complete", "Craft_3", actualRecipe, toCraft, false)
             end
         end
     end)
@@ -1660,24 +1700,18 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
 end
 
 -- =====================================
--- PROCESS BANANA (เหมือนต้นฉบับ 100% + เปลี่ยน Fluent -> UI)
+-- PROCESS BANANA
 -- =====================================
 ProcessBananaAtStation = function(shouldContinueCheck)
+    GrantAntiXGrace(30)
     local foodData = TYPER_LOCATIONS.Food
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not root or not hum then return end
-
-    -- ตรวจสอบและขึ้นรถเสมอเพื่อขับไปที่แปรรูปกล้วย
     local myCar = GetPlayerVehicle()
-    if not myCar or not hum.Sit then
-        myCar = EnsureCarAvailable()
-    end
-    if myCar then
-        EnsurePlayerSeatedInCar(myCar)
-    end
-
+    if not myCar or not hum.Sit then myCar = EnsureCarAvailable() end
+    if myCar then EnsurePlayerSeatedInCar(myCar) end
     local pBan = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Process") and workspace.Systems.Process:FindFirstChild("Banana")
     local pPrompt = pBan and pBan:FindFirstChild("Prompt")
     local bPos = nil
@@ -1689,45 +1723,60 @@ ProcessBananaAtStation = function(shouldContinueCheck)
         if anyPart then bPos = anyPart.Position end
     end
     local exactBanPos = bPos or foodData.BananaProcess
-
     DriveCarTo(exactBanPos + Vector3.new(0, 0, 5.0), shouldContinueCheck)
     task.wait(0.1)
     if shouldContinueCheck and not shouldContinueCheck() then return end
-
-    if hum.Sit then
-        hum.Sit = false
-        task.wait(0.1)
-    end
-
+    if hum.Sit then hum.Sit = false task.wait(0.1) end
     local standPos = exactBanPos + Vector3.new(0, 0, 2.5)
     local groundY = GetGroundLevel(standPos.X, standPos.Z, standPos.Y)
     root.CFrame = CFrame.lookAt(Vector3.new(standPos.X, groundY + 3.0, standPos.Z), exactBanPos)
     task.wait(0.1)
-
     local procPrompt = pBan and pBan:FindFirstChildWhichIsA("ProximityPrompt", true)
-    if not procPrompt then
-        procPrompt = FindPromptNear(root.Position, 15, nil)
-    end
+    if not procPrompt then procPrompt = FindPromptNear(root.Position, 15, nil) end
     if procPrompt then
         TriggerPrompt(procPrompt)
+    else
+        TriggerFarmPromptDirectly("Banana")
     end
     task.wait(0.3)
-
     pcall(function()
-        UI:Notify({
-            Title = "NEXUS HUB",
-            Content = "🍌 กำลังแปรรูปกล้วยเป็น BananaPack อัตโนมัติ...",
-            Duration = 3.0
-        })
+        local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
+        if rc then require(rc).Fire("_process", "Start", "Banana") end
     end)
-
+    pcall(function()
+        local pg = PlayerGui:FindFirstChild("Process")
+        if pg and pg:FindFirstChild("Group") then
+            pg.Group.Visible = true
+            pg.Group.GroupTransparency = 0
+        end
+    end)
+    task.wait(0.3)
+    pcall(function()
+        local pg = PlayerGui:FindFirstChild("Process")
+        if pg and pg:FindFirstChild("Group") then
+            local main = pg.Group:FindFirstChild("Main")
+            local ab = main and (main:FindFirstChild("ActionBtn") or main:FindFirstChild("ActionBtn", true))
+            if ab and firesignal then firesignal(ab.MouseButton1Click) end
+        end
+    end)
     local tProc = os.clock()
     while (GetPlayerInventoryCount("Banana") >= 2) and (os.clock() - tProc < 120) do
         if shouldContinueCheck and not shouldContinueCheck() then break end
         GrantAntiXGrace(15)
+        pcall(function()
+            local pg = PlayerGui:FindFirstChild("Process")
+            if pg and pg:FindFirstChild("Group") then
+                local main = pg.Group:FindFirstChild("Main")
+                local ab = main and (main:FindFirstChild("ActionBtn") or main:FindFirstChild("ActionBtn", true))
+                if ab and firesignal then firesignal(ab.MouseButton1Click) end
+            end
+        end)
         task.wait(3.2)
     end
-
+    pcall(function()
+        local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
+        if rc then require(rc).Fire("_process", "Stop", "Banana") end
+    end)
     pcall(function()
         local procGui = PlayerGui:FindFirstChild("Process")
         if procGui and procGui:FindFirstChild("Group") then
@@ -1738,21 +1787,9 @@ ProcessBananaAtStation = function(shouldContinueCheck)
             procGui.Group.Visible = false
         end
     end)
-    task.wait(0.2)
-
-    pcall(function()
-        UI:Notify({
-            Title = "NEXUS HUB",
-            Content = "✅ แปรรูปเสร็จเรียบร้อย! รอ 3 วินาทีก่อนขึ้นรถไปขาย...",
-            Duration = 3.0
-        })
-    end)
     task.wait(3.0)
-
-    local myCar = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
-    if myCar then
-        EnsurePlayerSeatedInCar(myCar)
-    end
+    local myCar2 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
+    if myCar2 then EnsurePlayerSeatedInCar(myCar2) end
     task.wait(0.3)
 end
 
@@ -1938,7 +1975,7 @@ DepositAllToVault = function(check)
 end
 
 -- =====================================
--- MARKET SELL SYSTEM (ซิงค์ตามเกมแท้ 100%)
+-- MARKET SELL SYSTEM
 -- =====================================
 local function GetEconomyMarketPosition()
     local systems = workspace:FindFirstChild("Systems")
@@ -2448,9 +2485,6 @@ StopAutoFishing = function()
     end)
 end
 
--- =====================================
--- REAL-TIME ECONOMY SYNC (อัปเดตตาม Decompiled Script แท้)
--- =====================================
 pcall(function()
     local modules = ReplicatedStorage:WaitForChild("Systems"):WaitForChild("Modules")
     local remotes = require(modules:WaitForChild("Core"):WaitForChild("Remotes"))
@@ -2494,8 +2528,6 @@ local function IsInMainGame()
     end
     return false
 end
-
-local function IsServerSelectionScreen() return not IsInMainGame() end
 
 local function ExitToServerSelectionScreen(reason)
     if isHopping then return end
@@ -2549,6 +2581,9 @@ local function StartSession(key)
 end
 local function StopSession(key) MarvenSession[key] = (MarvenSession[key] or 0) + 1 end
 
+-- =====================================
+-- UI & WINDOW CREATION
+-- =====================================
 local Window = UI:CreateWindow({
     Title = "MarvenRiz Hub",
     Author = "by. zems.xz",
@@ -2562,9 +2597,10 @@ local Window = UI:CreateWindow({
 })
 Window:SetTheme({ Accent = Color3.fromRGB(0, 110, 255) })
 
+-- STATUS
 local StatusTab = Window:Tab({Title = "สถานะ", Icon = "activity"})
 local Status = StatusTab:Section({Title = "ข้อมูลผู้เล่น"})
-Status:Banner({Title = "MarvenRiz Hub [v2.5]", SubTitle = "🔗 NEXUS Engine + สมบูรณ์แบบ 100% ไม่มีตัดทอน"})
+Status:Banner({Title = "MarvenRiz Hub [v2.5]", SubTitle = "🔗 NEXUS Engine + ระบบคราฟสมบูรณ์ + เมนูภาษาไทย"})
 local StatsGrid = Status:StatGrid({
     {Label = "FPS", Value = "0"}, {Label = "Ping", Value = "0 ms"},
     {Label = "Executor", Value = "Unknown"}, {Label = "Players", Value = "0"},
@@ -2582,13 +2618,10 @@ task.spawn(function()
     while true do
         task.wait(1.5)
         pcall(function()
-            local text = ""
-            if next(RealTimePrices) == nil then
-                text = "⏳ กำลังรอข้อมูลราคา Real-Time จากเซิร์ฟเวอร์..."
-            else
-                for item, price in pairs(RealTimePrices) do
-                    text = text .. "🔹 " .. tostring(item) .. " : 💰 " .. tostring(price) .. " บาท\n"
-                end
+            local currentPrices = GetRealMarketPrices()
+            local text = "📊 [ราคาสินค้าหลักในตลาด]\n"
+            for item, price in pairs(currentPrices) do
+                text = text .. "🔹 " .. tostring(item) .. " : 💰 " .. tostring(price) .. " บาท\n"
             end
             MarketPriceDisplay:Set(text)
         end)
@@ -2612,6 +2645,9 @@ RunService.RenderStepped:Connect(function()
     end)
 end)
 
+-- =====================================
+-- FARM RUNNERS
+-- =====================================
 local function RunNormalFarm()
     if not MarvenState.AutoFarmItem then return end
     local check = StartSession("AutoFarmItem")
@@ -2676,6 +2712,9 @@ local function RunMineFarm()
     end)
 end
 
+-- =====================================
+-- TABS & CONTROLS
+-- =====================================
 local SettingsTab = Window:Tab({Title = "ตั้งค่า", Icon = "settings"})
 local Settings = SettingsTab:Section({Title = "ตั้งค่าทั่วไป"})
 Settings:Toggle({
@@ -2767,6 +2806,10 @@ SpeedSection:Slider({
 SpeedSection:Toggle({
     Title = "รถทะลุสิ่งกีดขวาง (Vehicle NoClip)", Default = true, Flag = "VehicleNoclip",
     Callback = function(v) isVehicleNoclipEnabled = v end
+})
+SpeedSection:Toggle({
+    Title = "หนีเซิร์ฟเวอร์อัตโนมัติเมื่อมีคนเข้าใกล้", Default = true, Flag = "AutoHopNearby",
+    Callback = function(v) isAutoHopOnPlayerNearbyEnabled = v end
 })
 
 local UnloadSection = AdvTab:Section({Title = "ปิดสคริปต์"})
