@@ -188,12 +188,32 @@ local function GetGroundLevel(x, z, fallbackY)
 end
 
 GetPlayerInventoryCount = function(name)
-    local pd = LocalPlayer:FindFirstChild("PlayerData")
-    if pd then
-        local c = pd:GetAttribute(name)
-        if typeof(c) == "number" then return c end
-    end
-    return 0
+    local count = 0
+    pcall(function()
+        local pd = LocalPlayer:FindFirstChild("PlayerData")
+        if pd then
+            local c = pd:GetAttribute(name)
+            if typeof(c) == "number" then count = math.max(count, c) end
+        end
+        local itemFolder = LocalPlayer:FindFirstChild("Item")
+        if itemFolder then
+            local itemVal = itemFolder:FindFirstChild(name)
+            if itemVal and itemVal:IsA("ValueBase") then count = math.max(count, itemVal.Value) end
+        end
+        local bp = LocalPlayer:FindFirstChild("Backpack")
+        if bp then
+            for _, tool in ipairs(bp:GetChildren()) do
+                if tool.Name == name or tool.Name:lower() == name:lower() then count += 1 end
+            end
+        end
+        local char = LocalPlayer.Character
+        if char then
+            for _, tool in ipairs(char:GetChildren()) do
+                if tool.Name == name or tool.Name:lower() == name:lower() then count += 1 end
+            end
+        end
+    end)
+    return count
 end
 
 local function GetPlayerHunger()
@@ -2687,33 +2707,49 @@ local function RunProcessFarm()
                 SellAtEconomyMarket(check)
                 
             elseif k == "Sandwich" then
-                if GetPlayerInventoryCount("Bread") < 3 then HarvestSingleCrop("Bread", 30, check) end
-                if GetPlayerInventoryCount("Catchup") < 2 then HarvestSingleCrop("Catchup", 20, check) end
-                if GetPlayerInventoryCount("Pig") < 2 then HarvestSingleCrop("Pig", 20, check) end
+                if GetPlayerInventoryCount("Bread") < 60 then HarvestSingleCrop("Bread", 60, check) end
+                if GetPlayerInventoryCount("Catchup") < 60 then HarvestSingleCrop("Catchup", 60, check) end
+                if GetPlayerInventoryCount("Pig") < 60 then HarvestSingleCrop("Pig", 60, check) end
+                if GetPlayerInventoryCount("Bread") < 3 or GetPlayerInventoryCount("Catchup") < 2 or GetPlayerInventoryCount("Pig") < 2 then
+                    task.wait(1)
+                    continue
+                end
                 if not check() then break end
                 CraftFoodAtStation("Sandwish", check)
                 if not check() then break end
                 SellAtEconomyMarket(check)
                 
             elseif k == "Mango" then
-                if GetPlayerInventoryCount("Mango") < 2 then HarvestSingleCrop("Mango", 20, check) end
-                if GetPlayerInventoryCount("Rice") < 3 then HarvestSingleCrop("Rice", 30, check) end
+                if GetPlayerInventoryCount("Mango") < 60 then HarvestSingleCrop("Mango", 60, check) end
+                if GetPlayerInventoryCount("Rice") < 60 then HarvestSingleCrop("Rice", 60, check) end
+                if GetPlayerInventoryCount("Mango") < 2 or GetPlayerInventoryCount("Rice") < 3 then
+                    task.wait(1)
+                    continue
+                end
                 if not check() then break end
                 CraftFoodAtStation("MangoRice", check)
                 if not check() then break end
                 SellAtEconomyMarket(check)
                 
             elseif k == "RiceKapaoMoo" then
-                if GetPlayerInventoryCount("Rice") < 3 then HarvestSingleCrop("Rice", 30, check) end
-                if GetPlayerInventoryCount("Pig") < 2 then HarvestSingleCrop("Pig", 20, check) end
+                if GetPlayerInventoryCount("Rice") < 60 then HarvestSingleCrop("Rice", 60, check) end
+                if GetPlayerInventoryCount("Pig") < 60 then HarvestSingleCrop("Pig", 60, check) end
+                if GetPlayerInventoryCount("Rice") < 3 or GetPlayerInventoryCount("Pig") < 2 then
+                    task.wait(1)
+                    continue
+                end
                 if not check() then break end
                 CraftFoodAtStation("RiceKapaoMoo", check)
                 if not check() then break end
                 SellAtEconomyMarket(check)
                 
             elseif k == "KangSom" then
-                if GetPlayerInventoryCount("Tomato") < 2 then HarvestSingleCrop("Tomato", 20, check) end
-                if GetPlayerInventoryCount("Crab") < 2 then HarvestSingleCrop("Crab", 20, check) end
+                if GetPlayerInventoryCount("Tomato") < 60 then HarvestSingleCrop("Tomato", 60, check) end
+                if GetPlayerInventoryCount("Crab") < 60 then HarvestSingleCrop("Crab", 60, check) end
+                if GetPlayerInventoryCount("Tomato") < 2 or GetPlayerInventoryCount("Crab") < 2 then
+                    task.wait(1)
+                    continue
+                end
                 if not check() then break end
                 CraftFoodAtStation("KangSom", check)
                 if not check() then break end
