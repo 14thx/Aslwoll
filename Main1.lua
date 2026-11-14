@@ -1624,22 +1624,25 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
 end
 
 -- =====================================
--- PROCESS BANANA (ขับรถไป -> จอด -> ล็อคความเร็ว -> แปรรูปทันที)
+-- PROCESS BANANA (เวอร์ชันสมบูรณ์: ขับรถ -> ล็อคความเร็วรถ -> ลงจากรถ -> ล็อคความเร็วคน -> รอ 3.2 วิ -> รอ 3 วิ -> กลับขึ้นรถ)
 -- =====================================
 ProcessBananaAtStation = function(shouldContinueCheck)
-    GrantAntiXGrace(30)
     local foodData = TYPER_LOCATIONS.Food
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not root or not hum then return end
 
-    -- 1. จัดการยานพาหนะ
+    -- 1. ตรวจสอบและขึ้นรถเสมอเพื่อขับไปที่แปรรูปกล้วย
     local myCar = GetPlayerVehicle()
-    if not myCar or not hum.Sit then myCar = EnsureCarAvailable() end
-    if myCar then EnsurePlayerSeatedInCar(myCar) end
+    if not myCar or not hum.Sit then
+        myCar = EnsureCarAvailable()
+    end
+    if myCar then
+        EnsurePlayerSeatedInCar(myCar)
+    end
 
-    -- 2. หาพิกัดเครื่องแปรรูป
+    -- 2. หาพิกัดเครื่องแปรรูปกล้วย
     local pBan = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Process") and workspace.Systems.Process:FindFirstChild("Banana")
     local pPrompt = pBan and pBan:FindFirstChild("Prompt")
     local bPos = nil
@@ -1652,77 +1655,64 @@ ProcessBananaAtStation = function(shouldContinueCheck)
     end
     local exactBanPos = bPos or foodData.BananaProcess
 
-    -- 3. 🚗 ขับรถไปที่จุดหมาย
+    -- 3. ขับรถไปจอด (ใน DriveCarTo มีการล็อคความเร็วรถให้อยู่แล้ว)
     DriveCarTo(exactBanPos + Vector3.new(0, 0, 5.0), shouldContinueCheck)
-    
+    task.wait(0.1)
     if shouldContinueCheck and not shouldContinueCheck() then return end
 
-    -- 4. 🛑 จอดรถและลงจากรถ
-    if hum.Sit then 
-        hum.Sit = false 
-        task.wait(0.2) -- รอแป๊บเดียวให้หลุดจากที่นั่ง
+    -- 4. ลงจากรถ
+    if hum.Sit then
+        hum.Sit = false
+        task.wait(0.1)
     end
-    
-    -- 5. ล็อคความเร็วและจัดตำแหน่ง (Zero Velocity Lock)
+
+    -- 5. จัดตำแหน่งตัวละครให้ยืนหน้าเครื่องแปรรูป
     local standPos = exactBanPos + Vector3.new(0, 0, 2.5)
     local groundY = GetGroundLevel(standPos.X, standPos.Z, standPos.Y)
-    
-    -- ล็อคตำแหน่งและความเร็วให้เป็นศูนย์ทันที
     root.CFrame = CFrame.lookAt(Vector3.new(standPos.X, groundY + 3.0, standPos.Z), exactBanPos)
+    
+    -- 6. 🔒 ล็อคความเร็วตัวละคร (แก้ปัญหา Speed Hack ตอนลงจากรถ)
     root.AssemblyLinearVelocity = Vector3.zero
     root.AssemblyAngularVelocity = Vector3.zero
     
-    -- ล็อคซ้ำอีกรอบเพื่อความชัวร์ (ระบบจะได้ไม่จับความเร็วตกค้าง)
     task.wait(0.1)
-    root.AssemblyLinearVelocity = Vector3.zero
-    root.AssemblyAngularVelocity = Vector3.zero
 
-    -- 6. เปิด UI แปรรูปทันที
+    -- 7. เปิด UI แปรรูป
     local procPrompt = pBan and pBan:FindFirstChildWhichIsA("ProximityPrompt", true)
-    if not procPrompt then procPrompt = FindPromptNear(root.Position, 15, nil) end
-    if procPrompt then TriggerPrompt(procPrompt) end
-    
+    if not procPrompt then
+        procPrompt = FindPromptNear(root.Position, 15, nil)
+    end
+    if procPrompt then
+        TriggerPrompt(procPrompt)
+    end
+    task.wait(0.3)
+
     pcall(function()
-        local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
-        if rc then require(rc).Fire("_process", "Start", "Banana") end
+        Fluent:Notify({
+            Title = "NEXUS HUB",
+            Content = "🍌 กำลังแปรรูปกล้วยเป็น BananaPack อัตโนมัติ...",
+            Duration = 3.0
+        })
     end)
 
-    -- 7. รอให้ UI ขึ้น
-    local pgui = LocalPlayer:FindFirstChild("PlayerGui")
-    local tWaitUI = os.clock()
-    while os.clock() - tWaitUI < 3.0 do
-        local pg = pgui:FindFirstChild("Process")
-        if pg and pg:FindFirstChild("Group") and pg.Group.Visible then break end
-        task.wait(0.2)
-    end
-    task.wait(0.5)
-
-    -- 8. ลูปแปรรูปกล้วย
+    -- 8. ลูปแปรรูปตามต้นฉบับ (รออย่างเดียว ไม่กดปุ่มซ้ำ)
     local tProc = os.clock()
     while (GetPlayerInventoryCount("Banana") >= 2) and (os.clock() - tProc < 120) do
         if shouldContinueCheck and not shouldContinueCheck() then break end
         GrantAntiXGrace(15)
         
-        pcall(function()
-            local pg = pgui:FindFirstChild("Process")
-            if pg and pg:FindFirstChild("Group") and pg.Group.Visible then
-                local main = pg.Group:FindFirstChild("Main")
-                local ab = main and (main:FindFirstChild("ActionBtn") or main:FindFirstChild("ActionBtn", true) or main:FindFirstChild("Start", true) or main:FindFirstChild("Craft", true))
-                if ab and firesignal then 
-                    firesignal(ab.MouseButton1Click) 
-                end
-            end
-        end)
-        task.wait(3.5) -- หน่วงเวลาระหว่างกด
+        -- 🔒 ล็อคความเร็วซ้ำระหว่างรอ (กันระบบจับ)
+        if root then
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+        end
+        
+        task.wait(3.2)
     end
 
-    -- 9. ปิด UI และส่งคำสั่งหยุด
+    -- 9. ปิด UI แปรรูป
     pcall(function()
-        local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
-        if rc then require(rc).Fire("_process", "Stop", "Banana") end
-    end)
-    pcall(function()
-        local procGui = pgui:FindFirstChild("Process")
+        local procGui = PlayerGui:FindFirstChild("Process")
         if procGui and procGui:FindFirstChild("Group") then
             local mainFrame = procGui.Group:FindFirstChild("Main")
             if mainFrame and mainFrame:FindFirstChild("Exit") and firesignal then
@@ -1731,12 +1721,23 @@ ProcessBananaAtStation = function(shouldContinueCheck)
             procGui.Group.Visible = false
         end
     end)
-    
-    task.wait(1.0)
-    
-    -- 10. กลับขึ้นรถเพื่อทำรอบถัดไป
-    local myCar2 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
-    if myCar2 then EnsurePlayerSeatedInCar(myCar2) end
+    task.wait(0.2)
+
+    -- 10. รอ 3 วินาทีก่อนขึ้นรถกลับไปขาย
+    pcall(function()
+        Fluent:Notify({
+            Title = "NEXUS HUB",
+            Content = "✅ แปรรูปเสร็จเรียบร้อย! รอ 3 วินาทีก่อนขึ้นรถไปขาย...",
+            Duration = 3.0
+        })
+    end)
+    task.wait(3.0)
+
+    -- 11. กลับขึ้นรถเพื่อทำรอบถัดไป
+    local myCarReturn = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
+    if myCarReturn then
+        EnsurePlayerSeatedInCar(myCarReturn)
+    end
     task.wait(0.3)
 end
 
