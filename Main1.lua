@@ -103,7 +103,6 @@ TYPER_LOCATIONS = {
 
 local function GetRealMarketPrices()
     local detectedPrices = {}
-    local rep = game:GetService("ReplicatedStorage")
     local pgui = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
 
     pcall(function()
@@ -2485,6 +2484,9 @@ StopAutoFishing = function()
     end)
 end
 
+-- =====================================
+-- REAL-TIME ECONOMY SYNC
+-- =====================================
 pcall(function()
     local modules = ReplicatedStorage:WaitForChild("Systems"):WaitForChild("Modules")
     local remotes = require(modules:WaitForChild("Core"):WaitForChild("Remotes"))
@@ -2676,17 +2678,48 @@ local function RunProcessFarm()
             if first then WarpToTownAndSpawnCar() first = false end
             if not check() then break end
             local k = MarvenSelected.ProcessFarmType or "Banana"
+            
             if k == "Banana" then
                 if GetPlayerInventoryCount("Banana") < 60 then HarvestSingleCrop("Banana", 60, check) end
                 if not check() then break end
                 ProcessBananaAtStation(check)
                 if not check() then break end
                 SellAtEconomyMarket(check)
-            elseif k == "Mango" or k == "RiceKapaoMoo" or k == "Sandwich" or k == "KangSom" then
-                CraftFoodAtStation(k, check)
+                
+            elseif k == "Sandwich" then
+                if GetPlayerInventoryCount("Bread") < 3 then HarvestSingleCrop("Bread", 30, check) end
+                if GetPlayerInventoryCount("Catchup") < 2 then HarvestSingleCrop("Catchup", 20, check) end
+                if GetPlayerInventoryCount("Pig") < 2 then HarvestSingleCrop("Pig", 20, check) end
+                if not check() then break end
+                CraftFoodAtStation("Sandwish", check)
+                if not check() then break end
+                SellAtEconomyMarket(check)
+                
+            elseif k == "Mango" then
+                if GetPlayerInventoryCount("Mango") < 2 then HarvestSingleCrop("Mango", 20, check) end
+                if GetPlayerInventoryCount("Rice") < 3 then HarvestSingleCrop("Rice", 30, check) end
+                if not check() then break end
+                CraftFoodAtStation("MangoRice", check)
+                if not check() then break end
+                SellAtEconomyMarket(check)
+                
+            elseif k == "RiceKapaoMoo" then
+                if GetPlayerInventoryCount("Rice") < 3 then HarvestSingleCrop("Rice", 30, check) end
+                if GetPlayerInventoryCount("Pig") < 2 then HarvestSingleCrop("Pig", 20, check) end
+                if not check() then break end
+                CraftFoodAtStation("RiceKapaoMoo", check)
+                if not check() then break end
+                SellAtEconomyMarket(check)
+                
+            elseif k == "KangSom" then
+                if GetPlayerInventoryCount("Tomato") < 2 then HarvestSingleCrop("Tomato", 20, check) end
+                if GetPlayerInventoryCount("Crab") < 2 then HarvestSingleCrop("Crab", 20, check) end
+                if not check() then break end
+                CraftFoodAtStation("KangSom", check)
                 if not check() then break end
                 SellAtEconomyMarket(check)
             end
+            
             task.wait(0.5)
         end
     end)
