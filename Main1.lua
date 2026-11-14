@@ -483,62 +483,55 @@ local function FindPromptNear(centerPos, maxDist, matchKeyword)
 end
 
 -- ==============================================================================
--- 0. ANTI-KICK & ANTI-BAN SHIELD (ป้องกันโดนเตะออกจากเกม 100%)
+-- 🛡️ NEXUS ANTI-KICK (Bypass RedTownAntiX)
 -- ==============================================================================
 pcall(function()
-    local lp = Players.LocalPlayer
-    
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+
+    -- 1. ดักบล็อกที่ระดับ Network (__namecall)
+    -- เพื่อไม่ให้เกมส่งสัญญาณแบน (Kick) ไปที่เซิร์ฟเวอร์
     if hookmetamethod then
-        local oldNm
-        oldNm = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+        local oldNamecall
+        oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
             local method = getnamecallmethod()
             local args = {...}
 
-            if (method == "Kick" or method == "kick") and (self == lp or self == Players) then
-                local reason = tostring(args[1] or "Unknown")
-                warn("🛡️ [NEXUS HUB ANTI-KICK] บล็อกคำสั่ง Kick จากเกมสำเร็จ: " .. reason)
-                return nil
-            end
-
+            -- บล็อกระบบแจ้งแบนของเกม (ห้ามส่งเด็ดขาด)
             if method == "FireServer" or method == "InvokeServer" then
-                for _, a in ipairs(args) do
-                    local str = tostring(a):lower()
-                    if str:find("kick") or str:find("anticheat") or str:find("antifall") or str:find("teleport") or str:find("exploit") or str:find("speed") or str:find("fly") then
-                        return nil
-                    end
+                if args[1] == "_antix" and args[2] == "Kick" then
+                    return nil
+                end
+                -- กันเหนียว: บล็อกตัวอื่นที่มักใช้รายงาน
+                if args[1] == "_anticheat" or args[1] == "_report" then
+                    return nil
                 end
             end
 
-            return oldNm(self, ...)
+            -- บล็อกคำสั่งเตะปกติ
+            if method == "Kick" and (self == LocalPlayer or self == Players) then
+                return nil
+            end
+
+            return oldNamecall(self, ...)
         end))
     end
 
-    if hookfunction and lp and lp.Kick then
-        hookfunction(lp.Kick, newcclosure(function(self, ...)
-            local args = {...}
-            local reason = tostring(args[1] or "Unknown")
-            warn("🛡️ [NEXUS HUB ANTI-KICK] บล็อก LocalPlayer:Kick: " .. reason)
-            return nil
-        end))
-    end
-
-    local function NeutralizeCharScripts(char)
+    -- 2. ปลดสคริปต์ Anti-Fall ในตัวละคร (กันการแช่แข็งกลางอากาศ)
+    local function DisableAntiFall(char)
         if not char then return end
         for _, desc in ipairs(char:GetDescendants()) do
             if desc:IsA("Script") or desc:IsA("LocalScript") then
-                local name = desc.Name:lower()
-                if name:find("antifall") or name:find("fall") or name:find("ragdoll") or name:find("anti") then
-                    pcall(function()
-                        desc.Disabled = true
-                        desc:Destroy()
-                    end)
+                local n = desc.Name:lower()
+                if n:find("antifall") or n:find("ragdoll") or n:find("anti") then
+                    pcall(function() desc.Disabled = true end)
                 end
             end
         end
     end
 
-    if lp.Character then NeutralizeCharScripts(lp.Character) end
-    lp.CharacterAdded:Connect(NeutralizeCharScripts)
+    if LocalPlayer.Character then DisableAntiFall(LocalPlayer.Character) end
+    LocalPlayer.CharacterAdded:Connect(DisableAntiFall)
 end)
 
 GrantAntiXGrace = function(seconds)
