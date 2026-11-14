@@ -2890,14 +2890,23 @@ local MarketBanner = MarketSection:Banner({
 local LastShownKey = nil
 local LastShownPrice = 0
 
-local function RefreshMarketUI()
-    local MC = _G.MarketCore
-    if not MC then
-        MarketBanner:Set("📊 ราคาตลาด Real-Time", "⚠️ ระบบ MarketCore ไม่พร้อม")
-        return
+local function GetBestFromPrices()
+    local bestKey, bestPrice = nil, 0
+    local prices = _G.RealTimePrices or {}
+    for itemKey, aliases in pairs(ItemAliases) do
+        for _, alias in ipairs(aliases) do
+            local p = prices[alias] or prices[itemKey]
+            if type(p) == "number" and p > 0 then
+                if p > bestPrice then bestKey, bestPrice = itemKey, p end
+                break
+            end
+        end
     end
+    return bestKey, bestPrice
+end
 
-    local bestKey, bestPrice = MC.BestKey, MC.BestPrice
+local function RefreshMarketUI()
+    local bestKey, bestPrice = GetBestFromPrices()
 
     if not bestKey or bestPrice <= 0 then
         MarketBanner:Set("📊 ราคาตลาด Real-Time", "⏳ รอราคาจากเกม...")
@@ -2929,12 +2938,6 @@ local function RefreshMarketUI()
 end
 
 RefreshMarketUI()
-
-if _G.MarketCore then
-    _G.MarketCore.SetOnChange(function()
-        RefreshMarketUI()
-    end)
-end
 
 task.spawn(function()
     while true do
@@ -3194,7 +3197,6 @@ UnloadSection:Button({
             if _G._MarvenHungerConn then _G._MarvenHungerConn:Disconnect() _G._MarvenHungerConn = nil end
             if vehiclePlatformPart then vehiclePlatformPart:Destroy() end
             if fishingPlatform then fishingPlatform:Destroy() end
-            if WatchedConnection then WatchedConnection:Disconnect() end
         end)
         pcall(function() Window:Destroy() end)
     end
