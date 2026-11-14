@@ -1,5 +1,5 @@
 -- ==============================================================================
--- MARVENRIZ HUB + NEXUS ENGINE (ULTIMATE MASTER 100% - REAL-TIME ECONOMY SYNCED)
+-- MARVENRIZ HUB + NEXUS ENGINE (ULTIMATE MASTER 100% - NO TRUNCATION FULL CODE)
 -- ==============================================================================
 
 local Loading = nil
@@ -71,6 +71,13 @@ safeFloorPart = nil
 _G.RealTimePrices = _G.RealTimePrices or {}
 local RealTimePrices = _G.RealTimePrices
 
+local ItemAliases = {
+    Sandwich = {"Sandwich", "Sandwish", "แซนวิช", "Food_Sandwich", "FoodSandwich"},
+    MangoRice = {"MangoRice", "Mango_Rice", "Mango Rice", "ข้าวมันมะม่วง", "Food_MangoRice", "FoodMangoRice"},
+    BananaPack = {"BananaPack", "Banana_Pack", "Banana Pack", "Pack_Banana", "PackBanana", "กล้วยแพ็ค"},
+    KangSom = {"KangSom", "Kang_Som", "Kang Som", "แกงส้ม", "Food_KangSom", "FoodKangSom"}
+}
+
 TYPER_LOCATIONS = {
     Bread    = {Booth=Vector3.new(872.19,15.90,4682.54),   Farm=Vector3.new(828.31,11.21,4817.85)},
     Catchup  = {Booth=Vector3.new(1763.23,14.23,4206.70),  Farm=Vector3.new(1803.05,12.65,4236.79)},
@@ -90,6 +97,71 @@ TYPER_LOCATIONS = {
     Food     = {Crafting=Vector3.new(3442.48,56.40,3925.24),BananaProcess=Vector3.new(3429.20,56.80,3911.80)},
     Economy  = {Market=Vector3.new(-462.0,18.0,5324.7)}
 }
+
+local function GetRealMarketPrices()
+    local detectedPrices = {}
+    local rep = game:GetService("ReplicatedStorage")
+    local pgui = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+
+    pcall(function()
+        if _G.RealTimePrices and type(_G.RealTimePrices) == "table" then
+            for itemKey, aliases in pairs(ItemAliases) do
+                for _, alias in ipairs(aliases) do
+                    local priceVal = _G.RealTimePrices[alias] or _G.RealTimePrices[itemKey]
+                    if type(priceVal) == "number" and priceVal > 0 then
+                        detectedPrices[itemKey] = priceVal
+                    end
+                end
+            end
+        end
+    end)
+
+    pcall(function()
+        if pgui then
+            for _, gui in ipairs(pgui:GetChildren()) do
+                if gui:IsA("ScreenGui") then
+                    local gName = gui.Name:lower()
+                    if gName:find("econ") or gName:find("market") or gName:find("shop") or gName:find("price") or gName:find("food") then
+                        for _, desc in ipairs(gui:GetDescendants()) do
+                            if desc:IsA("TextLabel") or desc:IsA("TextBox") or desc:IsA("TextButton") then
+                                local txt = desc.Text or ""
+                                for itemKey, aliases in pairs(ItemAliases) do
+                                    for _, alias in ipairs(aliases) do
+                                        if txt:lower():find(alias:lower(), 1, true) then
+                                            local parent = desc.Parent
+                                            if parent then
+                                                for _, sib in ipairs(parent:GetChildren()) do
+                                                    if sib:IsA("TextLabel") and sib ~= desc then
+                                                        local sTxt = sib.Text or ""
+                                                        local clean = sTxt:gsub(",", ""):gsub("฿", ""):gsub("%$", "")
+                                                        local num = tonumber(clean:match("%d+"))
+                                                        if num and num >= 100 and num <= 20000 then
+                                                            if not detectedPrices[itemKey] or num > detectedPrices[itemKey] then
+                                                                detectedPrices[itemKey] = num
+                                                            end
+                                                        end
+                                                    end
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+
+    for itemKey, _ in pairs(ItemAliases) do
+        if not detectedPrices[itemKey] then
+            detectedPrices[itemKey] = 2500
+        end
+    end
+
+    return detectedPrices
+end
 
 local function GetGroundLevel(x, z, fallbackY)
     fallbackY = fallbackY or 20
@@ -520,9 +592,7 @@ local function CloseCarSpawnGui()
     end)
 end
 
--- =====================================
 -- VEHICLE SYSTEM
--- =====================================
 local function IsMyVehicle(v)
     if not v or not v:IsA("Model") or not v.Parent then return false end
     if MY_SPAWNED_CAR and v == MY_SPAWNED_CAR then return true end
@@ -1002,55 +1072,20 @@ EnsureCarAvailable = function(booth)
     return car
 end
 
--- =====================================
--- WarpToTownAndSpawnCar (เป๊ะตามต้นฉบับ 100% + UI:Notify)
--- =====================================
 WarpToTownAndSpawnCar = function()
     GrantAntiXGrace(45)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not root then return nil end
-
-    -- ลุกออกจากเก้าอี้เสมอ เพื่อเบิกรถคันใหม่
-    if hum and hum.Sit then
-        hum.Sit = false
-        task.wait(0.15)
-    end
-
-    pcall(function()
-        UI:Notify({
-            Title = "NEXUS HUB",
-            Content = "🚀 วาปไปจุดเบิกรถในเมืองเพื่อเบิกรถใหม่...",
-            Duration = 2.0
-        })
-    end)
-
-    pcall(function()
-        game:GetService("ProximityPromptService").Enabled = true
-    end)
-
-    pcall(function()
-        LocalPlayer:RequestStreamAroundAsync(TOWN_CAR_SPAWN, 45)
-    end)
-
-    -- วาปไปที่หน้าตู้เบิกรถในเมืองเท่านั้น
-    local groundY = GetGroundLevel(TOWN_CAR_SPAWN.X, TOWN_CAR_SPAWN.Z, TOWN_CAR_SPAWN.Y)
-    local townPos = Vector3.new(TOWN_CAR_SPAWN.X, groundY + 1.2, TOWN_CAR_SPAWN.Z)
-    root.CFrame = CFrame.new(townPos)
-    root.AssemblyLinearVelocity = Vector3.zero
-    root.AssemblyAngularVelocity = Vector3.zero
+    if hum and hum.Sit then hum.Sit = false task.wait(0.15) end
+    pcall(function() game:GetService("ProximityPromptService").Enabled = true end)
+    pcall(function() LocalPlayer:RequestStreamAroundAsync(TOWN_CAR_SPAWN, 45) end)
+    local gy = GetGroundLevel(TOWN_CAR_SPAWN.X, TOWN_CAR_SPAWN.Z, TOWN_CAR_SPAWN.Y)
+    root.CFrame = CFrame.new(TOWN_CAR_SPAWN.X, gy + 1.2, TOWN_CAR_SPAWN.Z)
     task.wait(0.4)
-
-    -- สั่งเบิกรถผ่านตู้ในเมืองตามสเต็ป POUND -> SPAWN
     local car = SpawnCarAtBooth(TOWN_CAR_SPAWN)
-    if not car then
-        car = GetNearbyPlayerVehicle(80)
-    end
-    if car then
-        EnsurePlayerSeatedInCar(car)
-        CloseCarSpawnGui()
-    end
+    if car then EnsurePlayerSeatedInCar(car) end
     return car
 end
 
@@ -1241,8 +1276,9 @@ RunService.Stepped:Connect(function()
 end)
 
 -- =====================================
--- HARVEST SYSTEM
+-- MARVENRIZ HUB (Part 2/2)
 -- =====================================
+
 local function TriggerFarmPromptDirectly(cropName)
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -1538,9 +1574,9 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
         local m = GetPlayerInventoryCount("Mango")
         local r = GetPlayerInventoryCount("Rice")
         
-        if recipeName == "Sandwish" then
+        if recipeName == "Sandwish" or recipeName == "Sandwich" then
             return math.min(math.floor(b / 3), math.floor(c / 2), math.floor(p / 2))
-        elseif recipeName == "MangoRice" then
+        elseif recipeName == "MangoRice" or recipeName == "Mango" then
             return math.min(math.floor(m / 2), math.floor(r / 3))
         elseif recipeName == "RiceKapaoMoo" then
             return math.min(math.floor(r / 3), math.floor(p / 2))
@@ -1611,15 +1647,16 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
         end
     end
     
+    local actualRecipe = (recipeName == "Sandwich" and "Sandwish") or (recipeName == "Mango" and "MangoRice") or recipeName
     pcall(function()
         local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if remCore then
             local Remotes_m = require(remCore)
-            Remotes_m.Fire("_crafting", "Request", "Craft_3", recipeName, toCraft, false)
+            Remotes_m.Fire("_crafting", "Request", "Craft_3", actualRecipe, toCraft, false)
         else
             local rem = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Remotes")
             if rem and rem:FindFirstChild("_crafting") then
-                rem._crafting:FireServer("Request", "Craft_3", recipeName, toCraft, false)
+                rem._crafting:FireServer("Request", "Craft_3", actualRecipe, toCraft, false)
             end
         end
     end)
@@ -1636,11 +1673,11 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
         local remCore = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if remCore then
             local Remotes_m = require(remCore)
-            Remotes_m.Fire("_crafting", "Complete", "Craft_3", recipeName, toCraft, false)
+            Remotes_m.Fire("_crafting", "Complete", "Craft_3", actualRecipe, toCraft, false)
         else
             local rem = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Remotes")
             if rem and rem:FindFirstChild("_crafting") then
-                rem._crafting:FireServer("Complete", "Craft_3", recipeName, toCraft, false)
+                rem._crafting:FireServer("Complete", "Craft_3", actualRecipe, toCraft, false)
             end
         end
     end)
@@ -1659,24 +1696,18 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
 end
 
 -- =====================================
--- PROCESS BANANA (เป๊ะตามต้นฉบับ 100% + UI:Notify)
+-- PROCESS BANANA
 -- =====================================
 ProcessBananaAtStation = function(shouldContinueCheck)
+    GrantAntiXGrace(30)
     local foodData = TYPER_LOCATIONS.Food
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not root or not hum then return end
-
-    -- ตรวจสอบและขึ้นรถเสมอเพื่อขับไปที่แปรรูปกล้วย
     local myCar = GetPlayerVehicle()
-    if not myCar or not hum.Sit then
-        myCar = EnsureCarAvailable()
-    end
-    if myCar then
-        EnsurePlayerSeatedInCar(myCar)
-    end
-
+    if not myCar or not hum.Sit then myCar = EnsureCarAvailable() end
+    if myCar then EnsurePlayerSeatedInCar(myCar) end
     local pBan = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Process") and workspace.Systems.Process:FindFirstChild("Banana")
     local pPrompt = pBan and pBan:FindFirstChild("Prompt")
     local bPos = nil
@@ -1688,45 +1719,60 @@ ProcessBananaAtStation = function(shouldContinueCheck)
         if anyPart then bPos = anyPart.Position end
     end
     local exactBanPos = bPos or foodData.BananaProcess
-
     DriveCarTo(exactBanPos + Vector3.new(0, 0, 5.0), shouldContinueCheck)
     task.wait(0.1)
     if shouldContinueCheck and not shouldContinueCheck() then return end
-
-    if hum.Sit then
-        hum.Sit = false
-        task.wait(0.1)
-    end
-
+    if hum.Sit then hum.Sit = false task.wait(0.1) end
     local standPos = exactBanPos + Vector3.new(0, 0, 2.5)
     local groundY = GetGroundLevel(standPos.X, standPos.Z, standPos.Y)
     root.CFrame = CFrame.lookAt(Vector3.new(standPos.X, groundY + 3.0, standPos.Z), exactBanPos)
     task.wait(0.1)
-
     local procPrompt = pBan and pBan:FindFirstChildWhichIsA("ProximityPrompt", true)
-    if not procPrompt then
-        procPrompt = FindPromptNear(root.Position, 15, nil)
-    end
+    if not procPrompt then procPrompt = FindPromptNear(root.Position, 15, nil) end
     if procPrompt then
         TriggerPrompt(procPrompt)
+    else
+        TriggerFarmPromptDirectly("Banana")
     end
     task.wait(0.3)
-
     pcall(function()
-        UI:Notify({
-            Title = "NEXUS HUB",
-            Content = "🍌 กำลังแปรรูปกล้วยเป็น BananaPack อัตโนมัติ...",
-            Duration = 3.0
-        })
+        local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
+        if rc then require(rc).Fire("_process", "Start", "Banana") end
     end)
-
+    pcall(function()
+        local pg = PlayerGui:FindFirstChild("Process")
+        if pg and pg:FindFirstChild("Group") then
+            pg.Group.Visible = true
+            pg.Group.GroupTransparency = 0
+        end
+    end)
+    task.wait(0.3)
+    pcall(function()
+        local pg = PlayerGui:FindFirstChild("Process")
+        if pg and pg:FindFirstChild("Group") then
+            local main = pg.Group:FindFirstChild("Main")
+            local ab = main and (main:FindFirstChild("ActionBtn") or main:FindFirstChild("ActionBtn", true))
+            if ab and firesignal then firesignal(ab.MouseButton1Click) end
+        end
+    end)
     local tProc = os.clock()
     while (GetPlayerInventoryCount("Banana") >= 2) and (os.clock() - tProc < 120) do
         if shouldContinueCheck and not shouldContinueCheck() then break end
         GrantAntiXGrace(15)
+        pcall(function()
+            local pg = PlayerGui:FindFirstChild("Process")
+            if pg and pg:FindFirstChild("Group") then
+                local main = pg.Group:FindFirstChild("Main")
+                local ab = main and (main:FindFirstChild("ActionBtn") or main:FindFirstChild("ActionBtn", true))
+                if ab and firesignal then firesignal(ab.MouseButton1Click) end
+            end
+        end)
         task.wait(3.2)
     end
-
+    pcall(function()
+        local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
+        if rc then require(rc).Fire("_process", "Stop", "Banana") end
+    end)
     pcall(function()
         local procGui = PlayerGui:FindFirstChild("Process")
         if procGui and procGui:FindFirstChild("Group") then
@@ -1737,26 +1783,14 @@ ProcessBananaAtStation = function(shouldContinueCheck)
             procGui.Group.Visible = false
         end
     end)
-    task.wait(0.2)
-
-    pcall(function()
-        UI:Notify({
-            Title = "NEXUS HUB",
-            Content = "✅ แปรรูปเสร็จเรียบร้อย! รอ 3 วินาทีก่อนขึ้นรถไปขาย...",
-            Duration = 3.0
-        })
-    end)
     task.wait(3.0)
-
-    local myCar = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
-    if myCar then
-        EnsurePlayerSeatedInCar(myCar)
-    end
+    local myCar2 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
+    if myCar2 then EnsurePlayerSeatedInCar(myCar2) end
     task.wait(0.3)
 end
 
 -- =====================================
--- PROCESS ORE SYSTEM
+-- PROCESS ORE (ของแท้ 100%)
 -- =====================================
 ProcessOreAtStation = function(oreName, minP, check)
     GrantAntiXGrace(30)
@@ -1937,7 +1971,7 @@ DepositAllToVault = function(check)
 end
 
 -- =====================================
--- MARKET SELL SYSTEM (ซิงค์ตามเกมแท้ 100%)
+-- MARKET SELL SYSTEM
 -- =====================================
 local function GetEconomyMarketPosition()
     local systems = workspace:FindFirstChild("Systems")
@@ -2448,7 +2482,7 @@ StopAutoFishing = function()
 end
 
 -- =====================================
--- REAL-TIME ECONOMY SYNC (อัปเดตตาม Decompiled Script แท้)
+-- REMOTE HOOKS & SERVER HOP
 -- =====================================
 pcall(function()
     local modules = ReplicatedStorage:WaitForChild("Systems"):WaitForChild("Modules")
@@ -2494,8 +2528,6 @@ local function IsInMainGame()
     return false
 end
 
-local function IsServerSelectionScreen() return not IsInMainGame() end
-
 local function ExitToServerSelectionScreen(reason)
     if isHopping then return end
     isHopping = true
@@ -2535,6 +2567,9 @@ task.spawn(function()
     end
 end)
 
+-- =====================================
+-- STATE & SESSION
+-- =====================================
 local MarvenState = {
     AutoEat = true, AutoFarmItem = false, AutoProcessFarm = false, AutoMineFarm = false, AutoFish = false, InfiniteStamina = false, InfiniteHunger = false
 }
@@ -2548,6 +2583,9 @@ local function StartSession(key)
 end
 local function StopSession(key) MarvenSession[key] = (MarvenSession[key] or 0) + 1 end
 
+-- =====================================
+-- WINDOW CREATION
+-- =====================================
 local Window = UI:CreateWindow({
     Title = "MarvenRiz Hub",
     Author = "by. zems.xz",
@@ -2561,38 +2599,15 @@ local Window = UI:CreateWindow({
 })
 Window:SetTheme({ Accent = Color3.fromRGB(0, 110, 255) })
 
+-- STATUS TAB
 local StatusTab = Window:Tab({Title = "สถานะ", Icon = "activity"})
 local Status = StatusTab:Section({Title = "ข้อมูลผู้เล่น"})
-Status:Banner({Title = "MarvenRiz Hub [v2.5]", SubTitle = "🔗 NEXUS Engine + สมบูรณ์แบบ 100% ไม่มีตัดทอน"})
+Status:Banner({Title = "MarvenRiz Hub [v2.5]", SubTitle = "🔗 NEXUS Engine + ระบบคราฟสมบูรณ์ + เมนูภาษาไทย"})
 local StatsGrid = Status:StatGrid({
     {Label = "FPS", Value = "0"}, {Label = "Ping", Value = "0 ms"},
     {Label = "Executor", Value = "Unknown"}, {Label = "Players", Value = "0"},
     {Label = "Game", Value = GameName}, {Label = "Time", Value = "00:00:00"}
 })
-
-local MarketTab = Window:Tab({Title = "ตลาด Real-Time", Icon = "trending-up"})
-local MarketSection = MarketTab:Section({Title = "ราคาสินค้าในตลาดสด (อัปเดตอัตโนมัติ)"})
-local MarketPriceDisplay = MarketSection:Paragraph({
-    Title = "ราคาตลาดปัจจุบัน",
-    Content = "กำลังเชื่อมต่อข้อมูลราคาจากเซิร์ฟเวอร์..."
-})
-
-task.spawn(function()
-    while true do
-        task.wait(1.5)
-        pcall(function()
-            local text = ""
-            if next(RealTimePrices) == nil then
-                text = "⏳ กำลังรอข้อมูลราคา Real-Time จากเซิร์ฟเวอร์..."
-            else
-                for item, price in pairs(RealTimePrices) do
-                    text = text .. "🔹 " .. tostring(item) .. " : 💰 " .. tostring(price) .. " บาท\n"
-                end
-            end
-            MarketPriceDisplay:Set(text)
-        end)
-    end
-end)
 
 local fc, lu = 0, os.clock()
 RunService.RenderStepped:Connect(function()
@@ -2611,6 +2626,31 @@ RunService.RenderStepped:Connect(function()
     end)
 end)
 
+-- MARKET TAB
+local MarketTab = Window:Tab({Title = "ตลาด Real-Time", Icon = "trending-up"})
+local MarketSection = MarketTab:Section({Title = "ราคาสินค้าในตลาดสด"})
+local MarketPriceDisplay = MarketSection:Paragraph({
+    Title = "ราคาตลาดปัจจุบัน",
+    Content = "กำลังเชื่อมต่อข้อมูลราคาจากเซิร์ฟเวอร์..."
+})
+
+task.spawn(function()
+    while true do
+        task.wait(1.5)
+        pcall(function()
+            local currentPrices = GetRealMarketPrices()
+            local text = "📊 [ราคาสินค้าหลักในตลาด]\n"
+            for item, price in pairs(currentPrices) do
+                text = text .. "🔹 " .. tostring(item) .. " : 💰 " .. tostring(price) .. " บาท\n"
+            end
+            MarketPriceDisplay:Set(text)
+        end)
+    end
+end)
+
+-- =====================================
+-- FARM RUNNERS
+-- =====================================
 local function RunNormalFarm()
     if not MarvenState.AutoFarmItem then return end
     local check = StartSession("AutoFarmItem")
@@ -2661,137 +2701,380 @@ local function RunMineFarm()
     task.spawn(function()
         local first = true
         while check() do
-            if first then WarpToTownAndSpawnCar() first = false end
-            if not check() then break end
-            local ore = MarvenSelected.MineFarmType or "Rock"
-            local minP = (ore == "Svibranium") and 4 or 2
-            if GetPlayerInventoryCount(ore) < 120 then HarvestSingleCrop(ore, 120, check) end
-            if not check() then break end
-            ProcessOreAtStation(ore, minP, check)
-            if not check() then break end
-            DepositAllToVault(check)
-            task.wait(1.0)
-        end
-    end)
+if first then WarpToTownAndSpawnCar() first = false end
+if not check() then break end
+local ore = MarvenSelected.MineFarmType or "Rock"
+local minP = (ore == "Svibranium") and 4 or 2
+if GetPlayerInventoryCount(ore) < 120 then
+EnsureCarAvailable(TYPER_LOCATIONS[ore].Booth or TOWN_CAR_SPAWN)
+HarvestSingleCrop(ore, 120, check)
+end
+if not check() then break end
+local processed = ProcessOreAtStation(ore, minP, check)
+if not check() then break end
+if not processed then
+    task.wait(2)
+    continue
+end
+DepositAllToVault(check)
+if not check() then break end
+task.wait(1.0)
+end
+end)
 end
 
 local SettingsTab = Window:Tab({Title = "ตั้งค่า", Icon = "settings"})
 local Settings = SettingsTab:Section({Title = "ตั้งค่าทั่วไป"})
+
 Settings:Toggle({
-    Title = "ออโต้ กินอาหาร", Default = true, Flag = "AutoEat",
-    Callback = function(v) isAutoEatAndDrinkEnabled = v end
+Title = "ออโต้ กินอาหาร",
+Description = "กินอาหารอัตโนมัติ (<= 80%)",
+Default = true,
+Flag = "AutoEat",
+Callback = function(v)
+MarvenState.AutoEat = v
+isAutoEatAndDrinkEnabled = v
+isAutoEatEnabled = v
+isAutoCoffeeEnabled = v
+end
 })
+
 Settings:Toggle({
-    Title = "พลังงานไม่จำกัด", Default = true, Flag = "InfiniteStamina",
-    Callback = function(v)
-        if _G._MarvenStaminaConn then _G._MarvenStaminaConn:Disconnect() _G._MarvenStaminaConn = nil end
-        if v then
-            _G._MarvenStaminaConn = RunService.Heartbeat:Connect(function()
-                pcall(function() LocalPlayer.PlayerData:SetAttribute("Stamina", 100) end)
-            end)
-        end
-    end
+Title = "พลังงานไม่จำกัด",
+Description = "ล็อค Stamina/Energy = 100 ตลอดเวลา",
+Default = true,
+Flag = "InfiniteStamina",
+Callback = function(v)
+MarvenState.InfiniteStamina = v
+if _G._MarvenStaminaConn then
+pcall(function() _G._MarvenStaminaConn:Disconnect() end)
+_G._MarvenStaminaConn = nil
+end
+if v then
+_G._MarvenStaminaConn = TrackConnection(RunService.Heartbeat:Connect(function()
+pcall(function()
+local s = LocalPlayer:FindFirstChild("Stats")
+if s then
+s:SetAttribute("Stamina", 100)
+s:SetAttribute("Energy", 100)
+end
+local pd = LocalPlayer:FindFirstChild("PlayerData")
+if pd then
+pd:SetAttribute("Stamina", 100)
+pd:SetAttribute("Energy", 100)
+end
+end)
+end)
+end
+end
 })
+
 Settings:Toggle({
-    Title = "ไม่หิวอาหาร", Default = false, Flag = "InfiniteHunger",
-    Callback = function(v)
-        if _G._MarvenHungerConn then _G._MarvenHungerConn:Disconnect() _G._MarvenHungerConn = nil end
-        if v then
-            _G._MarvenHungerConn = RunService.Heartbeat:Connect(function()
-                pcall(function() LocalPlayer.PlayerData:SetAttribute("Hunger", 100) end)
-            end)
-        end
-    end
+Title = "ไม่หิวอาหาร",
+Description = "ล็อค Brain/Hunger = 100 ตลอดเวลา",
+Default = false,
+Flag = "InfiniteHunger",
+Callback = function(v)
+MarvenState.InfiniteHunger = v
+if _G._MarvenHungerConn then
+pcall(function() _G._MarvenHungerConn:Disconnect() end)
+_G._MarvenHungerConn = nil
+end
+if v then
+_G._MarvenHungerConn = TrackConnection(RunService.Heartbeat:Connect(function()
+pcall(function()
+local s = LocalPlayer:FindFirstChild("Stats")
+if s then
+s:SetAttribute("Brain", 100)
+s:SetAttribute("Hunger", 100)
+end
+local pd = LocalPlayer:FindFirstChild("PlayerData")
+if pd then
+pd:SetAttribute("Brain", 100)
+pd:SetAttribute("Hunger", 100)
+end
+end)
+end)
+end
+end
 })
 
 local FarmTab = Window:Tab({Title = "ฟาร์ม", Icon = "sprout"})
+
 local NormalFarm = FarmTab:Section({Title = "ฟาร์มปกติ"})
 NormalFarm:Dropdown({
-    Title = "เลือกฟาร์ม",
-    Options = {"ขนมปัง (วัตถุดิบ)", "ซอสมะเขือเทศ (วัตถุดิบ)", "หมู (วัตถุดิบ)", "มะม่วง (วัตถุดิบ)", "ข้าว (วัตถุดิบ)", "มะเขือเทศ (วัตถุดิบ)", "กล้วย (วัตถุดิบ)", "ปู (วัตถุดิบ)", "มะพร้าว (วัตถุดิบ)", "ข้าวโพด (วัตถุดิบ)", "ไข่ไก่ (วัตถุดิบ)", "นม (วัตถุดิบ)", "อ้อย (วัตถุดิบ)"},
-    Default = "ขนมปัง (วัตถุดิบ)", Flag = "NormalFarmType",
-    Callback = function(v)
-        local map = {["ขนมปัง (วัตถุดิบ)"]="Bread", ["ซอสมะเขือเทศ (วัตถุดิบ)"]="Catchup", ["หมู (วัตถุดิบ)"]="Pig", ["มะม่วง (วัตถุดิบ)"]="Mango", ["ข้าว (วัตถุดิบ)"]="Rice", ["มะเขือเทศ (วัตถุดิบ)"]="Tomato", ["กล้วย (วัตถุดิบ)"]="Banana", ["ปู (วัตถุดิบ)"]="Crab", ["มะพร้าว (วัตถุดิบ)"]="Coconut", ["ข้าวโพด (วัตถุดิบ)"]="Corn", ["ไข่ไก่ (วัตถุดิบ)"]="Egg", ["นม (วัตถุดิบ)"]="Milk", ["อ้อย (วัตถุดิบ)"]="Sugarcane"}
-        MarvenSelected.NormalFarmType = map[v] or "Bread"
-    end
+Title = "เลือกฟาร์ม",
+Options = {
+"ขนมปัง (วัตถุดิบ)",
+"ซอสมะเขือเทศ (วัตถุดิบ)",
+"หมู (วัตถุดิบ)",
+"มะม่วง (วัตถุดิบ)",
+"ข้าว (วัตถุดิบ)",
+"มะเขือเทศ (วัตถุดิบ)",
+"กล้วย (วัตถุดิบ)",
+"ปู (วัตถุดิบ)",
+"มะพร้าว (วัตถุดิบ)",
+"ข้าวโพด (วัตถุดิบ)",
+"ไข่ไก่ (วัตถุดิบ)",
+"นม (วัตถุดิบ)",
+"อ้อย (วัตถุดิบ)"
+},
+Default = "ขนมปัง (วัตถุดิบ)",
+Flag = "NormalFarmType",
+Callback = function(v)
+local map = {
+["ขนมปัง (วัตถุดิบ)"] = "Bread",
+["ซอสมะเขือเทศ (วัตถุดิบ)"] = "Catchup",
+["หมู (วัตถุดิบ)"] = "Pig",
+["มะม่วง (วัตถุดิบ)"] = "Mango",
+["ข้าว (วัตถุดิบ)"] = "Rice",
+["มะเขือเทศ (วัตถุดิบ)"] = "Tomato",
+["กล้วย (วัตถุดิบ)"] = "Banana",
+["ปู (วัตถุดิบ)"] = "Crab",
+["มะพร้าว (วัตถุดิบ)"] = "Coconut",
+["ข้าวโพด (วัตถุดิบ)"] = "Corn",
+["ไข่ไก่ (วัตถุดิบ)"] = "Egg",
+["นม (วัตถุดิบ)"] = "Milk",
+["อ้อย (วัตถุดิบ)"] = "Sugarcane",
+}
+MarvenSelected.NormalFarmType = map[v] or "Bread"
+end
 })
+
 NormalFarm:Toggle({
-    Title = "ออโต้ ฟาร์มวัตถุดิบ", Default = false, Flag = "AutoFarmItem",
-    Callback = function(v) MarvenState.AutoFarmItem = v if v then RunNormalFarm() else StopSession("AutoFarmItem") end end
+Title = "ออโต้ ฟาร์มวัตถุดิบ",
+Default = false,
+Flag = "AutoFarmItem",
+Callback = function(v)
+MarvenState.AutoFarmItem = v
+if v then RunNormalFarm()
+else StopSession("AutoFarmItem") pcall(CancelGameFarm) end
+end
 })
 
 local ProcessFarm = FarmTab:Section({Title = "ฟาร์มโพสต์ (คราฟต์/แปรรูป)"})
 ProcessFarm:Dropdown({
-    Title = "เลือกของ",
-    Options = {"กล้วยแพ็ค (แปรรูป)", "ข้าวมันมะม่วง (คราฟต์)", "ข้าวกะเพราหมู (คราฟต์)", "แซนวิช (คราฟต์)", "แกงส้ม (คราฟต์)"},
-    Default = "กล้วยแพ็ค (แปรรูป)", Flag = "ProcessFarmType",
-    Callback = function(v)
-        local map = {["กล้วยแพ็ค (แปรรูป)"]="Banana", ["ข้าวมันมะม่วง (คราฟต์)"]="Mango", ["ข้าวกะเพราหมู (คราฟต์)"]="RiceKapaoMoo", ["แซนวิช (คราฟต์)"]="Sandwich", ["แกงส้ม (คราฟต์)"]="KangSom"}
-        MarvenSelected.ProcessFarmType = map[v] or "Banana"
-    end
+Title = "เลือกของ",
+Options = {
+"กล้วยแพ็ค (แปรรูป)",
+"ข้าวมันมะม่วง (คราฟต์)",
+"ข้าวกะเพราหมู (คราฟต์)",
+"แซนวิช (คราฟต์)",
+"แกงส้ม (คราฟต์)"
+},
+Default = "กล้วยแพ็ค (แปรรูป)",
+Flag = "ProcessFarmType",
+Callback = function(v)
+local map = {
+["กล้วยแพ็ค (แปรรูป)"] = "Banana",
+["ข้าวมันมะม่วง (คราฟต์)"] = "Mango",
+["ข้าวกะเพราหมู (คราฟต์)"] = "RiceKapaoMoo",
+["แซนวิช (คราฟต์)"] = "Sandwich",
+["แกงส้ม (คราฟต์)"] = "KangSom",
+}
+MarvenSelected.ProcessFarmType = map[v] or "Banana"
+end
 })
 ProcessFarm:Toggle({
-    Title = "ออโต้ ฟาร์มโพสต์", Default = false, Flag = "AutoProcessFarm",
-    Callback = function(v) MarvenState.AutoProcessFarm = v if v then RunProcessFarm() else StopSession("AutoProcessFarm") end end
+Title = "ออโต้ ฟาร์มโพสต์",
+Default = false,
+Flag = "AutoProcessFarm",
+Callback = function(v)
+MarvenState.AutoProcessFarm = v
+if v then RunProcessFarm()
+else StopSession("AutoProcessFarm") pcall(CancelGameFarm) end
+end
 })
 
 local MineFarm = FarmTab:Section({Title = "ฟาร์มเหมือง (ขุด+แปรรูป+ฝาก)"})
 MineFarm:Dropdown({
-    Title = "เลือกเหมือง",
-    Options = {"ฟาร์มหิน (หลอมแร่)", "ฟาร์มไวเบรเนียม (หลอมแร่)"},
-    Default = "ฟาร์มหิน (หลอมแร่)", Flag = "MineFarmType",
-    Callback = function(v)
-        local map = {["ฟาร์มหิน (หลอมแร่)"]="Rock", ["ฟาร์มไวเบรเนียม (หลอมแร่)"]="Svibranium"}
-        MarvenSelected.MineFarmType = map[v] or "Rock"
-    end
+Title = "เลือกเหมือง",
+Options = {
+"ฟาร์มหิน (หลอมแร่)",
+"ฟาร์มไวเบรเนียม (หลอมแร่)"
+},
+Default = "ฟาร์มหิน (หลอมแร่)",
+Flag = "MineFarmType",
+Callback = function(v)
+local map = {
+["ฟาร์มหิน (หลอมแร่)"] = "Rock",
+["ฟาร์มไวเบรเนียม (หลอมแร่)"] = "Svibranium",
+}
+MarvenSelected.MineFarmType = map[v] or "Rock"
+end
 })
 MineFarm:Toggle({
-    Title = "ออโต้ ฟาร์มเหมือง", Default = false, Flag = "AutoMineFarm",
-    Callback = function(v) MarvenState.AutoMineFarm = v if v then RunMineFarm() else StopSession("AutoMineFarm") end end
+Title = "ออโต้ ฟาร์มเหมือง",
+Default = false,
+Flag = "AutoMineFarm",
+Callback = function(v)
+MarvenState.AutoMineFarm = v
+if v then RunMineFarm()
+else StopSession("AutoMineFarm") pcall(CancelGameFarm) end
+end
 })
+
+local function GetBestFoodPack()
+local foodItems = {
+Sandwich = {"Sandwich", "Sandwish"},
+MangoRice = {"MangoRice"},
+BananaPack = {"BananaPack"},
+KangSom = {"KangSom"}
+}
+
+local displayNames = {   
+    Sandwich = "แซนวิช",   
+    MangoRice = "ข้าวมันมะม่วง",   
+    BananaPack = "กล้วยแพ็ค",   
+    KangSom = "แกงส้ม"   
+}  
+  
+local bestKey, bestName, bestPrice = nil, "รอข้อมูลตลาด...", 0  
+  
+for key, aliases in pairs(foodItems) do  
+    local price = 0  
+    for _, alias in ipairs(aliases) do  
+        if RealTimePrices[alias] then  
+            price = RealTimePrices[alias]  
+            break  
+        end  
+    end  
+      
+    if price > bestPrice then  
+        bestPrice = price  
+        bestKey = key  
+        bestName = displayNames[key]  
+    end  
+end  
+  
+if bestPrice == 0 then  
+    return nil, "รอข้อมูลจากตลาด (กรุณาเดินไปที่ตลาด)", 0  
+end  
+  
+return bestKey, bestName, bestPrice
+
+end
+
+local BestPriceSection = FarmTab:Section({Title = "🌟 ข้อมูลราคาตลาด (Real-Time)"})
+local BestPriceInfo = BestPriceSection:Paragraph({
+Title = "📊 ราคาอาหารที่ดีที่สุดตอนนี้",
+Content = "กำลังดึงข้อมูลราคา..."
+})
+
+task.spawn(function()
+while not MarvenUnloaded do
+task.wait(1.5)
+pcall(function()
+local k, name, price = GetBestFoodPack()
+if BestPriceInfo and BestPriceInfo.SetDesc then
+local statusText = string.format(
+"⭐ ราคาดีที่สุด: %s\n💰 ราคา: %d฿",
+tostring(name or "ไม่ทราบชื่อ"),
+tonumber(price) or 0
+)
+pcall(function() BestPriceInfo:SetDesc(statusText) end)
+end
+end)
+end
+end)
 
 local OtherTab = Window:Tab({Title = "อื่นๆ", Icon = "layers"})
 local FishSection = OtherTab:Section({Title = "ระบบตกปลา"})
 FishSection:Toggle({
-    Title = "เริ่มออโต้ตกปลา", Default = false, Flag = "AutoFish",
-    Callback = function(v) MarvenState.AutoFish = v if v then pcall(StartAutoFishing) else pcall(StopAutoFishing) end end
+Title = "เริ่มออโต้ตกปลา",
+Default = false,
+Flag = "AutoFish",
+Callback = function(v)
+MarvenState.AutoFish = v
+if v then pcall(StartAutoFishing) else pcall(StopAutoFishing) end
+end
 })
 
 local AdvTab = Window:Tab({Title = "ขั้นสูง", Icon = "sliders"})
+
 local SpeedSection = AdvTab:Section({Title = "ความเร็วยานพาหนะ"})
 SpeedSection:Slider({
-    Title = "ความเร็วขับรถ (Studs/s)", Default = 150, Min = 10, Max = 280, Rounding = 0, Flag = "VehicleSpeed",
-    Callback = function(v) VehicleDriveSpeed = math.clamp(math.round(v), 10, 280) end
+Title = "ความเร็วขับรถ (Studs/s)",
+Default = 150,
+Min = 10,
+Max = 280,
+Rounding = 0,
+Flag = "VehicleSpeed",
+Callback = function(v) VehicleDriveSpeed = math.clamp(math.round(v), 10, 280) end
 })
 SpeedSection:Toggle({
-    Title = "รถทะลุสิ่งกีดขวาง (Vehicle NoClip)", Default = true, Flag = "VehicleNoclip",
-    Callback = function(v) isVehicleNoclipEnabled = v end
+Title = "รถทะลุสิ่งกีดขวาง (Vehicle NoClip)",
+Default = true,
+Flag = "VehicleNoclip",
+Callback = function(v) isVehicleNoclipEnabled = v end
+})
+SpeedSection:Toggle({
+Title = "แผ่นรองใต้รถ (Vehicle Platform)",
+Default = true,
+Flag = "VehiclePlatform",
+Callback = function(v) isVehiclePlatformEnabled = v end
+})
+
+local HopSection = AdvTab:Section({Title = "ย้ายเซิร์ฟเวอร์หนีคน"})
+HopSection:Toggle({
+Title = "ย้ายเซิร์ฟเมื่อมีคนใกล้ (Auto Server Hop)",
+Default = true,
+Flag = "ServerHop",
+Callback = function(v) isAutoHopOnPlayerNearbyEnabled = v end
+})
+HopSection:Slider({
+Title = "ระยะตรวจจับคน (Studs)",
+Default = 90,
+Min = 20,
+Max = 300,
+Rounding = 0,
+Flag = "HopDistance",
+Callback = function(v) autoHopDistance = tonumber(v) or 90 end
 })
 
 local UnloadSection = AdvTab:Section({Title = "ปิดสคริปต์"})
 UnloadSection:Button({
-    Title = "ปิดสคริปต์ (Unload)",
-    Callback = function()
-        MarvenState.AutoFarmItem = false
-        MarvenState.AutoProcessFarm = false
-        MarvenState.AutoMineFarm = false
-        MarvenState.AutoFish = false
-        StopSession("AutoFarmItem")
-        StopSession("AutoProcessFarm")
-        StopSession("AutoMineFarm")
-        pcall(StopAutoFishing)
-        pcall(function()
-            if _G._MarvenStaminaConn then _G._MarvenStaminaConn:Disconnect() _G._MarvenStaminaConn = nil end
-            if _G._MarvenHungerConn then _G._MarvenHungerConn:Disconnect() _G._MarvenHungerConn = nil end
-            if vehiclePlatformPart then vehiclePlatformPart:Destroy() end
-            if fishingPlatform then fishingPlatform:Destroy() end
-        end)
-        pcall(function() Window:Destroy() end)
-    end
+Title = "ปิดสคริปต์ (Unload)",
+Callback = function()
+MarvenState.AutoFarmItem = false
+MarvenState.AutoProcessFarm = false
+MarvenState.AutoMineFarm = false
+MarvenState.AutoFish = false
+MarvenBestPrice.AutoMode = false
+MarvenUnloaded = true
+isAutoEatAndDrinkEnabled = false
+isAutoFishingEnabled = false
+fishingSession = (fishingSession or 0) + 1
+StopSession("AutoFarmItem")
+StopSession("AutoProcessFarm")
+StopSession("AutoMineFarm")
+pcall(CancelGameFarm)
+pcall(StopAutoFishing)
+pcall(function()
+for _, conn in ipairs(MarvenConnections) do
+    if conn and conn.Connected then conn:Disconnect() end
+end
+table.clear(MarvenConnections)
+if _G._MarvenStaminaConn then _G._MarvenStaminaConn:Disconnect() _G._MarvenStaminaConn = nil end
+if _G._MarvenHungerConn then _G._MarvenHungerConn:Disconnect() _G._MarvenHungerConn = nil end
+end)
+pcall(RestoreSavedCollision)
+pcall(function()
+if vehiclePlatformPart then vehiclePlatformPart:Destroy() vehiclePlatformPart = nil end
+if fishingPlatform then fishingPlatform:Destroy() fishingPlatform = nil end
+if safeFloorPart then safeFloorPart:Destroy() safeFloorPart = nil end
+end)
+pcall(function()
+if Window and Window.Destroy then Window:Destroy() end
+if UI and UI.Destroy then UI:Destroy() end
+end)
+end
 })
 
 local ConfigTab = Window:Tab({Title = "Config", Icon = "folder-cog"})
 local ConfigSection = ConfigTab:Section({Title = "CONFIG"})
 ConfigSection:ConfigManager()
 
-pcall(function() if Loading and Loading.Hide then Loading.Hide() end end)
+pcall(function()
+if Loading and Loading.Hide then Loading.Hide() end
+end)
