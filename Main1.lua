@@ -1002,20 +1002,55 @@ EnsureCarAvailable = function(booth)
     return car
 end
 
+-- =====================================
+-- WarpToTownAndSpawnCar (เป๊ะตามต้นฉบับ 100% + UI:Notify)
+-- =====================================
 WarpToTownAndSpawnCar = function()
     GrantAntiXGrace(45)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not root then return nil end
-    if hum and hum.Sit then hum.Sit = false task.wait(0.15) end
-    pcall(function() game:GetService("ProximityPromptService").Enabled = true end)
-    pcall(function() LocalPlayer:RequestStreamAroundAsync(TOWN_CAR_SPAWN, 45) end)
-    local gy = GetGroundLevel(TOWN_CAR_SPAWN.X, TOWN_CAR_SPAWN.Z, TOWN_CAR_SPAWN.Y)
-    root.CFrame = CFrame.new(TOWN_CAR_SPAWN.X, gy + 1.2, TOWN_CAR_SPAWN.Z)
+
+    -- ลุกออกจากเก้าอี้เสมอ เพื่อเบิกรถคันใหม่
+    if hum and hum.Sit then
+        hum.Sit = false
+        task.wait(0.15)
+    end
+
+    pcall(function()
+        UI:Notify({
+            Title = "NEXUS HUB",
+            Content = "🚀 วาปไปจุดเบิกรถในเมืองเพื่อเบิกรถใหม่...",
+            Duration = 2.0
+        })
+    end)
+
+    pcall(function()
+        game:GetService("ProximityPromptService").Enabled = true
+    end)
+
+    pcall(function()
+        LocalPlayer:RequestStreamAroundAsync(TOWN_CAR_SPAWN, 45)
+    end)
+
+    -- วาปไปที่หน้าตู้เบิกรถในเมืองเท่านั้น
+    local groundY = GetGroundLevel(TOWN_CAR_SPAWN.X, TOWN_CAR_SPAWN.Z, TOWN_CAR_SPAWN.Y)
+    local townPos = Vector3.new(TOWN_CAR_SPAWN.X, groundY + 1.2, TOWN_CAR_SPAWN.Z)
+    root.CFrame = CFrame.new(townPos)
+    root.AssemblyLinearVelocity = Vector3.zero
+    root.AssemblyAngularVelocity = Vector3.zero
     task.wait(0.4)
+
+    -- สั่งเบิกรถผ่านตู้ในเมืองตามสเต็ป POUND -> SPAWN
     local car = SpawnCarAtBooth(TOWN_CAR_SPAWN)
-    if car then EnsurePlayerSeatedInCar(car) end
+    if not car then
+        car = GetNearbyPlayerVehicle(80)
+    end
+    if car then
+        EnsurePlayerSeatedInCar(car)
+        CloseCarSpawnGui()
+    end
     return car
 end
 
@@ -1624,7 +1659,7 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
 end
 
 -- =====================================
--- PROCESS BANANA (เวอร์ชันสมบูรณ์: ขับรถ -> ล็อคความเร็วรถ -> ลงจากรถ -> ล็อคความเร็วคน -> รอ 3.2 วิ -> รอ 3 วิ -> กลับขึ้นรถ)
+-- PROCESS BANANA (เป๊ะตามต้นฉบับ 100% + UI:Notify)
 -- =====================================
 ProcessBananaAtStation = function(shouldContinueCheck)
     local foodData = TYPER_LOCATIONS.Food
@@ -1633,7 +1668,7 @@ ProcessBananaAtStation = function(shouldContinueCheck)
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not root or not hum then return end
 
-    -- 1. ตรวจสอบและขึ้นรถเสมอเพื่อขับไปที่แปรรูปกล้วย
+    -- ตรวจสอบและขึ้นรถเสมอเพื่อขับไปที่แปรรูปกล้วย
     local myCar = GetPlayerVehicle()
     if not myCar or not hum.Sit then
         myCar = EnsureCarAvailable()
@@ -1642,7 +1677,6 @@ ProcessBananaAtStation = function(shouldContinueCheck)
         EnsurePlayerSeatedInCar(myCar)
     end
 
-    -- 2. หาพิกัดเครื่องแปรรูปกล้วย
     local pBan = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Process") and workspace.Systems.Process:FindFirstChild("Banana")
     local pPrompt = pBan and pBan:FindFirstChild("Prompt")
     local bPos = nil
@@ -1655,29 +1689,20 @@ ProcessBananaAtStation = function(shouldContinueCheck)
     end
     local exactBanPos = bPos or foodData.BananaProcess
 
-    -- 3. ขับรถไปจอด (ใน DriveCarTo มีการล็อคความเร็วรถให้อยู่แล้ว)
     DriveCarTo(exactBanPos + Vector3.new(0, 0, 5.0), shouldContinueCheck)
     task.wait(0.1)
     if shouldContinueCheck and not shouldContinueCheck() then return end
 
-    -- 4. ลงจากรถ
     if hum.Sit then
         hum.Sit = false
         task.wait(0.1)
     end
 
-    -- 5. จัดตำแหน่งตัวละครให้ยืนหน้าเครื่องแปรรูป
     local standPos = exactBanPos + Vector3.new(0, 0, 2.5)
     local groundY = GetGroundLevel(standPos.X, standPos.Z, standPos.Y)
     root.CFrame = CFrame.lookAt(Vector3.new(standPos.X, groundY + 3.0, standPos.Z), exactBanPos)
-    
-    -- 6. 🔒 ล็อคความเร็วตัวละคร (แก้ปัญหา Speed Hack ตอนลงจากรถ)
-    root.AssemblyLinearVelocity = Vector3.zero
-    root.AssemblyAngularVelocity = Vector3.zero
-    
     task.wait(0.1)
 
-    -- 7. เปิด UI แปรรูป
     local procPrompt = pBan and pBan:FindFirstChildWhichIsA("ProximityPrompt", true)
     if not procPrompt then
         procPrompt = FindPromptNear(root.Position, 15, nil)
@@ -1688,29 +1713,20 @@ ProcessBananaAtStation = function(shouldContinueCheck)
     task.wait(0.3)
 
     pcall(function()
-        Fluent:Notify({
+        UI:Notify({
             Title = "NEXUS HUB",
             Content = "🍌 กำลังแปรรูปกล้วยเป็น BananaPack อัตโนมัติ...",
             Duration = 3.0
         })
     end)
 
-    -- 8. ลูปแปรรูปตามต้นฉบับ (รออย่างเดียว ไม่กดปุ่มซ้ำ)
     local tProc = os.clock()
     while (GetPlayerInventoryCount("Banana") >= 2) and (os.clock() - tProc < 120) do
         if shouldContinueCheck and not shouldContinueCheck() then break end
         GrantAntiXGrace(15)
-        
-        -- 🔒 ล็อคความเร็วซ้ำระหว่างรอ (กันระบบจับ)
-        if root then
-            root.AssemblyLinearVelocity = Vector3.zero
-            root.AssemblyAngularVelocity = Vector3.zero
-        end
-        
         task.wait(3.2)
     end
 
-    -- 9. ปิด UI แปรรูป
     pcall(function()
         local procGui = PlayerGui:FindFirstChild("Process")
         if procGui and procGui:FindFirstChild("Group") then
@@ -1723,9 +1739,8 @@ ProcessBananaAtStation = function(shouldContinueCheck)
     end)
     task.wait(0.2)
 
-    -- 10. รอ 3 วินาทีก่อนขึ้นรถกลับไปขาย
     pcall(function()
-        Fluent:Notify({
+        UI:Notify({
             Title = "NEXUS HUB",
             Content = "✅ แปรรูปเสร็จเรียบร้อย! รอ 3 วินาทีก่อนขึ้นรถไปขาย...",
             Duration = 3.0
@@ -1733,10 +1748,9 @@ ProcessBananaAtStation = function(shouldContinueCheck)
     end)
     task.wait(3.0)
 
-    -- 11. กลับขึ้นรถเพื่อทำรอบถัดไป
-    local myCarReturn = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
-    if myCarReturn then
-        EnsurePlayerSeatedInCar(myCarReturn)
+    local myCar = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
+    if myCar then
+        EnsurePlayerSeatedInCar(myCar)
     end
     task.wait(0.3)
 end
