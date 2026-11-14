@@ -187,6 +187,36 @@ local function GetGroundLevel(x, z, fallbackY)
     return fallbackY
 end
 
+-- ==============================================================================
+-- [เพิ่ม] EnsureVehiclePlatform - สร้าง/อัปเดตแพลตฟอร์มล่องหนใต้รถ
+-- ==============================================================================
+EnsureVehiclePlatform = function(surfaceY, carPos)
+    if not isVehiclePlatformEnabled then
+        if vehiclePlatformPart then
+            vehiclePlatformPart:Destroy()
+            vehiclePlatformPart = nil
+        end
+        return
+    end
+
+    if not vehiclePlatformPart or not vehiclePlatformPart.Parent then
+        local p = Instance.new("Part")
+        p.Name = "TyperTown_VehicleSafePlatform"
+        p.Size = Vector3.new(36, 1.5, 36)
+        p.Anchored = true
+        p.CanCollide = true
+        p.Transparency = 1
+        p.Material = Enum.Material.SmoothPlastic
+        p.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.8, 0, 1, 1)
+        p.Parent = workspace
+        vehiclePlatformPart = p
+    else
+        vehiclePlatformPart.CanCollide = false
+    end
+
+    vehiclePlatformPart.CFrame = CFrame.new(carPos.X, surfaceY - 0.75, carPos.Z)
+end
+
 GetPlayerInventoryCount = function(name)
     local count = 0
     pcall(function()
@@ -482,28 +512,68 @@ local function FindPromptNear(centerPos, maxDist, matchKeyword)
     return closest
 end
 
+-- ==============================================================================
+-- 0. ANTI-KICK & ANTI-BAN SHIELD (ป้องกันโดนเตะออกจากเกม 100%)
+-- ==============================================================================
 pcall(function()
     local lp = Players.LocalPlayer
+
     if hookmetamethod then
         local oldNm
         oldNm = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
             local method = getnamecallmethod()
             local args = {...}
-            if (method == "Kick" or method == "kick") and (self == lp or self == Players) then return nil end
+
+            if (method == "Kick" or method == "kick") and (self == lp or self == Players) then
+                local reason = tostring(args[1] or "Unknown")
+                warn("🛡️ [NEXUS HUB ANTI-KICK] บล็อกคำสั่ง Kick จากเกมสำเร็จ: " .. reason)
+                return nil
+            end
+
             if method == "FireServer" or method == "InvokeServer" then
                 for _, a in ipairs(args) do
                     local str = tostring(a):lower()
-                    if str:find("kick") or str:find("anticheat") or str:find("antifall") or str:find("teleport") or str:find("exploit") or str:find("speed") or str:find("fly") then return nil end
+                    if str:find("kick") or str:find("anticheat") or str:find("antifall") or str:find("teleport") or str:find("exploit") or str:find("speed") or str:find("fly") then
+                        return nil
+                    end
                 end
             end
+
             return oldNm(self, ...)
         end))
     end
+
     if hookfunction and lp and lp.Kick then
-        hookfunction(lp.Kick, newcclosure(function() return nil end))
+        hookfunction(lp.Kick, newcclosure(function(self, ...)
+            local args = {...}
+            local reason = tostring(args[1] or "Unknown")
+            warn("🛡️ [NEXUS HUB ANTI-KICK] บล็อก LocalPlayer:Kick: " .. reason)
+            return nil
+        end))
     end
+
+    local function NeutralizeCharScripts(char)
+        if not char then return end
+        for _, desc in ipairs(char:GetDescendants()) do
+            if desc:IsA("Script") or desc:IsA("LocalScript") then
+                local name = desc.Name:lower()
+                if name:find("antifall") or name:find("fall") or name:find("ragdoll") or name:find("anti") then
+                    pcall(function()
+                        desc.Disabled = true
+                        desc:Destroy()
+                    end)
+                end
+            end
+        end
+    end
+
+    if lp.Character then NeutralizeCharScripts(lp.Character) end
+    lp.CharacterAdded:Connect(NeutralizeCharScripts)
 end)
 
+-- ==============================================================================
+-- 1. ระบบบายพาสระบบตรวจจับตำแหน่ง (Anti-Fall & Anti-Cheat Grace)
+-- ==============================================================================
 GrantAntiXGrace = function(seconds)
     seconds = seconds or 25
     pcall(function()
@@ -526,20 +596,9 @@ GrantAntiXGrace = function(seconds)
     end)
 end
 
-local function NeutralizeCharScripts(char)
-    if not char then return end
-    for _, desc in ipairs(char:GetDescendants()) do
-        if desc:IsA("Script") or desc:IsA("LocalScript") then
-            local name = desc.Name:lower()
-            if name:find("antifall") or name:find("fall") or name:find("ragdoll") or name:find("anti") then
-                pcall(function() desc.Disabled = true desc:Destroy() end)
-            end
-        end
-    end
-end
-if LocalPlayer.Character then NeutralizeCharScripts(LocalPlayer.Character) end
-LocalPlayer.CharacterAdded:Connect(NeutralizeCharScripts)
-
+-- ==============================================================================
+-- 2. หาจุด Spawn Point ที่ใกล้บูธที่สุด (สำหรับระบบวาร์ปฟาร์ม)
+-- ==============================================================================
 local function GetSpawnPointForBooth(boothPos)
     local bestPt = nil
     local bestDist = math.huge
@@ -564,6 +623,9 @@ local function GetSpawnPointForBooth(boothPos)
     return bestPt
 end
 
+-- ==============================================================================
+-- 3. ระบบสปอว์นรถ (หาปุ่ม Spawn/Pound ใน GUI)
+-- ==============================================================================
 local function FindCarSpawnOrPoundButton(group, preferredCarName)
     preferredCarName = preferredCarName or "R32"
     local carFrame = group:FindFirstChild(preferredCarName, true)
