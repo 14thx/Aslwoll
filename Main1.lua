@@ -187,6 +187,36 @@ local function GetGroundLevel(x, z, fallbackY)
     return fallbackY
 end
 
+-- ==============================================================================
+-- [เพิ่ม] EnsureVehiclePlatform - สร้าง/อัปเดตแพลตฟอร์มล่องหนใต้รถ
+-- ==============================================================================
+EnsureVehiclePlatform = function(surfaceY, carPos)
+    if not isVehiclePlatformEnabled then
+        if vehiclePlatformPart then
+            vehiclePlatformPart:Destroy()
+            vehiclePlatformPart = nil
+        end
+        return
+    end
+
+    if not vehiclePlatformPart or not vehiclePlatformPart.Parent then
+        local p = Instance.new("Part")
+        p.Name = "TyperTown_VehicleSafePlatform"
+        p.Size = Vector3.new(36, 1.5, 36)
+        p.Anchored = true
+        p.CanCollide = true
+        p.Transparency = 1
+        p.Material = Enum.Material.SmoothPlastic
+        p.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.8, 0, 1, 1)
+        p.Parent = workspace
+        vehiclePlatformPart = p
+    else
+        vehiclePlatformPart.CanCollide = false
+    end
+
+    vehiclePlatformPart.CFrame = CFrame.new(carPos.X, surfaceY - 0.75, carPos.Z)
+end
+
 GetPlayerInventoryCount = function(name)
     local count = 0
     pcall(function()
@@ -534,6 +564,9 @@ pcall(function()
     LocalPlayer.CharacterAdded:Connect(DisableAntiFall)
 end)
 
+-- ==============================================================================
+-- 1. ระบบบายพาสระบบตรวจจับตำแหน่ง (Anti-Fall & Anti-Cheat Grace)
+-- ==============================================================================
 GrantAntiXGrace = function(seconds)
     seconds = seconds or 25
     pcall(function()
@@ -556,6 +589,9 @@ GrantAntiXGrace = function(seconds)
     end)
 end
 
+-- ==============================================================================
+-- 2. หาจุด Spawn Point ที่ใกล้บูธที่สุด (สำหรับระบบวาร์ปฟาร์ม)
+-- ==============================================================================
 local function GetSpawnPointForBooth(boothPos)
     local bestPt = nil
     local bestDist = math.huge
@@ -580,6 +616,9 @@ local function GetSpawnPointForBooth(boothPos)
     return bestPt
 end
 
+-- ==============================================================================
+-- 3. ระบบสปอว์นรถ (หาปุ่ม Spawn/Pound ใน GUI)
+-- ==============================================================================
 local function FindCarSpawnOrPoundButton(group, preferredCarName)
     preferredCarName = preferredCarName or "R32"
     local carFrame = group:FindFirstChild(preferredCarName, true)
