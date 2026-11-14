@@ -2870,14 +2870,15 @@ MarketCore.GetPrice = function(k) return MarketCore.Prices[k] end
 MarketCore.SetOnChange = function(fn) MarketCore.OnChange = fn end
 
 -- ==============================================================================
--- 📊 MarketTab — แสดงเฉพาะไอเทมราคาดีที่สุด (Banner อันเดียว)
+-- 📊 MarketTab — แสดงเฉพาะไอเทมราคาดีที่สุด
 -- ==============================================================================
 local MarketTab = Window:Tab({Title = "ตลาด Real-Time", Icon = "trending-up"})
 local MarketSection = MarketTab:Section({Title = "ไอเทมราคาดีที่สุด (อัปเดตอัตโนมัติ)"})
 
-local MarketBanner = MarketSection:Banner({
+-- ⭐ เปลี่ยนเป็น Paragraph (เพราะมีฟังก์ชัน :Set)
+local MarketBanner = MarketSection:Paragraph({
     Title = "📊 ราคาตลาด Real-Time",
-    SubTitle = "⏳ รอราคาจากเกม..."
+    Content = "⏳ รอราคาจากเกม..."
 })
 
 local LastShownKey = nil
@@ -2899,35 +2900,38 @@ local function GetBestFromPrices()
 end
 
 local function RefreshMarketUI()
-    local bestKey, bestPrice = GetBestFromPrices()
+    -- ⭐ ใส่ pcall กันพัง
+    pcall(function()
+        local bestKey, bestPrice = GetBestFromPrices()
 
-    if not bestKey or bestPrice <= 0 then
-        MarketBanner:Set("📊 ราคาตลาด Real-Time", "⏳ รอราคาจากเกม...")
-        LastShownKey = nil
-        LastShownPrice = 0
-        return
-    end
-
-    local dir, dirEmoji, dirText, dirColor
-    if LastShownKey == bestKey and LastShownPrice > 0 then
-        if bestPrice > LastShownPrice then
-            dir, dirEmoji, dirText, dirColor = " ↑", "📈", "ขึ้น", "🟢"
-        elseif bestPrice < LastShownPrice then
-            dir, dirEmoji, dirText, dirColor = " ↓", "📉", "ลง", "🔴"
-        else
-            dir, dirEmoji, dirText, dirColor = "", "➡️", "คงที่", "🟡"
+        if not bestKey or bestPrice <= 0 then
+            MarketBanner:Set("⏳ รอราคาจากเกม...")
+            LastShownKey = nil
+            LastShownPrice = 0
+            return
         end
-    else
-        dir, dirEmoji, dirText, dirColor = "", "✨", "ใหม่", "🔵"
-    end
 
-    MarketBanner:Set(
-        string.format("🏆 %s — %d บาท%s", bestKey, bestPrice, dir),
-        string.format("%s แนวโน้ม%s | %s", dirEmoji, dirText, dirColor)
-    )
+        local dir, dirEmoji, dirText, dirColor
+        if LastShownKey == bestKey and LastShownPrice > 0 then
+            if bestPrice > LastShownPrice then
+                dir, dirEmoji, dirText, dirColor = " ↑", "📈", "ขึ้น", "🟢"
+            elseif bestPrice < LastShownPrice then
+                dir, dirEmoji, dirText, dirColor = " ↓", "📉", "ลง", "🔴"
+            else
+                dir, dirEmoji, dirText, dirColor = "", "➡️", "คงที่", "🟡"
+            end
+        else
+            dir, dirEmoji, dirText, dirColor = "", "✨", "ใหม่", "🔵"
+        end
 
-    LastShownKey = bestKey
-    LastShownPrice = bestPrice
+        MarketBanner:Set(string.format(
+            "🏆 %s — %d บาท%s\n%s แนวโน้ม%s | %s",
+            bestKey, bestPrice, dir, dirEmoji, dirText, dirColor
+        ))
+
+        LastShownKey = bestKey
+        LastShownPrice = bestPrice
+    end)
 end
 
 RefreshMarketUI()
