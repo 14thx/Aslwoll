@@ -187,6 +187,36 @@ local function GetGroundLevel(x, z, fallbackY)
     return fallbackY
 end
 
+-- ==============================================================================
+-- [เพิ่ม] EnsureVehiclePlatform - สร้าง/อัปเดตแพลตฟอร์มล่องหนใต้รถ
+-- ==============================================================================
+EnsureVehiclePlatform = function(surfaceY, carPos)
+    if not isVehiclePlatformEnabled then
+        if vehiclePlatformPart then
+            vehiclePlatformPart:Destroy()
+            vehiclePlatformPart = nil
+        end
+        return
+    end
+
+    if not vehiclePlatformPart or not vehiclePlatformPart.Parent then
+        local p = Instance.new("Part")
+        p.Name = "TyperTown_VehicleSafePlatform"
+        p.Size = Vector3.new(36, 1.5, 36)
+        p.Anchored = true
+        p.CanCollide = true
+        p.Transparency = 1
+        p.Material = Enum.Material.SmoothPlastic
+        p.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.8, 0, 1, 1)
+        p.Parent = workspace
+        vehiclePlatformPart = p
+    else
+        vehiclePlatformPart.CanCollide = false
+    end
+
+    vehiclePlatformPart.CFrame = CFrame.new(carPos.X, surfaceY - 0.75, carPos.Z)
+end
+
 GetPlayerInventoryCount = function(name)
     local count = 0
     pcall(function()
@@ -487,7 +517,7 @@ end
 -- ==============================================================================
 pcall(function()
     local lp = Players.LocalPlayer
-    
+
     if hookmetamethod then
         local oldNm
         oldNm = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
@@ -541,6 +571,9 @@ pcall(function()
     lp.CharacterAdded:Connect(NeutralizeCharScripts)
 end)
 
+-- ==============================================================================
+-- 1. ระบบบายพาสระบบตรวจจับตำแหน่ง (Anti-Fall & Anti-Cheat Grace)
+-- ==============================================================================
 GrantAntiXGrace = function(seconds)
     seconds = seconds or 25
     pcall(function()
@@ -563,6 +596,9 @@ GrantAntiXGrace = function(seconds)
     end)
 end
 
+-- ==============================================================================
+-- 2. หาจุด Spawn Point ที่ใกล้บูธที่สุด (สำหรับระบบวาร์ปฟาร์ม)
+-- ==============================================================================
 local function GetSpawnPointForBooth(boothPos)
     local bestPt = nil
     local bestDist = math.huge
@@ -587,6 +623,9 @@ local function GetSpawnPointForBooth(boothPos)
     return bestPt
 end
 
+-- ==============================================================================
+-- 3. ระบบสปอว์นรถ (หาปุ่ม Spawn/Pound ใน GUI)
+-- ==============================================================================
 local function FindCarSpawnOrPoundButton(group, preferredCarName)
     preferredCarName = preferredCarName or "R32"
     local carFrame = group:FindFirstChild(preferredCarName, true)
@@ -2652,27 +2691,264 @@ local StatsGrid = Status:StatGrid({
     {Label = "Game", Value = GameName}, {Label = "Time", Value = "00:00:00"}
 })
 
-local MarketTab = Window:Tab({Title = "ตลาด Real-Time", Icon = "trending-up"})
-local MarketSection = MarketTab:Section({Title = "ราคาสินค้าในตลาดสด (อัปเดตอัตโนมัติ)"})
-local MarketPriceDisplay = MarketSection:Paragraph({
-    Title = "ราคาตลาดปัจจุบัน",
-    Content = "กำลังเชื่อมต่อข้อมูลราคาจากเซิร์ฟเวอร์..."
-})
+-- ==============================================================================
+-- 🌟 MarketCore — ระบบอ่านราคา + หาไอเทมดีสุด
+-- ==============================================================================
+local MarketCore = {
+    BestItem = "กำลังตรวจสอบ...",
+    BestPrice = 0,
+    BestKey = nil,
+    Prices = {},
+    IsReady = false,
+    OnChange = nil,
+}
+_G.MarketCore = MarketCore
+_G.BestFarmCurrentBestItem = "กำลังตรวจสอบ..."
+_G.BestFarmCurrentBestPrice = 0
+_G.CurrentBestItemKey = nil
+_G.RealPriceDetected = false
+_G.MarketPrices = MarketCore.Prices
+
+local GUIPathMap = {
+    Sandwich   = "Sandwish",
+    MangoRice  = "MangoRice",
+    BananaPack = "BananaPack",
+    KangSom    = "KangSom",
+}
+
+local function ParsePrice(text)
+    if not text then return nil end
+    local clean = text:gsub(",", ""):gsub("฿", ""):gsub("%$", ""):gsub("%s", "")
+    local num = tonumber(clean:match("%d+"))
+    if num and num > 0 then return num end
+    return nil
+end
+
+local WatchedScroll = nil
+local WatchedConnection = nil
+
+local function GetScrollFrame()
+    if WatchedScroll and WatchedScroll.Parent then
+        return WatchedScroll
+    end
+    local pgui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not pgui then return nil end
+    local econ = pgui:FindFirstChild("Economy")
+    if not econ then return nil end
+    local group = econ:FindFirstChild("Group")
+    if not group then return nil end
+    local main = group:FindFirstChild("Main")
+    if not main then return nil end
+    local leftTab = main:FindFirstChild("Left_Tab")
+    if not leftTab then return nil end
+    local scroll = leftTab:FindFirstChild("ScrollingFrame")
+    if not scroll then return nil end
+    WatchedScroll = scroll
+    return scroll
+end
+
+local function FindPriceLabelFromScroll(folderName)
+    local scroll = GetScrollFrame()
+    if not scroll then return nil end
+    local itemFolder = scroll:FindFirstChild(folderName)
+    if not itemFolder then return nil end
+    local cate = itemFolder:FindFirstChild("Cate")
+    if not cate then return nil end
+    return cate:FindFirstChild("Price")
+end
+
+local LastBestKey = nil
+local LastBestPrice = 0
+
+local function RecomputeBest()
+    local bestKey, bestPrice = nil, 0
+    for itemKey, price in pairs(MarketCore.Prices) do
+        if price > bestPrice then bestKey, bestPrice = itemKey, price end
+    end
+
+    if not bestKey or bestPrice <= 0 then
+        MarketCore.BestItem = "ไม่ทราบ"
+        MarketCore.BestPrice = 0
+        MarketCore.BestKey = nil
+        MarketCore.IsReady = false
+        _G.BestFarmCurrentBestItem = "ไม่ทราบ"
+        _G.BestFarmCurrentBestPrice = 0
+        _G.CurrentBestItemKey = nil
+        _G.RealPriceDetected = false
+        LastBestKey = nil
+        LastBestPrice = 0
+        return
+    end
+
+    MarketCore.BestItem = bestKey
+    MarketCore.BestPrice = bestPrice
+    MarketCore.BestKey = bestKey
+    MarketCore.IsReady = true
+    _G.BestFarmCurrentBestItem = bestKey
+    _G.BestFarmCurrentBestPrice = bestPrice
+    _G.CurrentBestItemKey = bestKey
+    _G.RealPriceDetected = true
+
+    if MarketCore.OnChange then
+        pcall(function()
+            MarketCore.OnChange(bestKey, LastBestKey, bestPrice, LastBestPrice)
+        end)
+    end
+
+    LastBestKey = bestKey
+    LastBestPrice = bestPrice
+end
+
+local HookedLabels = {}
+
+local function HookPriceLabel(itemKey, priceLbl)
+    if not priceLbl or HookedLabels[priceLbl] then return end
+    HookedLabels[priceLbl] = true
+
+    local p = ParsePrice(priceLbl.Text)
+    if p then MarketCore.Prices[itemKey] = p end
+
+    priceLbl:GetPropertyChangedSignal("Text"):Connect(function()
+        local newPrice = ParsePrice(priceLbl.Text)
+        if newPrice then
+            local oldPrice = MarketCore.Prices[itemKey] or 0
+            if newPrice ~= oldPrice then
+                MarketCore.Prices[itemKey] = newPrice
+                RecomputeBest()
+            end
+        end
+    end)
+
+    priceLbl.AncestryChanged:Connect(function()
+        if not priceLbl:IsDescendantOf(game) then
+            HookedLabels[priceLbl] = nil
+        end
+    end)
+end
+
+local function ScanAll()
+    local scroll = GetScrollFrame()
+    if not scroll then return end
+    for itemKey, folderName in pairs(GUIPathMap) do
+        local priceLbl = FindPriceLabelFromScroll(folderName)
+        if priceLbl then HookPriceLabel(itemKey, priceLbl) end
+    end
+end
+
+local function WatchScroll()
+    local scroll = GetScrollFrame()
+    if not scroll then return end
+    if scroll == WatchedScroll and WatchedConnection then return end
+
+    if WatchedConnection then
+        WatchedConnection:Disconnect()
+        WatchedConnection = nil
+    end
+
+    WatchedScroll = scroll
+    WatchedConnection = scroll.DescendantAdded:Connect(function(desc)
+        if desc.Name == "Price" then
+            for itemKey, folderName in pairs(GUIPathMap) do
+                local itemFolder = scroll:FindFirstChild(folderName)
+                if itemFolder and desc:IsDescendantOf(itemFolder) then
+                    HookPriceLabel(itemKey, desc)
+                    break
+                end
+            end
+        end
+    end)
+end
+
+ScanAll()
+WatchScroll()
+RecomputeBest()
 
 task.spawn(function()
     while true do
-        task.wait(1.5)
-        pcall(function()
-            local currentPrices = GetRealMarketPrices()
-            local text = "📊 [ราคาสินค้าหลักในตลาด]\n"
-            for item, price in pairs(currentPrices) do
-                text = text .. "🔹 " .. tostring(item) .. " : 💰 " .. tostring(price) .. " บาท\n"
-            end
-            MarketPriceDisplay:Set(text)
-        end)
+        task.wait(2)
+        pcall(ScanAll)
+        pcall(WatchScroll)
     end
 end)
 
+MarketCore.GetBest = function() return MarketCore.BestKey, MarketCore.BestPrice end
+MarketCore.GetAllPrices = function() return MarketCore.Prices end
+MarketCore.GetPrice = function(k) return MarketCore.Prices[k] end
+MarketCore.SetOnChange = function(fn) MarketCore.OnChange = fn end
+
+-- ==============================================================================
+-- 📊 MarketTab — แสดงเฉพาะไอเทมราคาดีที่สุด (Banner อันเดียว)
+-- ==============================================================================
+local MarketTab = Window:Tab({Title = "ตลาด Real-Time", Icon = "trending-up"})
+local MarketSection = MarketTab:Section({Title = "ไอเทมราคาดีที่สุด (อัปเดตอัตโนมัติ)"})
+
+local MarketBanner = MarketSection:Banner({
+    Title = "📊 ราคาตลาด Real-Time",
+    SubTitle = "⏳ รอราคาจากเกม..."
+})
+
+local LastShownKey = nil
+local LastShownPrice = 0
+
+local function GetBestFromPrices()
+    local bestKey, bestPrice = nil, 0
+    local prices = _G.RealTimePrices or {}
+    for itemKey, aliases in pairs(ItemAliases) do
+        for _, alias in ipairs(aliases) do
+            local p = prices[alias] or prices[itemKey]
+            if type(p) == "number" and p > 0 then
+                if p > bestPrice then bestKey, bestPrice = itemKey, p end
+                break
+            end
+        end
+    end
+    return bestKey, bestPrice
+end
+
+local function RefreshMarketUI()
+    local bestKey, bestPrice = GetBestFromPrices()
+
+    if not bestKey or bestPrice <= 0 then
+        MarketBanner:Set("📊 ราคาตลาด Real-Time", "⏳ รอราคาจากเกม...")
+        LastShownKey = nil
+        LastShownPrice = 0
+        return
+    end
+
+    local dir, dirEmoji, dirText, dirColor
+    if LastShownKey == bestKey and LastShownPrice > 0 then
+        if bestPrice > LastShownPrice then
+            dir, dirEmoji, dirText, dirColor = " ↑", "📈", "ขึ้น", "🟢"
+        elseif bestPrice < LastShownPrice then
+            dir, dirEmoji, dirText, dirColor = " ↓", "📉", "ลง", "🔴"
+        else
+            dir, dirEmoji, dirText, dirColor = "", "➡️", "คงที่", "🟡"
+        end
+    else
+        dir, dirEmoji, dirText, dirColor = "", "✨", "ใหม่", "🔵"
+    end
+
+    MarketBanner:Set(
+        string.format("🏆 %s — %d บาท%s", bestKey, bestPrice, dir),
+        string.format("%s แนวโน้ม%s | %s", dirEmoji, dirText, dirColor)
+    )
+
+    LastShownKey = bestKey
+    LastShownPrice = bestPrice
+end
+
+RefreshMarketUI()
+
+task.spawn(function()
+    while true do
+        task.wait(1)
+        pcall(RefreshMarketUI)
+    end
+end)
+
+-- =====================================
+-- FPS / PING LOOP
+-- =====================================
 local fc, lu = 0, os.clock()
 RunService.RenderStepped:Connect(function()
     fc += 1
