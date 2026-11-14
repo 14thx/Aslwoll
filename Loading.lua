@@ -1,6 +1,6 @@
 -- ==========================================
--- MarvenRiz Hub Loading Screen (Module)
--- ไฟล์นี้เป็น Module: อัปโหลดทับ Loading.lua บน GitHub
+-- MarvenRiz Hub Loading Screen (Module) — PATCHED
+-- ไม่ใช้ BlurEffect (เกมตรวจเจอ → เตะ)
 -- ==========================================
 
 local Players = game:GetService("Players")
@@ -12,7 +12,8 @@ local PlayerGui = Player:WaitForChild("PlayerGui")
 
 local started = false
 local finished = false
-local Gui, Blur, Card, ProgressFill, Status, PercentLabel
+local Gui, Card, ProgressFill, Status, PercentLabel
+-- ⭐ ไม่มี Blur แล้ว
 
 -- ฟังก์ชัน Animation
 local function tween(obj, duration, props)
@@ -30,19 +31,11 @@ local function StartLoading()
 
     local oldGui = PlayerGui:FindFirstChild("MarvenRizLoading")
     if oldGui then oldGui:Destroy() end
-    local oldBlur = Lighting:FindFirstChild("MarvenRizBlur")
-    if oldBlur then oldBlur:Destroy() end
-
-    -- สร้าง Blur Effect
-    Blur = Instance.new("BlurEffect")
-    Blur.Name = "MarvenRizBlur"
-    Blur.Size = 0
-    Blur.Parent = Lighting
-    tween(Blur, 0.45, {Size = 18})
+    -- ⭐ ไม่มี Blur ให้ลบ
 
     -- สร้าง GUI หลัก
     Gui = Instance.new("ScreenGui")
-    Gui.Name = "MarvenRizLoading"
+    Gui.Name = "MarvenRizLoading"  -- ⭐ ชื่อนี้ไม่ซ้ำกับที่เกม blocklist
     Gui.IgnoreGuiInset = true
     Gui.ResetOnSpawn = false
     Gui.DisplayOrder = 999
@@ -50,7 +43,10 @@ local function StartLoading()
 
     local Background = Instance.new("Frame")
     Background.Size = UDim2.fromScale(1, 1)
-    Background.BackgroundTransparency = 1
+    -- ⭐ ใช้ Background Transparency แทน BlurEffect
+    Background.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    Background.BackgroundTransparency = 0.5  -- ⭐ มืดจางๆ แทน blur
+    Background.BorderSizePixel = 0
     Background.Parent = Gui
 
     -- กล่องการ์ด
@@ -149,7 +145,7 @@ local function SetProgress(percent, message)
     end
 end
 
--- ฟังก์ชันซ่อนหน้าโหลด (ทำให้จางหาย)
+-- ฟังก์ชันซ่อนหน้าโหลด
 local function HideLoading()
     if not started then return end
     started = false
@@ -169,14 +165,12 @@ local function HideLoading()
         end
     end
 
-    if Blur then tween(Blur, 0.4, {Size = 0}) end
     task.wait(0.45)
 
     if Gui then Gui:Destroy() end
-    if Blur then Blur:Destroy() end
 end
 
--- ฟังก์ชันปิดหน้าโหลด (แบบเดิม)
+-- ฟังก์ชันปิดหน้าโหลด
 local function FinishLoading()
     if not started or finished then return end
     finished = true
@@ -186,12 +180,9 @@ local function FinishLoading()
     HideLoading()
 end
 
--- ==========================================
--- ส่งออกฟังก์ชันให้ Main เรียกใช้
--- ==========================================
 return {
     Start = StartLoading,
     SetProgress = SetProgress,
-    Hide = HideLoading,   -- สั่งซ่อนได้ก่อนกำหนด
+    Hide = HideLoading,
     Finish = FinishLoading,
 }
