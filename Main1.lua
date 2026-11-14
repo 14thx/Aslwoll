@@ -1519,7 +1519,7 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
 end
 
 -- =====================================
--- PROCESS BANANA (แยกกับแปรรูปแร่ชัดเจน)
+-- PROCESS BANANA (แยกกับแปรรูปแร่ชัดเจน) (แก้บัคหลงไปเตาแร่)
 -- =====================================
 ProcessBananaAtStation = function(shouldContinueCheck)
     if shouldContinueCheck and not shouldContinueCheck() then return end
@@ -1536,42 +1536,80 @@ ProcessBananaAtStation = function(shouldContinueCheck)
     if myCar then EnsurePlayerSeatedInCar(myCar) end
     if shouldContinueCheck and not shouldContinueCheck() then return end
 
-    local pBan = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Process") and workspace.Systems.Process:FindFirstChild("Banana")
-    local pPrompt = pBan and pBan:FindFirstChild("Prompt")
+    -- 🛑 [FIX] หา Folder ของ "Banana" โดยเฉพาะ ไม่ให้หลงไป Rock
+    local processSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Process")
+    local pBan = processSys and processSys:FindFirstChild("Banana")
+    
     local bPos = nil
-    if pPrompt then
-        bPos = (pPrompt:IsA("Attachment") and pPrompt.WorldPosition)
-            or (pPrompt:IsA("BasePart") and pPrompt.Position)
-            or (pPrompt:FindFirstChildWhichIsA("BasePart") and pPrompt:FindFirstChildWhichIsA("BasePart").Position)
+    local procPrompt = nil
+    
+    -- หาตำแหน่ง Prompt ของกล้วย
+    if pBan then
+        -- หา ProximityPrompt ทั้งหมดในโฟลเดอร์ Banana
+        for _, desc in ipairs(pBan:GetDescendants()) do
+            if desc:IsA("ProximityPrompt") then
+                procPrompt = desc
+                local p = desc.Parent
+                bPos = (p:IsA("Attachment") and p.WorldPosition) 
+                    or (p:IsA("BasePart") and p.Position)
+                    or (p.Parent and p.Parent:IsA("BasePart") and p.Parent.Position)
+                if bPos then break end
+            end
+        end
+        
+        -- ถ้าหา Prompt ไม่เจอ ให้หาจาก Part แรกในโฟลเดอร์
+        if not bPos then
+            local anyPart = pBan:FindFirstChildWhichIsA("BasePart", true)
+            if anyPart then bPos = anyPart.Position end
+        end
     end
-    if not bPos and pBan then
-        local anyPart = pBan:FindFirstChildWhichIsA("BasePart", true)
-        if anyPart then bPos = anyPart.Position end
-    end
+    
+    -- ถ้าหาไม่เจอเลย ให้ใช้พิกัดสำรองของกล้วย
     local exactBanPos = bPos or foodData.BananaProcess
 
+    -- ขับรถไปสถานีกล้วย
     DriveCarTo(exactBanPos + Vector3.new(0, 0, 5.0), shouldContinueCheck)
-    task.wait(0.1)
+    task.wait(0.2)
     if shouldContinueCheck and not shouldContinueCheck() then return end
 
-    if hum.Sit then hum.Sit = false task.wait(0.1) end
-    local standPos = exactBanPos + Vector3.new(0, 0, 2.5)
-    local groundY = GetGroundLevel(standPos.X, standPos.Z, standPos.Y)
-    root.CFrame = CFrame.lookAt(Vector3.new(standPos.X, groundY + 3.0, standPos.Z), exactBanPos)
-    task.wait(0.1)
+    -- ออกจากรถ
+    if hum.Sit then hum.Sit = false task.wait(0.2) end
+    
+    -- 🛑 [FIX] ยืนห่างจากจุด Prompt 3.5 studs เพื่อไม่ให้เบียดกับรถหรือตัวเครื่อง
+    local groundY = GetGroundLevel(exactBanPos.X, exactBanPos.Z, exactBanPos.Y)
+    local standPos = Vector3.new(exactBanPos.X, groundY + 3.0, exactBanPos.Z + 3.5)
+    root.CFrame = CFrame.lookAt(standPos, exactBanPos)
+    root.AssemblyLinearVelocity = Vector3.zero
+    task.wait(0.2)
 
-    local procPrompt = pBan and pBan:FindFirstChildWhichIsA("ProximityPrompt", true)
-    if not procPrompt then procPrompt = FindPromptNear(root.Position, 15, nil) end
-    if procPrompt then TriggerPrompt(procPrompt) else TriggerFarmPromptDirectly("Banana") end
-    task.wait(0.3)
+    -- กด Prompt
+    if not procPrompt then 
+        procPrompt = FindPromptNear(root.Position, 15, nil) 
+    end
+    
+    if procPrompt then 
+        procPrompt.Enabled = true
+        pcall(function() procPrompt.HoldDuration = 0 end)
+        TriggerPrompt(procPrompt) 
+        task.wait(0.5)
+    end
 
+    -- แจ้ง Server เริ่ม Process Banana
     pcall(function()
         local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if rc then require(rc).Fire("_process", "Start", "Banana") end
     end)
 
+    -- 🛑 [FIX] รอจน GUI เปิดจริง ถ้าไม่เปิดให้กด Prompt ซ้ำ
+    local tWaitGui = os.clock()
+    local pg = PlayerGui:FindFirstChild("Process")
+    while (not pg or not pg:FindFirstChild("Group") or not pg.Group.Visible) and os.clock() - tWaitGui < 3.0 do
+        if procPrompt then TriggerPrompt(procPrompt) end
+        task.wait(0.3)
+        pg = PlayerGui:FindFirstChild("Process")
+    end
+
     pcall(function()
-        local pg = PlayerGui:FindFirstChild("Process")
         if pg and pg:FindFirstChild("Group") then
             pg.Group.Visible = true
             pg.Group.GroupTransparency = 0
@@ -1579,29 +1617,42 @@ ProcessBananaAtStation = function(shouldContinueCheck)
     end)
     task.wait(0.3)
 
-    pcall(function()
-        local pg = PlayerGui:FindFirstChild("Process")
-        if pg and pg:FindFirstChild("Group") then
-            local main = pg.Group:FindFirstChild("Main")
-            local ab = main and (main:FindFirstChild("ActionBtn") or main:FindFirstChild("ActionBtn", true))
-            if ab and firesignal then firesignal(ab.MouseButton1Click) end
-        end
-    end)
+    -- ลูปกดแปรรูป
     local tProc = os.clock()
+    local lastCount = GetPlayerInventoryCount("Banana")
+    
     while (GetPlayerInventoryCount("Banana") >= 2) and (os.clock() - tProc < 120) do
         if shouldContinueCheck and not shouldContinueCheck() then break end
         GrantAntiXGrace(15)
+        
+        -- กดปุ่ม ActionBtn
         pcall(function()
-            local pg = PlayerGui:FindFirstChild("Process")
-            if pg and pg:FindFirstChild("Group") then
-                local main = pg.Group:FindFirstChild("Main")
+            local currentPg = PlayerGui:FindFirstChild("Process")
+            if currentPg and currentPg:FindFirstChild("Group") then
+                local main = currentPg.Group:FindFirstChild("Main")
                 local ab = main and (main:FindFirstChild("ActionBtn") or main:FindFirstChild("ActionBtn", true))
-                if ab and firesignal then firesignal(ab.MouseButton1Click) end
+                if ab and firesignal then 
+                    firesignal(ab.MouseButton1Click) 
+                elseif procPrompt then
+                    TriggerPrompt(procPrompt)
+                end
             end
         end)
-        task.wait(3.2)
+        
+        task.wait(1.5) -- ลดเวลารอเพื่อกดถี่ขึ้น
+        
+        -- ถ้ากดแล้วของไม่ลด ให้กด Prompt ใหม่
+        local newCount = GetPlayerInventoryCount("Banana")
+        if newCount == lastCount and (os.clock() - tProc > 5) then
+            if procPrompt then 
+                procPrompt.Enabled = true
+                TriggerPrompt(procPrompt) 
+            end
+        end
+        lastCount = newCount
     end
 
+    -- หยุด Process
     pcall(function()
         local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if rc then require(rc).Fire("_process", "Stop", "Banana") end
@@ -1617,7 +1668,7 @@ ProcessBananaAtStation = function(shouldContinueCheck)
             procGui.Group.Visible = false
         end
     end)
-    task.wait(3.0)
+    task.wait(2.0)
 
     local myCar2 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
     if myCar2 then EnsurePlayerSeatedInCar(myCar2) end
