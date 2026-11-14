@@ -15,10 +15,7 @@ for _, url in ipairs({"https://raw.githubusercontent.com/14thx/Aslwoll/main/RayV
         if not src or #src < 1000 then error("empty") end
         return loadstring(src)()
     end)
-    if ok and res then
-        UI = res
-        break
-    end
+    if ok and res then UI = res break end
 end
 if not UI then
     pcall(function() if Loading and Loading.Hide then Loading.Hide() end end)
@@ -73,86 +70,6 @@ safeFloorPart = nil
 
 _G.RealTimePrices = _G.RealTimePrices or {}
 local RealTimePrices = _G.RealTimePrices
-
--- ==============================================================================
--- REAL-TIME MARKET FEED (ดักราคาจาก _economy remote)
--- ==============================================================================
-local MarketFeed = {
-    Prices = {},
-    NormalPrices = {},
-    Timer = 0,
-    LastUpdate = 0,
-    ValidItems = {},
-    _configLoaded = false,
-    _reqThread = nil,
-}
-
-local function LoadEconomyConfig()
-    if MarketFeed._configLoaded then return true end
-    local ok = pcall(function()
-        local cfg = require(
-            ReplicatedStorage:WaitForChild("Systems")
-                :WaitForChild("Config"):WaitForChild("Economy_Config")
-        )
-        for itemName, data in pairs(cfg) do
-            MarketFeed.ValidItems[itemName] = true
-            local minP = tonumber(data.Min) or 0
-            local maxP = tonumber(data.Max) or 0
-            MarketFeed.NormalPrices[itemName] =
-                tonumber(data.Normal) or math.floor((minP + maxP) / 2)
-        end
-    end)
-    MarketFeed._configLoaded = ok
-    return ok
-end
-
-function MarketFeed.Start()
-    LoadEconomyConfig()
-    pcall(function()
-        local modules = ReplicatedStorage:WaitForChild("Systems"):WaitForChild("Modules")
-        local remotes = require(modules:WaitForChild("Core"):WaitForChild("Remotes"))
-        remotes.On("_economy", function(action, data, timer)
-            if timer then MarketFeed.Timer = timer end
-            if (action == "Update" or action == "Open") and type(data) == "table" then
-                MarketFeed.LastUpdate = os.clock()
-                for itemName, price in pairs(data) do
-                    if type(price) == "number" then
-                        MarketFeed.Prices[itemName] = price
-                    end
-                end
-            end
-        end)
-        MarketFeed._reqThread = task.spawn(function()
-            while true do
-                task.wait(8)
-                pcall(function() remotes.Fire("_economy", "Request") end)
-            end
-        end)
-        task.delay(1, function()
-            pcall(function() remotes.Fire("_economy", "Request") end)
-        end)
-    end)
-end
-
-function MarketFeed.GetPrice(itemName)
-    return MarketFeed.Prices[itemName]
-        or MarketFeed.NormalPrices[itemName]
-        or 0
-end
-
-function MarketFeed.GetNormalPrice(itemName)
-    return MarketFeed.NormalPrices[itemName] or 0
-end
-
-function MarketFeed.GetDeviation(itemName)
-    local cur = MarketFeed.GetPrice(itemName)
-    local norm = MarketFeed.GetNormalPrice(itemName)
-    if norm <= 0 then return 0 end
-    return ((cur - norm) / norm) * 100
-end
-
-MarketFeed.Start()
-_G.MarketFeed = MarketFeed
 
 -- ==============================================================================
 -- 🌟 พิกัดสถานที่ & ข้อมูลไอเทมในเกม
@@ -548,10 +465,6 @@ end
 
 pcall(function()
     local lp = Players.LocalPlayer
-    if not hookmetamethod or not newcclosure then
-        warn("[MarvenRiz] Executor ไม่รองรับ hookmetamethod — Anti-Kick จะไม่ทำงาน")
-        return
-    end
     if hookmetamethod then
         local oldNm
         oldNm = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
@@ -875,11 +788,6 @@ ExitCarNaturally = function(car)
     task.wait(0.15)
 end
 
--- ==============================================================================
--- [PATCH B1] Forward declare — กัน SmoothWalkTo เรียกฟังก์ชันที่ยังไม่ประกาศ
--- ==============================================================================
-local FindBoothPromptNear
-
 SmoothWalkTo = function(targetPos, maxTimeout, shouldContinueCheck, stopDist)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -934,9 +842,6 @@ GetNearestCarBooth = function(fromPos)
     return best or TOWN_CAR_SPAWN
 end
 
--- ==============================================================================
--- [PATCH B2] ประกาศจริง (ไม่มี local เพราะ forward declare ไว้แล้ว)
--- ==============================================================================
 FindBoothPromptNear = function(fromPos, maxDist)
     fromPos = fromPos or (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character.HumanoidRootPart.Position)
     if not fromPos then return nil end
@@ -2580,9 +2485,6 @@ StopAutoFishing = function()
     end)
 end
 
--- ==============================================================================
--- ECONOMY PATCH — อัปเดต MarketFeed จาก _economy remote (ขาเสริม)
--- ==============================================================================
 pcall(function()
     local modules = ReplicatedStorage:WaitForChild("Systems"):WaitForChild("Modules")
     local remotes = require(modules:WaitForChild("Core"):WaitForChild("Remotes"))
@@ -2590,23 +2492,24 @@ pcall(function()
     remotes.On("_economy", function(p1, p2, p3, p4)
         if p3 then
             _G.EconomyTimer = p3
-            MarketFeed.Timer = p3
         end
         if (p1 == "Update" or p1 == "Open") and type(p2) == "table" then
-            MarketFeed.LastUpdate = os.clock()
             for itemName, price in pairs(p2) do
                 if type(price) == "number" then 
-                    RealTimePrices[itemName] = price
-                    MarketFeed.Prices[itemName] = price
+                    RealTimePrices[itemName] = price 
                 end
             end
         end
     end)
+    
+    task.spawn(function()
+        while true do
+            task.wait(3)
+            pcall(function() remotes.Fire("_economy", "Request") end)
+        end
+    end)
 end)
 
--- ==============================================================================
--- ANTI-HOP SYSTEM
--- ==============================================================================
 getgenv().VisitedTyperServers = getgenv().VisitedTyperServers or {}
 pcall(function()
     local now = os.clock()
@@ -2665,9 +2568,6 @@ task.spawn(function()
     end
 end)
 
--- ==============================================================================
--- SESSION STATE
--- ==============================================================================
 local MarvenState = {
     AutoEat = true, AutoFarmItem = false, AutoProcessFarm = false, AutoMineFarm = false, AutoFish = false, InfiniteStamina = false, InfiniteHunger = false
 }
@@ -2697,9 +2597,7 @@ local Window = UI:CreateWindow({
 })
 Window:SetTheme({ Accent = Color3.fromRGB(0, 110, 255) })
 
--- =====================================
--- TAB: สถานะ
--- =====================================
+-- STATUS
 local StatusTab = Window:Tab({Title = "สถานะ", Icon = "activity"})
 local Status = StatusTab:Section({Title = "ข้อมูลผู้เล่น"})
 Status:Banner({Title = "MarvenRiz Hub [v2.5]", SubTitle = "🔗 NEXUS Engine + ระบบคราฟสมบูรณ์ + เมนูภาษาไทย"})
@@ -2709,124 +2607,27 @@ local StatsGrid = Status:StatGrid({
     {Label = "Game", Value = GameName}, {Label = "Time", Value = "00:00:00"}
 })
 
--- =====================================
--- TAB: ตลาด Real-Time
--- =====================================
 local MarketTab = Window:Tab({Title = "ตลาด Real-Time", Icon = "trending-up"})
-local MarketSection = MarketTab:Section({Title = "ราคาสินค้าในตลาดสด (Real-Time)"})
-
-local MarketStatus = MarketSection:Paragraph({
-    Title = "สถานะ",
-    Content = "⏳ กำลังเชื่อมต่อ..."
-})
-
+local MarketSection = MarketTab:Section({Title = "ราคาสินค้าในตลาดสด (อัปเดตอัตโนมัติ)"})
 local MarketPriceDisplay = MarketSection:Paragraph({
-    Title = "ชื่อสินค้า / ราคาตลาด",
-    Content = "กำลังโหลด..."
+    Title = "ราคาตลาดปัจจุบัน",
+    Content = "กำลังเชื่อมต่อข้อมูลราคาจากเซิร์ฟเวอร์..."
 })
-
--- สถานะตัวกรอง
-local MarketFilter = {
-    OnlyGood = false,
-    Threshold = 15,
-}
-
-MarketSection:Toggle({
-    Title = "แสดงเฉพาะราคาที่สูงกว่าปกติ",
-    Default = false,
-    Callback = function(v)
-        MarketFilter.OnlyGood = v
-    end
-})
-
-MarketSection:Slider({
-    Title = "เกณฑ์ % (สูงกว่าปกติ)",
-    Default = 15,
-    Min = 0,
-    Max = 100,
-    Rounding = 0,
-    Callback = function(v)
-        MarketFilter.Threshold = math.floor(v)
-    end
-})
-
-local function FormatNum(n)
-    local s = tostring(math.floor(n or 0))
-    return s:reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
-end
-
-local function RenderPriceList()
-    local list = {}
-    for itemName in pairs(MarketFeed.ValidItems) do
-        local price = MarketFeed.GetPrice(itemName)
-        if price > 0 then
-            local dev = MarketFeed.GetDeviation(itemName)
-            if not MarketFilter.OnlyGood or dev >= MarketFilter.Threshold then
-                table.insert(list, {
-                    name = itemName,
-                    price = price,
-                    dev = dev,
-                })
-            end
-        end
-    end
-
-    if MarketFilter.OnlyGood then
-        table.sort(list, function(a, b) return a.dev > b.dev end)
-    else
-        table.sort(list, function(a, b) return a.name < b.name end)
-    end
-
-    if #list == 0 then
-        if MarketFilter.OnlyGood then
-            return "(ยังไม่มีสินค้าที่ราคาสูงกว่าปกติ ≥" .. MarketFilter.Threshold .. "% — รอสักครู่)"
-        end
-        return "(ยังไม่มีข้อมูลราคา — รอสักครู่)"
-    end
-
-    local lines = {}
-    for _, it in ipairs(list) do
-        if MarketFilter.OnlyGood then
-            table.insert(lines, string.format(
-                "🔹 %-16s 💰 %s (+%.0f%%)",
-                it.name, FormatNum(it.price), it.dev
-            ))
-        else
-            table.insert(lines, string.format(
-                "🔹 %-18s 💰 %s",
-                it.name, FormatNum(it.price)
-            ))
-        end
-    end
-    return table.concat(lines, "\n")
-end
 
 task.spawn(function()
     while true do
-        task.wait(2)
+        task.wait(1.5)
         pcall(function()
-            local ago = MarketFeed.LastUpdate > 0
-                and string.format("%.0f วิที่แล้ว", os.clock() - MarketFeed.LastUpdate)
-                or "ยังไม่ได้รับข้อมูล"
-            local count = 0
-            for _ in pairs(MarketFeed.Prices) do count = count + 1 end
-            local timerStr = ""
-            if MarketFeed.Timer > 0 then
-                local remain = math.max(0, MarketFeed.Timer - os.time())
-                timerStr = string.format(" | ⏱ %02d:%02d", math.floor(remain/60), remain%60)
+            local currentPrices = GetRealMarketPrices()
+            local text = "📊 [ราคาสินค้าหลักในตลาด]\n"
+            for item, price in pairs(currentPrices) do
+                text = text .. "🔹 " .. tostring(item) .. " : 💰 " .. tostring(price) .. " บาท\n"
             end
-            MarketStatus:Set(string.format(
-                "🔄 อัปเดตล่าสุด: %s | 📦 %d ไอเท็ม%s",
-                ago, count, timerStr
-            ))
-            MarketPriceDisplay:Set(RenderPriceList())
+            MarketPriceDisplay:Set(text)
         end)
     end
 end)
 
--- =====================================
--- FPS/PING LOOP
--- =====================================
 local fc, lu = 0, os.clock()
 RunService.RenderStepped:Connect(function()
     fc += 1
@@ -2912,7 +2713,7 @@ local function RunMineFarm()
 end
 
 -- =====================================
--- TAB: ตั้งค่า
+-- TABS & CONTROLS
 -- =====================================
 local SettingsTab = Window:Tab({Title = "ตั้งค่า", Icon = "settings"})
 local Settings = SettingsTab:Section({Title = "ตั้งค่าทั่วไป"})
@@ -2943,9 +2744,6 @@ Settings:Toggle({
     end
 })
 
--- =====================================
--- TAB: ฟาร์ม
--- =====================================
 local FarmTab = Window:Tab({Title = "ฟาร์ม", Icon = "sprout"})
 local NormalFarm = FarmTab:Section({Title = "ฟาร์มปกติ"})
 NormalFarm:Dropdown({
@@ -2992,9 +2790,6 @@ MineFarm:Toggle({
     Callback = function(v) MarvenState.AutoMineFarm = v if v then RunMineFarm() else StopSession("AutoMineFarm") end end
 })
 
--- =====================================
--- TAB: อื่นๆ
--- =====================================
 local OtherTab = Window:Tab({Title = "อื่นๆ", Icon = "layers"})
 local FishSection = OtherTab:Section({Title = "ระบบตกปลา"})
 FishSection:Toggle({
@@ -3002,9 +2797,6 @@ FishSection:Toggle({
     Callback = function(v) MarvenState.AutoFish = v if v then pcall(StartAutoFishing) else pcall(StopAutoFishing) end end
 })
 
--- =====================================
--- TAB: ขั้นสูง
--- =====================================
 local AdvTab = Window:Tab({Title = "ขั้นสูง", Icon = "sliders"})
 local SpeedSection = AdvTab:Section({Title = "ความเร็วยานพาหนะ"})
 SpeedSection:Slider({
@@ -3037,20 +2829,13 @@ UnloadSection:Button({
             if _G._MarvenHungerConn then _G._MarvenHungerConn:Disconnect() _G._MarvenHungerConn = nil end
             if vehiclePlatformPart then vehiclePlatformPart:Destroy() end
             if fishingPlatform then fishingPlatform:Destroy() end
-            if MarketFeed.Stop then MarketFeed.Stop() end
         end)
         pcall(function() Window:Destroy() end)
     end
 })
 
--- =====================================
--- TAB: Config
--- =====================================
 local ConfigTab = Window:Tab({Title = "Config", Icon = "folder-cog"})
 local ConfigSection = ConfigTab:Section({Title = "CONFIG"})
-pcall(function() ConfigSection:ConfigManager() end)
+ConfigSection:ConfigManager()
 
--- =====================================
--- ปิด Loading
--- =====================================
 pcall(function() if Loading and Loading.Hide then Loading.Hide() end end)
