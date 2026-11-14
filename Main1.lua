@@ -1624,7 +1624,7 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
 end
 
 -- =====================================
--- PROCESS BANANA (แก้ไขปรับปรุงเสถียรภาพแล้ว)
+-- PROCESS BANANA (ขับรถไป -> จอด -> ล็อคความเร็ว -> แปรรูปทันที)
 -- =====================================
 ProcessBananaAtStation = function(shouldContinueCheck)
     GrantAntiXGrace(30)
@@ -1634,11 +1634,12 @@ ProcessBananaAtStation = function(shouldContinueCheck)
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not root or not hum then return end
 
-    -- 1. จัดการยานพาหนะและการเดินทาง
+    -- 1. จัดการยานพาหนะ
     local myCar = GetPlayerVehicle()
     if not myCar or not hum.Sit then myCar = EnsureCarAvailable() end
     if myCar then EnsurePlayerSeatedInCar(myCar) end
 
+    -- 2. หาพิกัดเครื่องแปรรูป
     local pBan = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Process") and workspace.Systems.Process:FindFirstChild("Banana")
     local pPrompt = pBan and pBan:FindFirstChild("Prompt")
     local bPos = nil
@@ -1650,30 +1651,43 @@ ProcessBananaAtStation = function(shouldContinueCheck)
         if anyPart then bPos = anyPart.Position end
     end
     local exactBanPos = bPos or foodData.BananaProcess
-    
+
+    -- 3. 🚗 ขับรถไปที่จุดหมาย
     DriveCarTo(exactBanPos + Vector3.new(0, 0, 5.0), shouldContinueCheck)
-    task.wait(0.2)
+    
     if shouldContinueCheck and not shouldContinueCheck() then return end
 
-    -- 2. ออกจากรถและจัดตำแหน่งตัวละคร
-    if hum.Sit then hum.Sit = false task.wait(0.2) end
+    -- 4. 🛑 จอดรถและลงจากรถ
+    if hum.Sit then 
+        hum.Sit = false 
+        task.wait(0.2) -- รอแป๊บเดียวให้หลุดจากที่นั่ง
+    end
+    
+    -- 5. ล็อคความเร็วและจัดตำแหน่ง (Zero Velocity Lock)
     local standPos = exactBanPos + Vector3.new(0, 0, 2.5)
     local groundY = GetGroundLevel(standPos.X, standPos.Z, standPos.Y)
+    
+    -- ล็อคตำแหน่งและความเร็วให้เป็นศูนย์ทันที
     root.CFrame = CFrame.lookAt(Vector3.new(standPos.X, groundY + 3.0, standPos.Z), exactBanPos)
-    task.wait(0.3)
+    root.AssemblyLinearVelocity = Vector3.zero
+    root.AssemblyAngularVelocity = Vector3.zero
+    
+    -- ล็อคซ้ำอีกรอบเพื่อความชัวร์ (ระบบจะได้ไม่จับความเร็วตกค้าง)
+    task.wait(0.1)
+    root.AssemblyLinearVelocity = Vector3.zero
+    root.AssemblyAngularVelocity = Vector3.zero
 
-    -- 3. เปิด UI แปรรูป
+    -- 6. เปิด UI แปรรูปทันที
     local procPrompt = pBan and pBan:FindFirstChildWhichIsA("ProximityPrompt", true)
     if not procPrompt then procPrompt = FindPromptNear(root.Position, 15, nil) end
     if procPrompt then TriggerPrompt(procPrompt) end
     
-    -- ส่งคำสั่งเปิดผ่าน Remotes (เผื่อ UI ไม่ขึ้น)
     pcall(function()
         local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if rc then require(rc).Fire("_process", "Start", "Banana") end
     end)
 
-    -- 4. รอให้ UI ขึ้นจริงๆ (เพิ่มจุดนี้เพื่อแก้ปัญหากดไม่ติด)
+    -- 7. รอให้ UI ขึ้น
     local pgui = LocalPlayer:FindFirstChild("PlayerGui")
     local tWaitUI = os.clock()
     while os.clock() - tWaitUI < 3.0 do
@@ -1681,9 +1695,9 @@ ProcessBananaAtStation = function(shouldContinueCheck)
         if pg and pg:FindFirstChild("Group") and pg.Group.Visible then break end
         task.wait(0.2)
     end
-    task.wait(0.5) -- หน่วงเพิ่มให้ UI โหลดเสร็จ 100%
+    task.wait(0.5)
 
-    -- 5. ลูปแปรรูปกล้วย
+    -- 8. ลูปแปรรูปกล้วย
     local tProc = os.clock()
     while (GetPlayerInventoryCount("Banana") >= 2) and (os.clock() - tProc < 120) do
         if shouldContinueCheck and not shouldContinueCheck() then break end
@@ -1693,18 +1707,16 @@ ProcessBananaAtStation = function(shouldContinueCheck)
             local pg = pgui:FindFirstChild("Process")
             if pg and pg:FindFirstChild("Group") and pg.Group.Visible then
                 local main = pg.Group:FindFirstChild("Main")
-                -- ค้นหาปุ่มกดแบบละเอียด (เผื่อเกมเปลี่ยนชื่อปุ่ม)
                 local ab = main and (main:FindFirstChild("ActionBtn") or main:FindFirstChild("ActionBtn", true) or main:FindFirstChild("Start", true) or main:FindFirstChild("Craft", true))
                 if ab and firesignal then 
                     firesignal(ab.MouseButton1Click) 
                 end
             end
         end)
-        -- เพิ่มดีเลย์เป็น 3.5 วินาที เพื่อไม่ให้กดถี่เกินจนระบบดีเลย์
-        task.wait(3.5)
+        task.wait(3.5) -- หน่วงเวลาระหว่างกด
     end
 
-    -- 6. ปิด UI และส่งคำสั่งหยุด
+    -- 9. ปิด UI และส่งคำสั่งหยุด
     pcall(function()
         local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if rc then require(rc).Fire("_process", "Stop", "Banana") end
@@ -1720,8 +1732,9 @@ ProcessBananaAtStation = function(shouldContinueCheck)
         end
     end)
     
-    task.wait(3.0)
-    -- 7. กลับขึ้นรถเพื่อไปทำรอบถัดไป
+    task.wait(1.0)
+    
+    -- 10. กลับขึ้นรถเพื่อทำรอบถัดไป
     local myCar2 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
     if myCar2 then EnsurePlayerSeatedInCar(myCar2) end
     task.wait(0.3)
