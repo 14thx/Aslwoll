@@ -2090,8 +2090,16 @@ SellAtEconomyMarket = function(check)
     local root = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not root or not hum then return end
+
     local marketPos, directPrompt = GetEconomyMarketPosition()
     marketPos = marketPos or TYPER_LOCATIONS.Economy.Market
+
+    -- จุดจอดรถ: offset ออกจากจุดขาย (ปรับระยะได้)
+    local PARK_DISTANCE = 30
+    local carParkPos = Vector3.new(marketPos.X, marketPos.Y, marketPos.Z + PARK_DISTANCE)
+    local carGroundY = GetGroundLevel(carParkPos.X, carParkPos.Z, carParkPos.Y)
+    carParkPos = Vector3.new(carParkPos.X, carGroundY + 2.5, carParkPos.Z)
+
     local myCar = GetPlayerVehicle()
     if not myCar or not (hum and hum.Sit) then
         if not myCar then myCar = EnsureCarAvailable(TOWN_CAR_SPAWN) end
@@ -2099,18 +2107,26 @@ SellAtEconomyMarket = function(check)
     end
     if not myCar then myCar = EnsureCarAvailable(TOWN_CAR_SPAWN) end
     if myCar then EnsurePlayerSeatedInCar(myCar) end
-    DriveCarTo(marketPos, check)
+
+    -- ขับ/วาปรถไปจุดจอด (ไม่ใช่จุดขาย)
+    DriveCarTo(carParkPos, check)
     task.wait(0.3)
     if check and not check() then return end
+
     ExitCarNaturally(myCar)
+    myCar = nil
+
     local fp, pFound = GetEconomyMarketPosition()
     local tp = fp or marketPos
-    if root then
+    if root and root.Parent then
         local gy = GetGroundLevel(tp.X, tp.Z, tp.Y)
-        root.CFrame = CFrame.lookAt(Vector3.new(tp.X+2.5, gy+2.2, tp.Z), tp)
+        root.CFrame = CFrame.lookAt(Vector3.new(tp.X + 2.5, gy + 2.2, tp.Z), tp)
         root.AssemblyLinearVelocity = Vector3.zero
     end
     task.wait(0.2)
+
+    if not root or not root.Parent then return end
+
     local ep = pFound or directPrompt or FindPromptNear(root.Position, 25, "econ") or FindPromptNear(tp, 25)
     if ep then
         local h = math.max((ep.HoldDuration or 0.1), 0.15) + 0.1
@@ -2119,6 +2135,7 @@ SellAtEconomyMarket = function(check)
         pcall(function() ep:InputHoldEnd() end)
     end
     task.wait(0.4)
+
     pcall(function()
         local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if rc then
@@ -2127,12 +2144,13 @@ SellAtEconomyMarket = function(check)
             R.Fire("_economy", "SellAll")
         end
     end)
+
     pcall(function()
         local eg = PlayerGui:FindFirstChild("Economy") or PlayerGui:FindFirstChild("Ecconomy")
         if eg and eg:FindFirstChild("Group") then
             local main = eg.Group:FindFirstChild("Main") or eg.Group
-            local sellBtn = main:FindFirstChild("Sell_All", true) 
-                         or main:FindFirstChild("SellAll", true) 
+            local sellBtn = main:FindFirstChild("Sell_All", true)
+                         or main:FindFirstChild("SellAll", true)
                          or main:FindFirstChild("Sell", true)
             if not sellBtn then
                 for _, b in ipairs(main:GetDescendants()) do
@@ -2146,6 +2164,7 @@ SellAtEconomyMarket = function(check)
         end
     end)
     task.wait(1.0)
+
     pcall(function()
         local eg = PlayerGui:FindFirstChild("Economy") or PlayerGui:FindFirstChild("Ecconomy")
         if eg and eg:FindFirstChild("Group") then
@@ -2155,13 +2174,25 @@ SellAtEconomyMarket = function(check)
             eg.Group.Visible = false
         end
     end)
+
     if isAutoEatAndDrinkEnabled then
         local h = GetPlayerHunger()
         local e = GetPlayerEnergy()
         if (h and h <= 75) or (e and e <= 75) then AutoEatThenDrink(95) end
     end
+
+    -- วาปกลับไปขึ้นรถคันเดิมที่จอดไว้
     local c2 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
-    if c2 then PressFToEnterCar(c2) end
+    if c2 then
+        if root and root.Parent and c2.PrimaryPart then
+            local cp = c2.PrimaryPart.Position
+            local gy = GetGroundLevel(cp.X, cp.Z, cp.Y)
+            root.CFrame = CFrame.new(cp.X + 3, gy + 2.2, cp.Z)
+            root.AssemblyLinearVelocity = Vector3.zero
+            task.wait(0.15)
+        end
+        PressFToEnterCar(c2)
+    end
     task.wait(0.2)
 end
 
