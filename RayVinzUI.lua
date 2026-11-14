@@ -1,7 +1,8 @@
 --!nocheck
 --[[  RayVinzUI — macOS-style UI library for Roblox (single file)
+      PATCHED: BlurEffect disabled, PlayerGui only, random ScreenGui name
       local UI = loadstring(game:HttpGet("<raw url>"))()
-      See README for the full API. ]]
+]]
 
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -10,25 +11,24 @@ local LocalPlayer      = Players.LocalPlayer
 
 -- ================= Theme =================
 local Theme = {
-	-- MarvenRiz: deep black surfaces with vivid blue selection/accent
-	Background = Color3.fromRGB(12, 12, 15),
-	Sidebar    = Color3.fromRGB(9, 9, 12),
-	Card       = Color3.fromRGB(18, 18, 22),
-	Elevated   = Color3.fromRGB(25, 25, 31),
-	Select     = Color3.fromRGB(12, 34, 59),
-	Field      = Color3.fromRGB(25, 25, 31),
-	Text       = Color3.fromRGB(245, 247, 252),
-	SubText    = Color3.fromRGB(165, 169, 180),
-	Muted      = Color3.fromRGB(120, 125, 138),
-	Accent     = Color3.fromRGB(0, 115, 255),
-	Accent2    = Color3.fromRGB(0, 57, 190),
-	AccentText = Color3.fromRGB(255, 255, 255),
-	ToggleOn   = Color3.fromRGB(0, 115, 255),
-	Green      = Color3.fromRGB(48, 209, 88),
-	Info       = Color3.fromRGB(10, 132, 255),
-	Warning    = Color3.fromRGB(255, 214, 10),
-	Error      = Color3.fromRGB(255, 69, 58),
-	White      = Color3.fromRGB(255, 255, 255),
+    Background = Color3.fromRGB(12, 12, 15),
+    Sidebar    = Color3.fromRGB(9, 9, 12),
+    Card       = Color3.fromRGB(18, 18, 22),
+    Elevated   = Color3.fromRGB(25, 25, 31),
+    Select     = Color3.fromRGB(12, 34, 59),
+    Field      = Color3.fromRGB(25, 25, 31),
+    Text       = Color3.fromRGB(245, 247, 252),
+    SubText    = Color3.fromRGB(165, 169, 180),
+    Muted      = Color3.fromRGB(120, 125, 138),
+    Accent     = Color3.fromRGB(0, 115, 255),
+    Accent2    = Color3.fromRGB(0, 57, 190),
+    AccentText = Color3.fromRGB(255, 255, 255),
+    ToggleOn   = Color3.fromRGB(0, 115, 255),
+    Green      = Color3.fromRGB(48, 209, 88),
+    Info       = Color3.fromRGB(10, 132, 255),
+    Warning    = Color3.fromRGB(255, 214, 10),
+    Error      = Color3.fromRGB(255, 69, 58),
+    White      = Color3.fromRGB(255, 255, 255),
 }
 local F  = Enum.Font.GothamMedium
 local FM = Enum.Font.GothamBold
@@ -78,6 +78,10 @@ end
 local TRACKED_COLOR_PROPS = { BackgroundColor3 = true, TextColor3 = true, ImageColor3 = true, Color = true }
 
 local function new(class, props, parent)
+	-- ⭐ PATCH: บล็อก BlurEffect (เกมตรวจเจอ → เตะ)
+	if class == "BlurEffect" then
+		return Instance.new("Folder")
+	end
 	local i = Instance.new(class)
 	if props then
 		for k, v in pairs(props) do
@@ -154,30 +158,21 @@ local function draggable(handle, target)
 	end)
 end
 
+-- ⭐ PATCH: ใช้ PlayerGui เท่านั้น (ไม่ใช้ gethui/CoreGui)
 local function guiParent()
-	local ok, h = pcall(function() return gethui() end)
-	if ok and h then return h end
-	local ok2, cg = pcall(function() return game:GetService("CoreGui") end)
-	if ok2 and cg then return cg end
 	return LocalPlayer:WaitForChild("PlayerGui")
 end
+
+-- ⭐ PATCH: cleanup เฉพาะ PlayerGui (ไม่แตะ Lighting)
 local function cleanupOld()
-	local spots = {}
-	pcall(function() table.insert(spots, gethui()) end)
-	pcall(function() table.insert(spots, game:GetService("CoreGui")) end)
-	pcall(function() table.insert(spots, LocalPlayer:FindFirstChildOfClass("PlayerGui")) end)
-	for _, p in ipairs(spots) do
-		if p then
-			for _, g in ipairs(p:GetChildren()) do
-				if g.Name == "RayVinzUI" then pcall(function() g:Destroy() end) end
+	local pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	if pgui then
+		for _, g in ipairs(pgui:GetChildren()) do
+			if g:IsA("ScreenGui") and string.find(g.Name, "RayVinzUI") then
+				pcall(function() g:Destroy() end)
 			end
 		end
 	end
-	pcall(function()
-		for _, e in ipairs(game:GetService("Lighting"):GetChildren()) do
-			if e.Name == "RayVinzBlur" then e:Destroy() end
-		end
-	end)
 end
 
 local function shadow(parent, tr, extra)
@@ -293,14 +288,16 @@ function RayVinzUI:CreateWindow(opts)
 		end
 	end
 	cleanupOld()
-	local gui = new("ScreenGui", { Name = "RayVinzUI", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true }, guiParent())
+	-- ⭐ PATCH: เปลี่ยนชื่อ ScreenGui เป็นสุ่ม
+	local guiName = "UI_" .. math.random(1000, 9999)
+	local gui = new("ScreenGui", { Name = guiName, ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true }, guiParent())
 	self.Gui = gui; ActiveGui = gui; ActiveWindow = self
 	local W, H = opts.Width or 620, opts.Height or 430
 
+	-- ⭐ PATCH: ไม่สร้าง BlurEffect
 	local blur = nil
-	pcall(function() blur = new("BlurEffect", { Name = "RayVinzBlur", Size = 0, Enabled = true }, game:GetService("Lighting")) end)
-	self._blur = blur
-	self._blurSize = opts.Blur == false and 0 or (type(opts.Blur) == "number" and opts.Blur or 24)
+	self._blur = nil
+	self._blurSize = 0
 	local holder = new("Frame", { Name = "Window", Visible = false, Size = UDim2.fromOffset(W, H), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1 }, gui)
 	self.Window = holder
 	local sh = shadow(holder, 1, 48)
@@ -321,7 +318,6 @@ function RayVinzUI:CreateWindow(opts)
 	end
 	local function showWin(animate)
 		holder.Visible = true
-		if blur then tween(blur, 0.34, { Size = self._blurSize }) end
 		if animate then
 			win.GroupTransparency = 1; sh.ImageTransparency = 1
 			holder.Size = UDim2.fromOffset(math.floor(W * 0.9), math.floor(H * 0.9))
@@ -333,7 +329,6 @@ function RayVinzUI:CreateWindow(opts)
 		end
 	end
 	local function hideWin()
-		if blur then tween(blur, 0.24, { Size = 0 }) end
 		tween(holder, 0.24, { Size = UDim2.fromOffset(math.floor(W * 0.9), math.floor(H * 0.9)) })
 		tween(win, 0.24, { GroupTransparency = 1 })
 		tween(sh, 0.24, { ImageTransparency = 1 })
@@ -351,7 +346,7 @@ function RayVinzUI:CreateWindow(opts)
 	pcall(function() workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fitScale) end)
 
 	local title = new("Frame", { Name = "TitleBar", Size = UDim2.new(1, 0, 0, 48), BackgroundTransparency = 1 }, win)
-		local lights = new("Frame", { Size = UDim2.fromOffset(52, 14), Position = UDim2.new(1, -16, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), BackgroundTransparency = 1 }, title)
+	local lights = new("Frame", { Size = UDim2.fromOffset(52, 14), Position = UDim2.new(1, -16, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), BackgroundTransparency = 1 }, title)
 	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8), VerticalAlignment = Enum.VerticalAlignment.Center }, lights)
 	local maximized, restore = false, nil
 	local function maximize()
@@ -377,7 +372,7 @@ function RayVinzUI:CreateWindow(opts)
 		local d = new("TextButton", { Text = "", AutoButtonColor = false, Size = UDim2.fromOffset(13, 13), BackgroundColor3 = c, LayoutOrder = i }, lights); corner(d, 7)
 		local m = iconImage(d, glyphs[i], UDim2.fromOffset(9, 9), Color3.fromRGB(60, 30, 10), UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5)); m.ImageTransparency = 1; marks[i] = m
 		if i == 1 then d.MouseButton1Click:Connect(function()
-			self:Dialog({ Title = "Close " .. (opts.Title or "UI") .. "?", Content = "This will fully close and unload the UI. You'll need to re-execute the script to open it again.",
+			self:Dialog({ Title = "Close " .. (opts.Title or "UI") .. "?", Content = "This will fully close and unload the UI.",
 				Buttons = { { Title = "Cancel" }, { Title = "Close", Variant = "Primary", Callback = function() self:Unload() end } } })
 		end) end
 		if i == 2 then d.MouseButton1Click:Connect(function() hideWin() end) end
@@ -385,7 +380,7 @@ function RayVinzUI:CreateWindow(opts)
 	end
 	lights.MouseEnter:Connect(function() for _, m in ipairs(marks) do tween(m, 0.12, { ImageTransparency = 0 }) end end)
 	lights.MouseLeave:Connect(function() for _, m in ipairs(marks) do tween(m, 0.12, { ImageTransparency = 1 }) end end)
-		local brand = new("Frame", { Size = UDim2.new(1, -92, 1, 0), Position = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 1 }, title)
+	local brand = new("Frame", { Size = UDim2.new(1, -92, 1, 0), Position = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 1 }, title)
 	local blogo = new("Frame", { Size = UDim2.fromOffset(38, 38), Position = UDim2.new(0, 8, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundTransparency = 1 }, brand)
 	local logoIsCustomImage = type(opts.Logo) == "number"
 		or (type(opts.Logo) == "string" and string.find(opts.Logo, "rbxassetid://") == 1)
@@ -420,31 +415,31 @@ function RayVinzUI:CreateWindow(opts)
 		grip.MouseEnter:Connect(function() tween(arcStroke, 0.15, { Color = Theme.Accent, Transparency = 0 }) end)
 		grip.MouseLeave:Connect(function() tween(arcStroke, 0.15, { Color = Color3.fromRGB(235, 235, 245), Transparency = 0.15 }) end)
 		local resizing, startInput, startSize, startAbsSize, startPosition
-			grip.InputBegan:Connect(function(inp)
-				if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
-					resizing = true
-					startInput = inp.Position
-					startSize = Vector2.new(W, H)
-					startAbsSize = holder.AbsoluteSize
-					startPosition = holder.Position
-				end
-			end)
-			self._track(UserInputService.InputChanged:Connect(function(inp)
-				if resizing and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
-					local scale = uiScale.Scale
-					local delta = (inp.Position - startInput) / scale
-					local newW = math.floor(clamp(startSize.X + delta.X, minW, maxW))
-					local newH = math.floor(clamp(startSize.Y + delta.Y, minH, maxH))
-					W, H = newW, newH
-					maximized = false
-					holder.Size = UDim2.fromOffset(newW, newH)
-					local shiftX = (newW * scale - startAbsSize.X) / 2
-					local shiftY = (newH * scale - startAbsSize.Y) / 2
-					holder.Position = UDim2.new(startPosition.X.Scale, startPosition.X.Offset + shiftX,
-						startPosition.Y.Scale, startPosition.Y.Offset + shiftY)
-				end
-			end))
-			self._track(UserInputService.InputEnded:Connect(function(inp)
+		grip.InputBegan:Connect(function(inp)
+			if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+				resizing = true
+				startInput = inp.Position
+				startSize = Vector2.new(W, H)
+				startAbsSize = holder.AbsoluteSize
+				startPosition = holder.Position
+			end
+		end)
+		self._track(UserInputService.InputChanged:Connect(function(inp)
+			if resizing and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
+				local scale = uiScale.Scale
+				local delta = (inp.Position - startInput) / scale
+				local newW = math.floor(clamp(startSize.X + delta.X, minW, maxW))
+				local newH = math.floor(clamp(startSize.Y + delta.Y, minH, maxH))
+				W, H = newW, newH
+				maximized = false
+				holder.Size = UDim2.fromOffset(newW, newH)
+				local shiftX = (newW * scale - startAbsSize.X) / 2
+				local shiftY = (newH * scale - startAbsSize.Y) / 2
+				holder.Position = UDim2.new(startPosition.X.Scale, startPosition.X.Offset + shiftX,
+					startPosition.Y.Scale, startPosition.Y.Offset + shiftY)
+			end
+		end))
+		self._track(UserInputService.InputEnded:Connect(function(inp)
 			if resizing and (inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch) then
 				resizing = false
 				self._queueSave()
@@ -550,7 +545,7 @@ function RayVinzUI:CreateWindow(opts)
 	end
 	if opts.Loading then
 		local lo = type(opts.Loading) == "table" and opts.Loading or {}
-		local loader = self:Loading({ Title = lo.Title or opts.Title or "RayVinz Hub", SubTitle = lo.SubTitle or "Loading assets...", Logo = opts.Logo, Blur = opts.Blur })
+		local loader = self:Loading({ Title = lo.Title or opts.Title or "RayVinz Hub", SubTitle = lo.SubTitle or "Loading assets...", Logo = opts.Logo, Blur = false })
 		task.delay(lo.Duration or 2, function() loader.Close() task.wait(0.25) showWin(true) afterReady() end)
 	else
 		showWin(true)
