@@ -1,5 +1,5 @@
 -- ==============================================================================
--- MARVENRIZ HUB + NEXUS ENGINE (ULTIMATE MASTER 100% - NO TRUNCATION FULL CODE)
+-- MARVENRIZ HUB + NEXUS ENGINE (ULTIMATE MASTER 100% - REALISTIC HUMAN DRIVING)
 -- ==============================================================================
 
 local Loading = nil
@@ -27,6 +27,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
+local PathfindingService = game:GetService("PathfindingService")
 local Stats = game:GetService("Stats")
 local MarketplaceService = game:GetService("MarketplaceService")
 local HttpService = game:GetService("HttpService")
@@ -41,7 +42,7 @@ _G.MarvenLoadTime = os.clock()
 
 TOWN_CAR_SPAWN = Vector3.new(-311.83, 17.5, 5490.39)
 VAULT_COORDS = Vector3.new(-1.98, 26.54, 8632.61)
-VehicleDriveSpeed = 150
+VehicleDriveSpeed = 120
 MY_SPAWNED_CAR = nil
 LAST_STORED_BOOTH = nil
 
@@ -49,8 +50,8 @@ isAutoEatEnabled = true
 isAutoCoffeeEnabled = true
 isAutoEatAndDrinkEnabled = true
 isConsumingItem = false
-isVehicleNoclipEnabled = true
-isVehiclePlatformEnabled = false
+isVehicleNoclipEnabled = false -- ปิด NoClip เพื่อให้ล้อเกาะถนนและขับเหมือนคนจริง
+isVehiclePlatformEnabled = true
 isAntiWaterFallEnabled = true
 isAutoHopOnPlayerNearbyEnabled = true
 autoHopDistance = 90
@@ -185,36 +186,6 @@ local function GetGroundLevel(x, z, fallbackY)
         return result.Position.Y
     end
     return fallbackY
-end
-
--- ==============================================================================
--- [เพิ่ม] EnsureVehiclePlatform - สร้าง/อัปเดตแพลตฟอร์มล่องหนใต้รถ
--- ==============================================================================
-EnsureVehiclePlatform = function(surfaceY, carPos)
-    if not isVehiclePlatformEnabled then
-        if vehiclePlatformPart then
-            vehiclePlatformPart:Destroy()
-            vehiclePlatformPart = nil
-        end
-        return
-    end
-
-    if not vehiclePlatformPart or not vehiclePlatformPart.Parent then
-        local p = Instance.new("Part")
-        p.Name = "TyperTown_VehicleSafePlatform"
-        p.Size = Vector3.new(36, 1.5, 36)
-        p.Anchored = true
-        p.CanCollide = true
-        p.Transparency = 1
-        p.Material = Enum.Material.SmoothPlastic
-        p.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.8, 0, 1, 1)
-        p.Parent = workspace
-        vehiclePlatformPart = p
-    else
-        vehiclePlatformPart.CanCollide = false
-    end
-
-    vehiclePlatformPart.CFrame = CFrame.new(carPos.X, surfaceY - 0.75, carPos.Z)
 end
 
 GetPlayerInventoryCount = function(name)
@@ -513,60 +484,64 @@ local function FindPromptNear(centerPos, maxDist, matchKeyword)
 end
 
 -- ==============================================================================
--- 🛡️ NEXUS ANTI-KICK (Bypass RedTownAntiX)
+-- 0. ANTI-KICK & ANTI-BAN SHIELD (ป้องกันโดนเตะออกจากเกม 100%)
 -- ==============================================================================
 pcall(function()
-    local Players = game:GetService("Players")
-    local LocalPlayer = Players.LocalPlayer
-
-    -- 1. ดักบล็อกที่ระดับ Network (__namecall)
-    -- เพื่อไม่ให้เกมส่งสัญญาณแบน (Kick) ไปที่เซิร์ฟเวอร์
+    local lp = Players.LocalPlayer
+    
     if hookmetamethod then
-        local oldNamecall
-        oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+        local oldNm
+        oldNm = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
             local method = getnamecallmethod()
             local args = {...}
 
-            -- บล็อกระบบแจ้งแบนของเกม (ห้ามส่งเด็ดขาด)
-            if method == "FireServer" or method == "InvokeServer" then
-                if args[1] == "_antix" and args[2] == "Kick" then
-                    return nil
-                end
-                -- กันเหนียว: บล็อกตัวอื่นที่มักใช้รายงาน
-                if args[1] == "_anticheat" or args[1] == "_report" then
-                    return nil
-                end
-            end
-
-            -- บล็อกคำสั่งเตะปกติ
-            if method == "Kick" and (self == LocalPlayer or self == Players) then
+            if (method == "Kick" or method == "kick") and (self == lp or self == Players) then
+                local reason = tostring(args[1] or "Unknown")
+                warn("🛡️ [NEXUS HUB ANTI-KICK] บล็อกคำสั่ง Kick จากเกมสำเร็จ: " .. reason)
                 return nil
             end
 
-            return oldNamecall(self, ...)
+            if method == "FireServer" or method == "InvokeServer" then
+                for _, a in ipairs(args) do
+                    local str = tostring(a):lower()
+                    if str:find("kick") or str:find("anticheat") or str:find("antifall") or str:find("teleport") or str:find("exploit") or str:find("speed") or str:find("fly") then
+                        return nil
+                    end
+                end
+            end
+
+            return oldNm(self, ...)
         end))
     end
 
-    -- 2. ปลดสคริปต์ Anti-Fall ในตัวละคร (กันการแช่แข็งกลางอากาศ)
-    local function DisableAntiFall(char)
+    if hookfunction and lp and lp.Kick then
+        hookfunction(lp.Kick, newcclosure(function(self, ...)
+            local args = {...}
+            local reason = tostring(args[1] or "Unknown")
+            warn("🛡️ [NEXUS HUB ANTI-KICK] บล็อก LocalPlayer:Kick: " .. reason)
+            return nil
+        end))
+    end
+
+    local function NeutralizeCharScripts(char)
         if not char then return end
         for _, desc in ipairs(char:GetDescendants()) do
             if desc:IsA("Script") or desc:IsA("LocalScript") then
-                local n = desc.Name:lower()
-                if n:find("antifall") or n:find("ragdoll") or n:find("anti") then
-                    pcall(function() desc.Disabled = true end)
+                local name = desc.Name:lower()
+                if name:find("antifall") or name:find("fall") or name:find("ragdoll") or name:find("anti") then
+                    pcall(function()
+                        desc.Disabled = true
+                        desc:Destroy()
+                    end)
                 end
             end
         end
     end
 
-    if LocalPlayer.Character then DisableAntiFall(LocalPlayer.Character) end
-    LocalPlayer.CharacterAdded:Connect(DisableAntiFall)
+    if lp.Character then NeutralizeCharScripts(lp.Character) end
+    lp.CharacterAdded:Connect(NeutralizeCharScripts)
 end)
 
--- ==============================================================================
--- 1. ระบบบายพาสระบบตรวจจับตำแหน่ง (Anti-Fall & Anti-Cheat Grace)
--- ==============================================================================
 GrantAntiXGrace = function(seconds)
     seconds = seconds or 25
     pcall(function()
@@ -589,9 +564,6 @@ GrantAntiXGrace = function(seconds)
     end)
 end
 
--- ==============================================================================
--- 2. หาจุด Spawn Point ที่ใกล้บูธที่สุด (สำหรับระบบวาร์ปฟาร์ม)
--- ==============================================================================
 local function GetSpawnPointForBooth(boothPos)
     local bestPt = nil
     local bestDist = math.huge
@@ -616,9 +588,6 @@ local function GetSpawnPointForBooth(boothPos)
     return bestPt
 end
 
--- ==============================================================================
--- 3. ระบบสปอว์นรถ (หาปุ่ม Spawn/Pound ใน GUI)
--- ==============================================================================
 local function FindCarSpawnOrPoundButton(group, preferredCarName)
     preferredCarName = preferredCarName or "R32"
     local carFrame = group:FindFirstChild(preferredCarName, true)
@@ -978,73 +947,6 @@ local function FindBlueSpawnButton(group)
     end
 end
 
-StoreCarAtBooth = function(boothPos)
-    GrantAntiXGrace(35)
-    local char = LocalPlayer.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    local myCar = GetPlayerVehicle()
-    if not myCar then return end
-    local cName = myCar.Name or "R32"
-    local spPt = GetSpawnPointForBooth(boothPos)
-    if myCar.PrimaryPart then
-        if spPt and spPt:IsA("BasePart") then
-            myCar:PivotTo(spPt.CFrame + Vector3.new(0, 1.2, 0))
-        else
-            local gy = GetGroundLevel(boothPos.X, boothPos.Z, boothPos.Y)
-            myCar:PivotTo(CFrame.new(boothPos.X, gy + 1.2, boothPos.Z))
-        end
-        myCar.PrimaryPart.AssemblyLinearVelocity = Vector3.zero
-        myCar.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
-    end
-    task.wait(2.0)
-    ExitCarNaturally(myCar)
-    if root and (root.Position - boothPos).Magnitude > 8 then
-        SmoothWalkTo(boothPos, 3, nil, 5.0)
-    end
-    pcall(function()
-        local h = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if not h or not h.Sit then game:GetService("ProximityPromptService").Enabled = true end
-    end)
-    local boothPrompt = nil
-    local farmSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Farm")
-    if farmSys then
-        for _, f in ipairs(farmSys:GetChildren()) do
-            local sp = f:FindFirstChild("Prompt") and f.Prompt:FindFirstChild("Spawn")
-            local p = sp and sp:FindFirstChildWhichIsA("ProximityPrompt", true)
-            if p then
-                local pos = (p.Parent:IsA("Attachment") and p.Parent.WorldPosition) or (p.Parent:IsA("BasePart") and p.Parent.Position)
-                if pos and (pos - boothPos).Magnitude <= 40 then boothPrompt = p p.Enabled = true break end
-            end
-        end
-    end
-    if boothPrompt then
-        boothPrompt.Enabled = true
-        TriggerPrompt(boothPrompt)
-    end
-    local cs = PlayerGui:WaitForChild("Car_Spawn", 1.5)
-    local t0 = os.clock()
-    while (not cs or not cs:FindFirstChild("Group") or not cs.Group.Visible) and (os.clock() - t0 < 1.2) do
-        if boothPrompt then TriggerPrompt(boothPrompt) end
-        task.wait(0.15)
-    end
-    if cs and cs:FindFirstChild("Group") and cs.Group.Visible then
-        local btn, btnType = FindCarSpawnOrPoundButton(cs.Group, cName)
-        if btn and btnType == "pound" then ClickGuiButton(btn) task.wait(0.4) end
-    end
-    pcall(function()
-        local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
-        if rc then
-            local R = require(rc)
-            R.Fire("_carspawn", "Despawn", cName)
-            R.Fire("_carspawn", "Despawn")
-            MY_SPAWNED_CAR = nil
-        end
-    end)
-    CloseCarSpawnGui()
-    task.wait(0.2)
-end
-
 SpawnCarAtBooth = function(boothPos)
     GrantAntiXGrace(40)
     local char = LocalPlayer.Character
@@ -1168,203 +1070,274 @@ WarpToTownAndSpawnCar = function()
     return car
 end
 
-local function EnsureVehiclePlatform(surfaceY, carPos)
-    if not isVehiclePlatformEnabled then
-        if vehiclePlatformPart then vehiclePlatformPart:Destroy() vehiclePlatformPart = nil end
-        return
-    end
-    if not vehiclePlatformPart or not vehiclePlatformPart.Parent then
-        local p = Instance.new("Part")
-        p.Name = "TyperTown_VehicleSafePlatform"
-        p.Size = Vector3.new(36, 1.5, 36)
-        p.Anchored = true
-        p.CanCollide = true
-        p.Transparency = 1
-        p.Material = Enum.Material.SmoothPlastic
-        p.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.8, 0, 1, 1)
-        p.Parent = workspace
-        vehiclePlatformPart = p
-    else
-        vehiclePlatformPart.CanCollide = false
-    end
-    vehiclePlatformPart.CFrame = CFrame.new(carPos.X, surfaceY - 0.75, carPos.Z)
+-- ==============================================================================
+-- 🚗 REALISTIC HUMAN DRIVING ENGINE (ขับรถตามเส้น GPS & ฟิสิกส์เหมือนคนจริงๆ)
+-- ==============================================================================
+local function FindGameGPSWaypoints()
+    local gpsPoints = {}
+    pcall(function()
+        -- ค้นหาเส้นทาง GPS / Waypoint / Beam ที่เกมสร้างขึ้นเวลาปักหมุด
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            local nameLow = obj.Name:lower()
+            if nameLow:find("gps") or nameLow:find("waypoint") or nameLow:find("route") or nameLow:find("navigation") or nameLow:find("marker") then
+                if obj:IsA("BasePart") then
+                    table.insert(gpsPoints, obj.Position)
+                elseif obj:IsA("Attachment") then
+                    table.insert(gpsPoints, obj.WorldPosition)
+                end
+            end
+        end
+    end)
+    return gpsPoints
 end
 
-local function IsWideSolidGround(x, z)
-    if z >= 350 and z <= 4050 then return false end
-    local offsets = {Vector2.new(0,0), Vector2.new(25,0), Vector2.new(-25,0), Vector2.new(0,25), Vector2.new(0,-25)}
+local function ComputeRealisticRoute(startPos, endPos)
+    local route = {}
+    
+    -- 1. พยายามใช้ PathfindingService บนถนนจริงของเกม
+    local success = pcall(function()
+        local path = PathfindingService:CreatePath({
+            AgentRadius = 4.5,
+            AgentHeight = 5.0,
+            AgentCanJump = false,
+            WaypointSpacing = 18.0,
+            Costs = {
+                Water = math.huge,
+                DangerZone = math.huge
+            }
+        })
+        path:ComputeAsync(startPos, endPos)
+        if path.Status == Enum.PathStatus.Success then
+            local wps = path:GetWaypoints()
+            for i = 2, #wps do
+                table.insert(route, wps[i].Position)
+            end
+        end
+    end)
+
+    -- 2. ถ้า Pathfinding หาไม่เจอ ให้ตรวจหาจุด GPS ของเกม หรือสร้างเส้นทางแบ่งช่วงตามถนน
+    if not success or #route == 0 then
+        local gameGps = FindGameGPSWaypoints()
+        if #gameGps > 0 then
+            table.sort(gameGps, function(a, b)
+                return (a - startPos).Magnitude < (b - startPos).Magnitude
+            end)
+            for _, pt in ipairs(gameGps) do
+                if (pt - endPos).Magnitude < (startPos - endPos).Magnitude then
+                    table.insert(route, pt)
+                end
+            end
+        end
+        table.insert(route, endPos)
+    end
+
+    return route
+end
+
+local function CheckObstacleRadar(car, seat)
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
-    params.IgnoreWater = false
-    local fl = {}
-    if LocalPlayer.Character then table.insert(fl, LocalPlayer.Character) end
-    local vf = (workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Vehicles")) or workspace:FindFirstChild("Vehicles")
-    if vf then table.insert(fl, vf) end
-    if MY_SPAWNED_CAR then table.insert(fl, MY_SPAWNED_CAR) end
-    if vehiclePlatformPart then table.insert(fl, vehiclePlatformPart) end
-    params.FilterDescendantsInstances = fl
-    for _, off in ipairs(offsets) do
-        local px, pz = x + off.X, z + off.Y
-        if pz >= 350 and pz <= 4050 then return false end
-        local result = workspace:Raycast(Vector3.new(px, 150, pz), Vector3.new(0,-180,0), params)
-        if not result then return false end
-        if result.Material == Enum.Material.Water or result.Position.Y <= 7.5 then return false end
+    local excludeList = {car}
+    if LocalPlayer.Character then table.insert(excludeList, LocalPlayer.Character) end
+    params.FilterDescendantsInstances = excludeList
+
+    local origin = seat.Position + Vector3.new(0, 1.0, 0)
+    local lookVec = seat.CFrame.LookVector
+    local rightVec = seat.CFrame.RightVector
+
+    -- ยิงเรดาร์ 3 ทิศทาง: หน้าตรง, เฉียงซ้าย, เฉียงขวา
+    local frontHit = workspace:Raycast(origin, lookVec * 18, params)
+    local leftHit  = workspace:Raycast(origin, (lookVec * 14 - rightVec * 6), params)
+    local rightHit = workspace:Raycast(origin, (lookVec * 14 + rightVec * 6), params)
+
+    local steerAdjust = 0
+    local blockedFront = false
+
+    if frontHit and frontHit.Instance and frontHit.Instance.CanCollide then
+        blockedFront = true
+        if not leftHit then
+            steerAdjust = -0.85 -- หักซ้ายหลบ
+        elseif not rightHit then
+            steerAdjust = 0.85  -- หักขวาหลบ
+        else
+            steerAdjust = -1.0
+        end
+    elseif leftHit and leftHit.Instance and leftHit.Instance.CanCollide then
+        steerAdjust = 0.45 -- เบี่ยงขวาเล็กน้อย
+    elseif rightHit and rightHit.Instance and rightHit.Instance.CanCollide then
+        steerAdjust = -0.45 -- เบี่ยงซ้ายเล็กน้อย
     end
+
+    return blockedFront, steerAdjust
+end
+
+DriveCarTo = function(dest, check)
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root then return false end
+
+    local car, seat = nil, nil
+    if hum.Sit and hum.SeatPart then
+        seat = hum.SeatPart
+        car = seat:FindFirstAncestorOfClass("Model")
+        if car then MY_SPAWNED_CAR = car end
+    end
+    if not car then
+        car = GetNearbyPlayerVehicle(80) or GetPlayerVehicle()
+        if car then EnsurePlayerSeatedInCar(car) task.wait(0.2) end
+    end
+    if not car then return false end
+
+    seat = (hum and hum.SeatPart) or car:FindFirstChild("DriveSeat", true) or car:FindFirstChildWhichIsA("VehicleSeat", true)
+    if not seat or not seat:IsA("VehicleSeat") then return false end
+    if not car.PrimaryPart then pcall(function() car.PrimaryPart = seat end) end
+
+    -- ปลดล็อกฟิสิกส์ล้อและตัวรถให้วิ่งได้จริง
+    for _, part in ipairs(car:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.Anchored = false
+        end
+    end
+
+    -- ตั้งค่าความเร็วสูงสุดของ VehicleSeat ตาม Slider
+    local desiredMaxSpeed = math.clamp(tonumber(VehicleDriveSpeed) or 120, 30, 250)
+    pcall(function() seat.MaxSpeed = desiredMaxSpeed end)
+
+    local waypoints = ComputeRealisticRoute(seat.Position, dest)
+    local driveStartTime = os.clock()
+    local DRIVE_TIMEOUT = 240
+
+    local stuckTimer = 0
+    local lastPos = seat.Position
+    local isReversing = false
+    local reverseEndTime = 0
+
+    for wpIndex, targetPos in ipairs(waypoints) do
+        local isFinalWP = (wpIndex == #waypoints)
+        local arriveRadius = isFinalWP and 10.0 or 16.0
+
+        while true do
+            if os.clock() - driveStartTime > DRIVE_TIMEOUT then
+                seat.Throttle = 0
+                seat.Steer = 0
+                return false
+            end
+            if check and not check() then
+                seat.Throttle = 0
+                seat.Steer = 0
+                return false
+            end
+
+            -- ตรวจสอบว่ายังนั่งขับอยู่ไหม
+            if not hum.Sit or hum.SeatPart ~= seat then
+                pcall(function()
+                    root.CFrame = seat.CFrame + Vector3.new(0, 0.8, 0)
+                    seat:Sit(hum)
+                end)
+            end
+
+            local curPos = seat.Position
+            local flatCur = Vector3.new(curPos.X, 0, curPos.Z)
+            local flatTarget = Vector3.new(targetPos.X, 0, targetPos.Z)
+            local distToWP = (flatTarget - flatCur).Magnitude
+
+            if distToWP <= arriveRadius then
+                break
+            end
+
+            -- ตรวจจับอาการรถติด (Stuck Detection -> ถอยหลังตั้งลำเหมือนคนจริง)
+            local currentSpeed = seat.AssemblyLinearVelocity.Magnitude
+            if not isReversing then
+                if currentSpeed < 2.5 and (curPos - lastPos).Magnitude < 0.8 then
+                    stuckTimer += 0.05
+                    if stuckTimer >= 1.8 then
+                        isReversing = true
+                        reverseEndTime = os.clock() + 1.4
+                        stuckTimer = 0
+                    end
+                else
+                    stuckTimer = math.max(0, stuckTimer - 0.05)
+                end
+            end
+            lastPos = curPos
+
+            -- คำนวณมุมเลี้ยวระหว่างหน้ารถกับจุดหมาย GPS ถัดไป
+            local forwardVec = Vector3.new(seat.CFrame.LookVector.X, 0, seat.CFrame.LookVector.Z).Unit
+            local toTargetVec = (flatTarget - flatCur).Unit
+            local dot = math.clamp(forwardVec:Dot(toTargetVec), -1, 1)
+            local crossY = forwardVec:Cross(toTargetVec).Y
+            local angleDeg = math.deg(math.acos(dot))
+
+            -- เรดาร์หลบสิ่งกีดขวางหน้ารถ
+            local blockedFront, radarSteer = CheckObstacleRadar(car, seat)
+
+            if isReversing then
+                -- โหมดถอยหลังหักพวงมาลัยกลับด้านเพื่อตั้งลำ
+                seat.Throttle = -0.65
+                seat.Steer = (crossY > 0) and 1 or -1
+                if os.clock() >= reverseEndTime then
+                    isReversing = false
+                    seat.Throttle = 0
+                    seat.Steer = 0
+                end
+            else
+                -- คำนวณการหมุนพวงมาลัยแบบนุ่มนวล (Proportional Steering)
+                local rawSteer = math.clamp(-crossY * 2.2, -1, 1)
+                if math.abs(radarSteer) > 0.1 then
+                    rawSteer = math.clamp(rawSteer + radarSteer, -1, 1)
+                end
+                seat.Steer = rawSteer
+
+                -- ควบคุมคันเร่งและเบรกเหมือนคนขับจริง (ชะลอเข้าโค้ง / ชะลอใกล้ถึงที่หมาย)
+                local targetThrottle = 1.0
+                if angleDeg > 55 then
+                    targetThrottle = 0.45 -- โค้งหักศอก ผ่อนคันเร่งให้รถไม่หลุดโค้ง
+                elseif angleDeg > 25 then
+                    targetThrottle = 0.70 -- โค้งปานกลาง ลดความเร็วลงเล็กน้อย
+                end
+
+                if isFinalWP and distToWP < 35 then
+                    targetThrottle = math.clamp(distToWP / 35, 0.25, 0.75) -- ค่อยๆ ชะลอเข้าจอด
+                end
+
+                if blockedFront and currentSpeed > 25 then
+                    targetThrottle = -0.3 -- แตะเบรกชะลอเมื่อมีสิ่งกีดขวางกระชั้นชิด
+                end
+
+                seat.Throttle = targetThrottle
+            end
+
+            RunService.Heartbeat:Wait()
+        end
+    end
+
+    -- จอดสนิทและคืนพวงมาลัยตรง
+    seat.Throttle = 0
+    seat.Steer = 0
+    task.wait(0.25)
     return true
 end
 
--- ==============================================================================
--- 🚗 HUMAN-LIKE DRIVE (V2 - ขับตรง + ทะลุเมื่อติด + ไม่ชิดขวา)
--- ==============================================================================
-DriveCarTo = function(dest, check, categoryName)
+RunService.Stepped:Connect(function()
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if not hum or not hum.Sit then return false end
-    
-    local car = hum.SeatPart:FindFirstAncestorOfClass("Model")
-    if not car or not car.PrimaryPart then return false end
-
-    -- 🗺️ 1. กดมาร์คใน Map ให้เอง
-    if categoryName then
-        local pg = LocalPlayer:FindFirstChild("PlayerGui")
-        local mapGui = pg and pg:FindFirstChild("Minimap")
-        local bigMap = mapGui and mapGui:FindFirstChild("Big_Map")
-        
-        if bigMap and not bigMap.Visible then
-            local vim = game:GetService("VirtualInputManager")
-            vim:SendKeyEvent(true, Enum.KeyCode.M, false, game)
-            task.wait(0.1)
-            vim:SendKeyEvent(false, Enum.KeyCode.M, false, game)
-            task.wait(0.5)
-        end
-
-        if bigMap and bigMap.Visible then
-            local scroll = bigMap:FindFirstChild("map") and bigMap.map:FindFirstChild("scrolling")
-            if scroll then
-                for _, btn in ipairs(scroll:GetChildren()) do
-                    if btn:IsA("GuiButton") and btn.Name:lower() == categoryName:lower() then
-                        pcall(function() 
-                            if firesignal then firesignal(btn.MouseButton1Click) end
-                            if firesignal then firesignal(btn.Activated) end
-                        end)
-                        task.wait(0.3)
-                        break
+    if hum and hum.Sit and hum.SeatPart then
+        local myCar = hum.SeatPart:FindFirstAncestorOfClass("Model")
+        if myCar and isVehicleNoclipEnabled then
+            for _, part in ipairs(myCar:GetDescendants()) do
+                if part:IsA("BasePart") and part ~= vehiclePlatformPart then
+                    local pn = part.Name:lower()
+                    if pn:find("wheel") or pn:find("tire") or pn:find("groundguard") or pn:find("bumpstop") then
+                        part.CanCollide = true
+                    else
+                        part.CanCollide = false
                     end
                 end
             end
-            local vim = game:GetService("VirtualInputManager")
-            vim:SendKeyEvent(true, Enum.KeyCode.M, false, game)
-            task.wait(0.1)
-            vim:SendKeyEvent(false, Enum.KeyCode.M, false, game)
         end
     end
-
-    -- 🚗 2. เริ่มขับรถ
-    local driveStartTime = os.clock()
-    local DRIVE_TIMEOUT = 120
-    local maxSpeed = 100 -- ปรับความเร็วตรงนี้ (100 = เร็วกำลังดี)
-    
-    -- 🔥 ระบบทะลุ: บังคับให้ CanCollide เป็น false ตลอดเวลาที่ขับ
-    for _, part in ipairs(car:GetDescendants()) do
-        if part:IsA("BasePart") then part.CanCollide = false end
-    end
-
-    -- ล็อคไม่ให้หลุดจากรถ
-    local seatCheckConn = RunService.Stepped:Connect(function()
-        if hum and not hum.Sit then pcall(function() car.PrimaryPart.CFrame = car.PrimaryPart.CFrame end) end
-    end)
-
-    while (car.PrimaryPart.Position - dest).Magnitude > 15 do
-        if os.clock() - driveStartTime > DRIVE_TIMEOUT then break end
-        if check and not check() then break end
-
-        local cPos = car.PrimaryPart.Position
-        local cFrame = car.PrimaryPart.CFrame
-        local gy = GetGroundLevel(cPos.X, cPos.Z, cPos.Y)
-        
-        -- 🔥 คำนวณทิศทางตรงไปจุดหมาย
-        local distToDest = (dest - cPos).Magnitude
-        local targetDir = Vector3.new(dest.X - cPos.X, 0, dest.Z - cPos.Z).Unit
-        
-        -- 🔥 คำนวณมุมเพื่อหันรถให้เนียน (ไม่หักศอก)
-        local currentDir = cFrame.LookVector
-        local targetAngle = math.atan2(targetDir.X, targetDir.Z)
-        local currentAngle = math.atan2(currentDir.X, currentDir.Z)
-        local angleDiff = (targetAngle - currentAngle + math.pi) % (2 * math.pi) - math.pi
-        
-        -- 🔥 ชะลอความเร็วเมื่อใกล้ถึง (เหมือนคนเล่น)
-        local currentSpeed = maxSpeed
-        if distToDest < 40 then
-            currentSpeed = maxSpeed * (distToDest / 40) 
-        end
-        
-        -- 🔥 เลี้ยวทีละนิด (Smooth Turn)
-        local turnSpeed = math.clamp(angleDiff * 2, -3, 3)
-        local newLookDir = (currentDir + Vector3.new(turnSpeed, 0, turnSpeed)).Unit
-        
-        -- 🔥 บังคับให้ติดพื้น (ไม่บิน)
-        local targetY = gy + 3.0
-        
-        -- 🔥 ใส่ความเร็วตามทิศทางที่หัน
-        local forwardVel = newLookDir * currentSpeed
-        car.PrimaryPart.AssemblyLinearVelocity = Vector3.new(forwardVel.X, 0, forwardVel.Z)
-        
-        -- 🔥 หันหน้ารถอย่างนุ่มนวล
-        car.PrimaryPart.CFrame = CFrame.lookAt(
-            Vector3.new(cPos.X, targetY, cPos.Z),
-            Vector3.new(cPos.X + newLookDir.X, targetY, cPos.Z + newLookDir.Z)
-        )
-
-        RunService.Heartbeat:Wait()
-    end
-
-    if seatCheckConn then seatCheckConn:Disconnect() end
-
-    -- หยุดรถ
-    if car.PrimaryPart then
-        car.PrimaryPart.AssemblyLinearVelocity = Vector3.zero
-        car.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
-    end
-    task.wait(0.1)
-    return true
-end
-
-    -- ==========================================
-    -- 🔥 [เพิ่มใหม่] ถึงจุดหมายแล้ว สั่งลงจากรถทันที
-    -- ==========================================
-    task.wait(0.2) -- รอให้รถหยุดสนิทก่อน
-    
-    if hum and hum.Sit then
-        -- 1. สั่งให้ยืนขึ้น (ลงจากเบาะ)
-        hum.Sit = false 
-        task.wait(0.2)
-        
-        -- 2. หาพื้นดินตรงจุดหมายเพื่อวางตัวละครลงไป
-        local destGy = GetGroundLevel(dest.X, dest.Z, dest.Y)
-        local root = char:FindFirstChild("HumanoidRootPart")
-        local carRight = car.PrimaryPart.CFrame.RightVector
-        
-        if root then
-            -- วางตัวละครลงข้างๆ รถ (ขยับออกมาทางขวานิดนึง ไม่ให้ทับรถ)
-            local exitPos = Vector3.new(dest.X, destGy + 3.0, dest.Z) + (carRight * 4)
-            root.CFrame = CFrame.new(exitPos)
-            root.AssemblyLinearVelocity = Vector3.zero
-            root.AssemblyAngularVelocity = Vector3.zero
-        end
-        
-        -- 3. คืนค่าการชนให้ตัวละครและรถ (จะได้ไม่ทะลุพื้น)
-        for _, p in ipairs(car:GetDescendants()) do
-            if p:IsA("BasePart") then p.CanCollide = true end
-        end
-        for _, p in ipairs(char:GetDescendants()) do
-            if p:IsA("BasePart") then p.CanCollide = true end
-        end
-        
-        task.wait(0.2)
-    end
-
-    return true
-end
+end)
 
 -- =====================================
 -- HARVEST SYSTEM
@@ -1515,8 +1488,8 @@ HarvestSingleCrop = function(cropName, targetAmount, check)
     end
     local exactCenter = GetExactFarmPromptPosition(cropName) or locData.Farm
     local parking = GetFarmParkingPosition(cropName)
-    DriveCarTo(parking, check, cropName)
-    task.wait(0.1)
+    DriveCarTo(parking, check)
+    task.wait(0.2)
     if check and not check() then return end
     if hum and hum.Sit then
         hum.Sit = false
@@ -1524,17 +1497,11 @@ HarvestSingleCrop = function(cropName, targetAmount, check)
             hum:ChangeState(Enum.HumanoidStateType.GettingUp)
             if hum.SeatPart then hum.SeatPart = nil end
         end)
-        task.wait(0.2)
+        task.wait(0.25)
     end
     local standPos = GetHumanLikeFarmStandingSpot(exactCenter)
     if root then
-        local fg = GetGroundLevel(standPos.X, standPos.Z, exactCenter.Y)
-        root.CFrame = CFrame.lookAt(
-            Vector3.new(standPos.X, fg + 2.5, standPos.Z),
-            Vector3.new(exactCenter.X, fg + 2.5, exactCenter.Z)
-        )
-        root.AssemblyLinearVelocity = Vector3.zero
-        root.AssemblyAngularVelocity = Vector3.zero
+        SmoothWalkTo(standPos, 15, check, 2.5)
     end
     task.wait(0.2)
     local tW = os.clock()
@@ -1575,13 +1542,19 @@ HarvestSingleCrop = function(cropName, targetAmount, check)
         task.wait(0.5)
     end
     task.wait(0.5)
-    local tb = (locData and locData.Booth) or GetNearestCarBooth(root.Position)
-    if tb then
-        SmoothWalkTo(tb, 45, check, 5.5)
-        task.wait(0.3)
+    local parkedCar = GetNearbyPlayerVehicle(60)
+    if parkedCar then
+        SmoothWalkTo(parkedCar.PrimaryPart.Position, 20, check, 5.0)
+        EnsurePlayerSeatedInCar(parkedCar)
+    else
+        local tb = (locData and locData.Booth) or GetNearestCarBooth(root.Position)
+        if tb then
+            SmoothWalkTo(tb, 45, check, 5.5)
+            task.wait(0.3)
+        end
+        local car = SpawnCarAtBooth(tb) or EnsureCarAvailable(tb)
+        if car then EnsurePlayerSeatedInCar(car) end
     end
-    local car = SpawnCarAtBooth(tb) or EnsureCarAvailable(tb)
-    if car then EnsurePlayerSeatedInCar(car) end
     task.wait(0.3)
 end
 
@@ -1630,13 +1603,12 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
         end
     end
     exactCraftPos = exactCraftPos or foodData.Crafting
-    DriveCarTo(exactCraftPos + Vector3.new(0, 0, 5.0), shouldContinueCheck)
+    DriveCarTo(exactCraftPos + Vector3.new(0, 0, 8.0), shouldContinueCheck)
     task.wait(0.2)
     if shouldContinueCheck and not shouldContinueCheck() then return end
     if hum.Sit then hum.Sit = false task.wait(0.2) end
-    local groundY = GetGroundLevel(exactCraftPos.X, exactCraftPos.Z, exactCraftPos.Y)
-    local standPos = Vector3.new(exactCraftPos.X, groundY + 3.0, exactCraftPos.Z + 2.5)
-    root.CFrame = CFrame.lookAt(standPos, exactCraftPos)
+    local standPos = exactCraftPos + Vector3.new(0, 0, 2.5)
+    SmoothWalkTo(standPos, 15, shouldContinueCheck, 2.0)
     task.wait(0.15)
     cPrompt = cPrompt or GetCraft3Prompt()
     if cPrompt then TriggerPrompt(cPrompt) end
@@ -1778,8 +1750,7 @@ CraftFoodAtStation = function(recipeName, shouldContinueCheck)
         end
         if cg and cg:FindFirstChild("Group") then cg.Group.Visible = false end
     end)
-    task.wait(0.2)
-    task.wait(3.0)
+    task.wait(0.5)
     local myCar3 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
     if myCar3 then EnsurePlayerSeatedInCar(myCar3) end
     task.wait(0.3)
@@ -1809,14 +1780,13 @@ ProcessBananaAtStation = function(shouldContinueCheck)
         if anyPart then bPos = anyPart.Position end
     end
     local exactBanPos = bPos or foodData.BananaProcess
-    DriveCarTo(exactBanPos + Vector3.new(0, 0, 5.0), shouldContinueCheck)
-    task.wait(0.1)
+    DriveCarTo(exactBanPos + Vector3.new(0, 0, 8.0), shouldContinueCheck)
+    task.wait(0.2)
     if shouldContinueCheck and not shouldContinueCheck() then return end
-    if hum.Sit then hum.Sit = false task.wait(0.1) end
+    if hum.Sit then hum.Sit = false task.wait(0.2) end
     local standPos = exactBanPos + Vector3.new(0, 0, 2.5)
-    local groundY = GetGroundLevel(standPos.X, standPos.Z, standPos.Y)
-    root.CFrame = CFrame.lookAt(Vector3.new(standPos.X, groundY + 3.0, standPos.Z), exactBanPos)
-    task.wait(0.1)
+    SmoothWalkTo(standPos, 15, shouldContinueCheck, 2.0)
+    task.wait(0.15)
     local procPrompt = pBan and pBan:FindFirstChildWhichIsA("ProximityPrompt", true)
     if not procPrompt then procPrompt = FindPromptNear(root.Position, 15, nil) end
     if procPrompt then
@@ -1873,7 +1843,7 @@ ProcessBananaAtStation = function(shouldContinueCheck)
             procGui.Group.Visible = false
         end
     end)
-    task.wait(3.0)
+    task.wait(0.5)
     local myCar2 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
     if myCar2 then EnsurePlayerSeatedInCar(myCar2) end
     task.wait(0.3)
@@ -1896,11 +1866,11 @@ ProcessOreAtStation = function(oreName, minP, check)
     if not myCar or not hum.Sit then myCar = EnsureCarAvailable() end
     if myCar then EnsurePlayerSeatedInCar(myCar) end
 
-    DriveCarTo(exactProcPos + Vector3.new(0,0,5.0), check)
-    task.wait(0.1)
+    DriveCarTo(exactProcPos + Vector3.new(0, 0, 8.0), check)
+    task.wait(0.2)
     if check and not check() then return end
 
-    if hum.Sit then hum.Sit = false task.wait(0.1) end
+    if hum.Sit then hum.Sit = false task.wait(0.2) end
 
     local pFolder = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Process") and workspace.Systems.Process:FindFirstChild(oreName)
     local procPrompt = nil
@@ -1929,9 +1899,7 @@ ProcessOreAtStation = function(oreName, minP, check)
         procPrompt = FindPromptNear(targetProcPos, 25, nil) or FindPromptNear(root.Position, 25, nil) 
     end
 
-    local fy = targetProcPos.Y
-    root.CFrame = CFrame.lookAt(Vector3.new(targetProcPos.X, fy+1.2, targetProcPos.Z+2.5), Vector3.new(targetProcPos.X, fy+1.2, targetProcPos.Z))
-    root.AssemblyLinearVelocity = Vector3.zero
+    SmoothWalkTo(Vector3.new(targetProcPos.X, targetProcPos.Y, targetProcPos.Z + 2.5), 15, check, 2.0)
     task.wait(0.2)
 
     if procPrompt then 
@@ -1989,7 +1957,7 @@ ProcessOreAtStation = function(oreName, minP, check)
         end
     end)
     
-    task.wait(3.0)
+    task.wait(0.5)
 
     local c2 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(Vector3.new(-876.62, 10.52, 6662.98))
     if c2 then EnsurePlayerSeatedInCar(c2) end
@@ -2016,12 +1984,12 @@ DepositAllToVault = function(check)
     if not root or not hum then return end
     local myCar = GetPlayerVehicle() or GetNearbyPlayerVehicle(80)
     if not myCar or not hum.Sit then EnsureCarAvailable() end
-    DriveCarTo(VAULT_COORDS + Vector3.new(0,0,6.0), check)
+    DriveCarTo(VAULT_COORDS + Vector3.new(0, 0, 8.0), check)
     task.wait(0.2)
     if check and not check() then return end
     ExitCarNaturally(myCar)
     task.wait(0.3)
-    SmoothWalkTo(Vector3.new(-1.98, 26.54, 8630.8), 8, check, 0.8)
+    SmoothWalkTo(Vector3.new(-1.98, 26.54, 8630.8), 12, check, 1.5)
     task.wait(0.2)
     local vp = FindPromptNear(VAULT_COORDS, 10, "vault") or FindPromptNear(root.Position, 8)
     if vp then TriggerPrompt(vp) end
@@ -2042,10 +2010,7 @@ DepositAllToVault = function(check)
             end
         end
     end
-    for s = 10, 1, -1 do
-        if check and not check() then break end
-        task.wait(1.0)
-    end
+    task.wait(1.0)
     pcall(function()
         local vg = PlayerGui:FindFirstChild("Safe Vault") or PlayerGui:FindFirstChild("SafeVault") or PlayerGui:FindFirstChild("Vault")
         if vg and vg:FindFirstChild("Group") then
@@ -2102,16 +2067,8 @@ SellAtEconomyMarket = function(check)
     local root = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not root or not hum then return end
-
     local marketPos, directPrompt = GetEconomyMarketPosition()
     marketPos = marketPos or TYPER_LOCATIONS.Economy.Market
-
-    -- จุดจอดรถ: offset ออกจากจุดขาย (ปรับระยะได้)
-    local PARK_DISTANCE = 30
-    local carParkPos = Vector3.new(marketPos.X, marketPos.Y, marketPos.Z + PARK_DISTANCE)
-    local carGroundY = GetGroundLevel(carParkPos.X, carParkPos.Z, carParkPos.Y)
-    carParkPos = Vector3.new(carParkPos.X, carGroundY + 2.5, carParkPos.Z)
-
     local myCar = GetPlayerVehicle()
     if not myCar or not (hum and hum.Sit) then
         if not myCar then myCar = EnsureCarAvailable(TOWN_CAR_SPAWN) end
@@ -2119,26 +2076,14 @@ SellAtEconomyMarket = function(check)
     end
     if not myCar then myCar = EnsureCarAvailable(TOWN_CAR_SPAWN) end
     if myCar then EnsurePlayerSeatedInCar(myCar) end
-
-    -- ขับ/วาปรถไปจุดจอด (ไม่ใช่จุดขาย)
-    DriveCarTo(carParkPos, check)
+    DriveCarTo(marketPos + Vector3.new(0, 0, 8.0), check)
     task.wait(0.3)
     if check and not check() then return end
-
     ExitCarNaturally(myCar)
-    myCar = nil
-
     local fp, pFound = GetEconomyMarketPosition()
     local tp = fp or marketPos
-    if root and root.Parent then
-        local gy = GetGroundLevel(tp.X, tp.Z, tp.Y)
-        root.CFrame = CFrame.lookAt(Vector3.new(tp.X + 2.5, gy + 2.2, tp.Z), tp)
-        root.AssemblyLinearVelocity = Vector3.zero
-    end
+    SmoothWalkTo(tp + Vector3.new(2.5, 0, 0), 15, check, 2.5)
     task.wait(0.2)
-
-    if not root or not root.Parent then return end
-
     local ep = pFound or directPrompt or FindPromptNear(root.Position, 25, "econ") or FindPromptNear(tp, 25)
     if ep then
         local h = math.max((ep.HoldDuration or 0.1), 0.15) + 0.1
@@ -2147,7 +2092,6 @@ SellAtEconomyMarket = function(check)
         pcall(function() ep:InputHoldEnd() end)
     end
     task.wait(0.4)
-
     pcall(function()
         local rc = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules") and ReplicatedStorage.Systems.Modules:FindFirstChild("Core") and ReplicatedStorage.Systems.Modules.Core:FindFirstChild("Remotes")
         if rc then
@@ -2156,13 +2100,12 @@ SellAtEconomyMarket = function(check)
             R.Fire("_economy", "SellAll")
         end
     end)
-
     pcall(function()
         local eg = PlayerGui:FindFirstChild("Economy") or PlayerGui:FindFirstChild("Ecconomy")
         if eg and eg:FindFirstChild("Group") then
             local main = eg.Group:FindFirstChild("Main") or eg.Group
-            local sellBtn = main:FindFirstChild("Sell_All", true)
-                         or main:FindFirstChild("SellAll", true)
+            local sellBtn = main:FindFirstChild("Sell_All", true) 
+                         or main:FindFirstChild("SellAll", true) 
                          or main:FindFirstChild("Sell", true)
             if not sellBtn then
                 for _, b in ipairs(main:GetDescendants()) do
@@ -2176,7 +2119,6 @@ SellAtEconomyMarket = function(check)
         end
     end)
     task.wait(1.0)
-
     pcall(function()
         local eg = PlayerGui:FindFirstChild("Economy") or PlayerGui:FindFirstChild("Ecconomy")
         if eg and eg:FindFirstChild("Group") then
@@ -2186,25 +2128,13 @@ SellAtEconomyMarket = function(check)
             eg.Group.Visible = false
         end
     end)
-
     if isAutoEatAndDrinkEnabled then
         local h = GetPlayerHunger()
         local e = GetPlayerEnergy()
         if (h and h <= 75) or (e and e <= 75) then AutoEatThenDrink(95) end
     end
-
-    -- วาปกลับไปขึ้นรถคันเดิมที่จอดไว้
     local c2 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
-    if c2 then
-        if root and root.Parent and c2.PrimaryPart then
-            local cp = c2.PrimaryPart.Position
-            local gy = GetGroundLevel(cp.X, cp.Z, cp.Y)
-            root.CFrame = CFrame.new(cp.X + 3, gy + 2.2, cp.Z)
-            root.AssemblyLinearVelocity = Vector3.zero
-            task.wait(0.15)
-        end
-        PressFToEnterCar(c2)
-    end
+    if c2 then PressFToEnterCar(c2) end
     task.wait(0.2)
 end
 
@@ -2290,9 +2220,8 @@ local function BuyBaitMaxAtShop(shopPos)
     end
     
     local safeStandPos = shopPos + Vector3.new(0, 2.5, 4) 
-    root.CFrame = CFrame.lookAt(safeStandPos, shopPos)
-    root.AssemblyLinearVelocity = Vector3.zero
-    task.wait(0.5)
+    SmoothWalkTo(safeStandPos, 15, nil, 2.5)
+    task.wait(0.3)
 
     local prompt = FindPromptNear(shopPos, 20, "shop") or FindPromptNear(root.Position, 20, nil)
     if prompt then
@@ -2499,7 +2428,7 @@ StartAutoFishing = function()
                     local myCar = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
                     if myCar then
                         EnsurePlayerSeatedInCar(myCar)
-                        DriveCarTo(BAIT_SHOP_POS, function() return isAutoFishingEnabled end)
+                        DriveCarTo(BAIT_SHOP_POS + Vector3.new(0, 0, 8.0), function() return isAutoFishingEnabled end)
                         ExitCarNaturally(myCar)
                         task.wait(0.3)
                     end
@@ -2707,7 +2636,7 @@ local function StopSession(key) MarvenSession[key] = (MarvenSession[key] or 0) +
 local Window = UI:CreateWindow({
     Title = "MarvenRiz Hub",
     Author = "by. zems.xz",
-    Version = "Premium + Nexus Engine (Ultimate Master 100%) [v2.5]",
+    Version = "Premium + Nexus Engine (Realistic Driving) [v2.6]",
     Logo = "rbxassetid://124905448303407",
     Folder = "MarvenRizHub",
     ConfigAutoSave = true,
@@ -2720,7 +2649,7 @@ Window:SetTheme({ Accent = Color3.fromRGB(0, 110, 255) })
 -- STATUS
 local StatusTab = Window:Tab({Title = "สถานะ", Icon = "activity"})
 local Status = StatusTab:Section({Title = "ข้อมูลผู้เล่น"})
-Status:Banner({Title = "MarvenRiz Hub [v2.5]", SubTitle = "🔗 NEXUS Engine + ระบบคราฟสมบูรณ์ + เมนูภาษาไทย"})
+Status:Banner({Title = "MarvenRiz Hub [v2.6]", SubTitle = "🚗 ขับรถตาม GPS & ฟิสิกส์เหมือนคนจริง + ป้องกันการเตะ 100%"})
 local StatsGrid = Status:StatGrid({
     {Label = "FPS", Value = "0"}, {Label = "Ping", Value = "0 ms"},
     {Label = "Executor", Value = "Unknown"}, {Label = "Players", Value = "0"},
@@ -2965,13 +2894,13 @@ FishSection:Toggle({
 })
 
 local AdvTab = Window:Tab({Title = "ขั้นสูง", Icon = "sliders"})
-local SpeedSection = AdvTab:Section({Title = "ความเร็วยานพาหนะ"})
+local SpeedSection = AdvTab:Section({Title = "ตั้งค่าการขับรถ"})
 SpeedSection:Slider({
-    Title = "ความเร็วขับรถ (Studs/s)", Default = 150, Min = 10, Max = 280, Rounding = 0, Flag = "VehicleSpeed",
-    Callback = function(v) VehicleDriveSpeed = math.clamp(math.round(v), 10, 280) end
+    Title = "ความเร็วสูงสุดรถ (Max Speed)", Default = 120, Min = 30, Max = 250, Rounding = 0, Flag = "VehicleSpeed",
+    Callback = function(v) VehicleDriveSpeed = math.clamp(math.round(v), 30, 250) end
 })
 SpeedSection:Toggle({
-    Title = "รถทะลุสิ่งกีดขวาง (Vehicle NoClip)", Default = true, Flag = "VehicleNoclip",
+    Title = "รถทะลุสิ่งกีดขวาง (เปิดเฉพาะตอนติดหนัก)", Default = false, Flag = "VehicleNoclip",
     Callback = function(v) isVehicleNoclipEnabled = v end
 })
 SpeedSection:Toggle({
