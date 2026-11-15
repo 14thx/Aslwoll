@@ -50,7 +50,7 @@ isAutoCoffeeEnabled = true
 isAutoEatAndDrinkEnabled = true
 isConsumingItem = false
 isVehicleNoclipEnabled = true
-isVehiclePlatformEnabled = true
+isVehiclePlatformEnabled = false
 isAntiWaterFallEnabled = true
 isAutoHopOnPlayerNearbyEnabled = true
 autoHopDistance = 90
@@ -1213,146 +1213,105 @@ local function IsWideSolidGround(x, z)
     return true
 end
 
+-- ==============================================================================
+-- 🚗 SMART GPS DRIVE-CAR-TO (เวอร์ชันล็อคพื้น 100% ไม่บิน ไม่วาป)
+-- ==============================================================================
+local PathfindingService = game:GetService("PathfindingService")
+
 DriveCarTo = function(dest, check)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not hum or not root then return false end
-    local car, seat = nil, nil
+
+    -- 1. หารถที่อยู่ใกล้ หรือรถที่เรานั่งอยู่
+    local car = nil
     if hum.Sit and hum.SeatPart then
-        seat = hum.SeatPart
-        car = seat:FindFirstAncestorOfClass("Model")
+        car = hum.SeatPart:FindFirstAncestorOfClass("Model")
         if car then MY_SPAWNED_CAR = car end
     end
     if not car then
         car = GetNearbyPlayerVehicle(80) or GetPlayerVehicle()
         if car then EnsurePlayerSeatedInCar(car) task.wait(0.2) end
     end
-    if not car then return false end
-    seat = (hum and hum.SeatPart) or car:FindFirstChild("DriveSeat", true) or car:FindFirstChildWhichIsA("VehicleSeat", true)
-    if not seat then return false end
-    if not car.PrimaryPart then pcall(function() car.PrimaryPart = seat end) end
-    local cur = seat.Position
-    local rideH = math.clamp(cur.Y - GetGroundLevel(cur.X, cur.Z, cur.Y), 2.3, 3.2)
-    local distT = (Vector2.new(dest.X, dest.Z) - Vector2.new(cur.X, cur.Z)).Magnitude
-    if distT < 5 then return true end
-    local trav, lastT = 0, os.clock()
-    local flying, safeF = false, 0
-    local DRIVE_TIMEOUT = 120
-    local driveStartTime = os.clock()
+    if not car or not car.PrimaryPart then return false end
 
-    while trav < distT do
-        if os.clock() - driveStartTime > DRIVE_TIMEOUT then
-            if vehiclePlatformPart then vehiclePlatformPart:Destroy() vehiclePlatformPart = nil end
-            return false
-        end
-        if check and not check() then
-            if vehiclePlatformPart then vehiclePlatformPart:Destroy() vehiclePlatformPart = nil end
-            return false
-        end
-        if not hum.Sit or hum.SeatPart ~= seat then
-            pcall(function() root.CFrame = seat.CFrame + Vector3.new(0,0.8,0) seat:Sit(hum) end)
-        end
-        local spd = math.clamp(tonumber(VehicleDriveSpeed) or 150, 10, 280)
-        local rem = distT - trav
-        if rem < 80 then spd = math.max(spd * math.clamp(rem/80, 0.2, 1), 30) end
-        local now = os.clock()
-        local dt = math.min(now - lastT, 0.1)
-        lastT = now
-        trav = math.min(distT, trav + (spd * dt))
-        local a = math.clamp(trav / distT, 0, 1)
-        local tx = cur.X + (dest.X - cur.X) * a
-        local tz = cur.Z + (dest.Z - cur.Z) * a
-        local ey = cur.Y + (dest.Y - cur.Y) * a
-        local gy = GetGroundLevel(tx, tz, ey)
-        local lY = gy + rideH
-        local inOcean = (tz >= 350 and tz <= 4050)
-        local isSafe = (not inOcean) and IsWideSolidGround(tx, tz)
-        if inOcean or not isSafe then safeF = 0 flying = true
-        else safeF += 1 if safeF >= 8 or rem <= 12 then flying = false end end
-        local sY = math.max(flying and 400 or lY, 16.0)
-        pcall(function()
-            if hum then
-                hum:SetStateEnabled(Enum.HumanoidStateType.Swimming, false)
-                hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-                hum:SetStateEnabled(Enum.HumanoidStateType.Freefall, false)
-            end
-        end)
-        local dir = Vector3.new(dest.X - tx, 0, dest.Z - tz)
-        local cf = CFrame.new(tx, sY, tz)
-        if dir.Magnitude > 0.1 then cf = CFrame.lookAt(Vector3.new(tx, sY, tz), Vector3.new(tx, sY, tz) + dir) end
-        car:PivotTo(cf)
-        pcall(function()
-            if car.PrimaryPart then
-                car.PrimaryPart.AssemblyLinearVelocity = Vector3.zero
-                car.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
-            end
-            if seat and seat:IsA("BasePart") then
-                seat.AssemblyLinearVelocity = Vector3.zero
-                seat.AssemblyAngularVelocity = Vector3.zero
-            end
-        end)
-        if isVehiclePlatformEnabled then
-            if flying then
-                if vehiclePlatformPart then vehiclePlatformPart.CanCollide = false end
-            else
-                EnsureVehiclePlatform(sY - rideH, Vector3.new(tx, sY, tz))
-            end
-        end
-        RunService.Heartbeat:Wait()
+    -- 2. ถ้าระยะทางใกล้มาก ให้จบเลย
+    local startPos = car.PrimaryPart.Position
+    local distToDest = (Vector2.new(dest.X, dest.Z) - Vector2.new(startPos.X, startPos.Z)).Magnitude
+    if distToDest < 10 then return true end
+
+    -- 3. ใช้ Pathfinding หาเส้นทางหลบภูเขา/น้ำ
+    local path = PathfindingService:CreatePath({
+        AgentRadius = 3,
+        AgentHeight = 5,
+        AgentCanJump = true,
+        AgentCanClimb = false,
+        WaypointSpacing = 25
+    })
+
+    local success, errorMessage = pcall(function()
+        path:ComputeAsync(startPos, dest)
+    end)
+
+    -- ถ้าหาเส้นทางไม่เจอ ให้ใช้เส้นตรงปกติ
+    if not success or path.Status ~= Enum.PathStatus.Success then
+        path = nil 
     end
-    pcall(function()
-        local fg = GetGroundLevel(dest.X, dest.Z, dest.Y)
-        car:PivotTo(CFrame.new(dest.X, math.max(fg + rideH, 16.0), dest.Z))
-        if car.PrimaryPart then
-            car.PrimaryPart.AssemblyLinearVelocity = Vector3.zero
-            car.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
+
+    local waypoints = path and path:GetWaypoints() or { {Position = dest} }
+    local driveStartTime = os.clock()
+    local DRIVE_TIMEOUT = 120
+    local speed = 80 -- ความเร็วที่ปลอดภัย (ไม่ให้โดนจับ Speed Hack)
+
+    -- 4. ล็อคไม่ให้ตัวละครหลุดจากรถระหว่างขับ
+    local seatCheckConn = RunService.Stepped:Connect(function()
+        if hum and not hum.Sit and car.PrimaryPart then
+            pcall(function() car.PrimaryPart.CFrame = car.PrimaryPart.CFrame end)
         end
     end)
-    if vehiclePlatformPart then vehiclePlatformPart:Destroy() vehiclePlatformPart = nil end
+
+    -- 5. เริ่มขับตาม Waypoint
+    for i, wp in ipairs(waypoints) do
+        if check and not check() then break end
+
+        local targetPos = wp.Position
+        while (car.PrimaryPart.Position - targetPos).Magnitude > 15 do
+            if os.clock() - driveStartTime > DRIVE_TIMEOUT then break end
+            if check and not check() then break end
+
+            local cPos = car.PrimaryPart.Position
+            local gy = GetGroundLevel(cPos.X, cPos.Z, cPos.Y)
+            
+            -- 🔥 ทิศทางไปจุดหมาย
+            local dir = Vector3.new(targetPos.X - cPos.X, 0, targetPos.Z - cPos.Z).Unit
+            
+            -- 🔥 บังคับความเร็ว (ล็อค Y = 0 ห้ามลอย)
+            car.PrimaryPart.AssemblyLinearVelocity = Vector3.new(dir.X * speed, 0, dir.Z * speed)
+            
+            -- 🔥 หันหน้าตามทิศทาง
+            local lookAt = CFrame.lookAt(cPos, cPos + dir)
+            car.PrimaryPart.CFrame = car.PrimaryPart.CFrame:Lerp(CFrame.new(cPos) * (lookAt - lookAt.Position), 0.1)
+
+            -- 🔥 [จุดสำคัญ] บังคับรถให้ติดพื้นดิน (ไม่เกิน 3.5 studs)
+            if cPos.Y > gy + 3.5 then
+                car.PrimaryPart.CFrame = CFrame.new(cPos.X, gy + 3.0, cPos.Z) * (car.PrimaryPart.CFrame - car.PrimaryPart.Position)
+                car.PrimaryPart.AssemblyLinearVelocity = Vector3.new(dir.X * speed, 0, dir.Z * speed)
+            end
+
+            RunService.Heartbeat:Wait()
+        end
+    end
+
+    -- 6. เคลียร์ค่าตอนจบ (หยุดรถ)
+    if seatCheckConn then seatCheckConn:Disconnect() end
+    if car.PrimaryPart then
+        car.PrimaryPart.AssemblyLinearVelocity = Vector3.zero
+        car.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
+    end
     task.wait(0.1)
     return true
 end
-
-RunService.Stepped:Connect(function()
-    local char = LocalPlayer.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if hum and hum.Sit and hum.SeatPart then
-        local myCar = hum.SeatPart:FindFirstAncestorOfClass("Model")
-        if myCar then
-            local sp = hum.SeatPart.Position
-            local gy = GetGroundLevel(sp.X, sp.Z, sp.Y)
-            if isVehiclePlatformEnabled then
-                EnsureVehiclePlatform(gy - 0.2, sp)
-            elseif vehiclePlatformPart then
-                vehiclePlatformPart:Destroy()
-                vehiclePlatformPart = nil
-            end
-            if isVehicleNoclipEnabled then
-                for _, part in ipairs(myCar:GetDescendants()) do
-                    if part:IsA("BasePart") and part ~= vehiclePlatformPart then
-                        local pn = part.Name:lower()
-                        if pn:find("groundguard") or pn:find("bumpstop") then
-                            part.CanCollide = true
-                        else
-                            part.CanCollide = false
-                        end
-                    end
-                end
-                for _, part in ipairs(char:GetDescendants()) do
-                    if part:IsA("BasePart") then part.CanCollide = false end
-                end
-            end
-        end
-    else
-        if vehiclePlatformPart then vehiclePlatformPart:Destroy() vehiclePlatformPart = nil end
-        if isVehicleNoclipEnabled and char then
-            for _, part in ipairs(char:GetDescendants()) do
-                if part:IsA("BasePart") then part.CanCollide = false end
-            end
-        end
-    end
-end)
 
 -- =====================================
 -- HARVEST SYSTEM
