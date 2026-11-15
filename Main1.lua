@@ -1214,17 +1214,21 @@ local function IsWideSolidGround(x, z)
 end
 
 -- ==============================================================================
--- 🚗 SMART GPS DRIVE-CAR-TO (เวอร์ชันล็อคพื้น 100% ไม่บิน ไม่วาป)
+-- 🚗 HYBRID DRIVE-CAR-TO (GPS ปกติ + โหมดทะลุ + กดมาร์คแผนที่)
 -- ==============================================================================
 local PathfindingService = game:GetService("PathfindingService")
 
-DriveCarTo = function(dest, check)
+-- 🔥 สวิตช์เปิด/ปิดโหมดทะลุ (true = ทะลุทุกอย่าง, false = ขับตาม GPS)
+-- * แนะนำให้ตั้ง false ถ้าไม่อยากโดนแบน*
+local isGhostModeEnabled = false 
+
+DriveCarTo = function(dest, check, categoryName)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not hum or not root then return false end
 
-    -- 1. หารถที่อยู่ใกล้ หรือรถที่เรานั่งอยู่
+    -- 1. หารถ
     local car = nil
     if hum.Sit and hum.SeatPart then
         car = hum.SeatPart:FindFirstAncestorOfClass("Model")
@@ -1236,75 +1240,99 @@ DriveCarTo = function(dest, check)
     end
     if not car or not car.PrimaryPart then return false end
 
-    -- 2. ถ้าระยะทางใกล้มาก ให้จบเลย
+    -- 2. กดมาร์คบนแผนที่ให้เอง (ถ้ามีการส่งชื่อ Category มา และหน้า Map เปิดอยู่)
+    if categoryName then
+        local pg = LocalPlayer:FindFirstChild("PlayerGui")
+        local mapGui = pg and pg:FindFirstChild("Minimap")
+        if mapGui and mapGui:FindFirstChild("Big_Map") and mapGui.Big_Map.Visible then
+            local scroll = mapGui.Big_Map:FindFirstChild("map") and mapGui.Big_Map.map:FindFirstChild("scrolling")
+            if scroll then
+                for _, btn in ipairs(scroll:GetChildren()) do
+                    if btn:IsA("GuiButton") and btn.Name:lower() == categoryName:lower() then
+                        pcall(function() 
+                            if firesignal then firesignal(btn.MouseButton1Click) end
+                            if firesignal then firesignal(btn.Activated) end
+                        end)
+                        task.wait(0.5)
+                        break
+                    end
+                end
+            end
+        end
+    end
+
     local startPos = car.PrimaryPart.Position
     local distToDest = (Vector2.new(dest.X, dest.Z) - Vector2.new(startPos.X, startPos.Z)).Magnitude
     if distToDest < 10 then return true end
 
-    -- 3. ใช้ Pathfinding หาเส้นทางหลบภูเขา/น้ำ
-    local path = PathfindingService:CreatePath({
-        AgentRadius = 3,
-        AgentHeight = 5,
-        AgentCanJump = true,
-        AgentCanClimb = false,
-        WaypointSpacing = 25
-    })
-
-    local success, errorMessage = pcall(function()
-        path:ComputeAsync(startPos, dest)
-    end)
-
-    -- ถ้าหาเส้นทางไม่เจอ ให้ใช้เส้นตรงปกติ
-    if not success or path.Status ~= Enum.PathStatus.Success then
-        path = nil 
-    end
-
-    local waypoints = path and path:GetWaypoints() or { {Position = dest} }
-    local driveStartTime = os.clock()
-    local DRIVE_TIMEOUT = 120
-    local speed = 80 -- ความเร็วที่ปลอดภัย (ไม่ให้โดนจับ Speed Hack)
-
-    -- 4. ล็อคไม่ให้ตัวละครหลุดจากรถระหว่างขับ
-    local seatCheckConn = RunService.Stepped:Connect(function()
-        if hum and not hum.Sit and car.PrimaryPart then
-            pcall(function() car.PrimaryPart.CFrame = car.PrimaryPart.CFrame end)
+    -- 🚨 โหมดที่ 1: ทะลุทุกอย่าง (Ghost Mode)
+    if isGhostModeEnabled then
+        local speed = 150 
+        local driveStartTime = os.clock()
+        local DRIVE_TIMEOUT = 120
+        
+        -- เปิด Noclip รถ
+        for _, part in ipairs(car:GetDescendants()) do
+            if part:IsA("BasePart") then part.CanCollide = false end
         end
-    end)
 
-    -- 5. เริ่มขับตาม Waypoint
-    for i, wp in ipairs(waypoints) do
-        if check and not check() then break end
-
-        local targetPos = wp.Position
-        while (car.PrimaryPart.Position - targetPos).Magnitude > 15 do
+        while (car.PrimaryPart.Position - dest).Magnitude > 15 do
             if os.clock() - driveStartTime > DRIVE_TIMEOUT then break end
             if check and not check() then break end
 
             local cPos = car.PrimaryPart.Position
+            local dir = Vector3.new(dest.X - cPos.X, 0, dest.Z - cPos.Z).Unit
             local gy = GetGroundLevel(cPos.X, cPos.Z, cPos.Y)
+            local targetY = gy + 3.0 
             
-            -- 🔥 ทิศทางไปจุดหมาย
-            local dir = Vector3.new(targetPos.X - cPos.X, 0, targetPos.Z - cPos.Z).Unit
-            
-            -- 🔥 บังคับความเร็ว (ล็อค Y = 0 ห้ามลอย)
             car.PrimaryPart.AssemblyLinearVelocity = Vector3.new(dir.X * speed, 0, dir.Z * speed)
+            car.PrimaryPart.CFrame = CFrame.lookAt(Vector3.new(cPos.X, targetY, cPos.Z), Vector3.new(cPos.X, targetY, cPos.Z) + dir)
             
-            -- 🔥 หันหน้าตามทิศทาง
-            local lookAt = CFrame.lookAt(cPos, cPos + dir)
-            car.PrimaryPart.CFrame = car.PrimaryPart.CFrame:Lerp(CFrame.new(cPos) * (lookAt - lookAt.Position), 0.1)
-
-            -- 🔥 [จุดสำคัญ] บังคับรถให้ติดพื้นดิน (ไม่เกิน 3.5 studs)
-            if cPos.Y > gy + 3.5 then
-                car.PrimaryPart.CFrame = CFrame.new(cPos.X, gy + 3.0, cPos.Z) * (car.PrimaryPart.CFrame - car.PrimaryPart.Position)
-                car.PrimaryPart.AssemblyLinearVelocity = Vector3.new(dir.X * speed, 0, dir.Z * speed)
-            end
-
             RunService.Heartbeat:Wait()
         end
+
+    -- 🗺️ โหมดที่ 2: ขับตาม GPS (Pathfinding)
+    else
+        local path = PathfindingService:CreatePath({
+            AgentRadius = 3, AgentHeight = 5, AgentCanJump = true, AgentCanClimb = false, WaypointSpacing = 25
+        })
+        local success = pcall(function() path:ComputeAsync(startPos, dest) end)
+        if not success or path.Status ~= Enum.PathStatus.Success then path = nil end
+
+        local waypoints = path and path:GetWaypoints() or { {Position = dest} }
+        local driveStartTime = os.clock()
+        local DRIVE_TIMEOUT = 120
+        local speed = 230 
+
+        local seatCheckConn = RunService.Stepped:Connect(function()
+            if hum and not hum.Sit then pcall(function() car.PrimaryPart.CFrame = car.PrimaryPart.CFrame end) end
+        end)
+
+        for i, wp in ipairs(waypoints) do
+            if check and not check() then break end
+            local targetPos = wp.Position
+            while (car.PrimaryPart.Position - targetPos).Magnitude > 15 do
+                if os.clock() - driveStartTime > DRIVE_TIMEOUT then break end
+                if check and not check() then break end
+
+                local cPos = car.PrimaryPart.Position
+                local gy = GetGroundLevel(cPos.X, cPos.Z, cPos.Y)
+                local dir = Vector3.new(targetPos.X - cPos.X, 0, targetPos.Z - cPos.Z).Unit
+                
+                car.PrimaryPart.AssemblyLinearVelocity = Vector3.new(dir.X * speed, 0, dir.Z * speed)
+                local lookAt = CFrame.lookAt(cPos, cPos + dir)
+                car.PrimaryPart.CFrame = car.PrimaryPart.CFrame:Lerp(CFrame.new(cPos) * (lookAt - lookAt.Position), 0.1)
+
+                if cPos.Y > gy + 3.5 then
+                    car.PrimaryPart.CFrame = CFrame.new(cPos.X, gy + 3.0, cPos.Z) * (car.PrimaryPart.CFrame - car.PrimaryPart.Position)
+                end
+                RunService.Heartbeat:Wait()
+            end
+        end
+        if seatCheckConn then seatCheckConn:Disconnect() end
     end
 
-    -- 6. เคลียร์ค่าตอนจบ (หยุดรถ)
-    if seatCheckConn then seatCheckConn:Disconnect() end
+    -- เคลียร์ค่าตอนจบ
     if car.PrimaryPart then
         car.PrimaryPart.AssemblyLinearVelocity = Vector3.zero
         car.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
@@ -1462,7 +1490,7 @@ HarvestSingleCrop = function(cropName, targetAmount, check)
     end
     local exactCenter = GetExactFarmPromptPosition(cropName) or locData.Farm
     local parking = GetFarmParkingPosition(cropName)
-    DriveCarTo(parking, check)
+    DriveCarTo(parking, check, cropName)
     task.wait(0.1)
     if check and not check() then return end
     if hum and hum.Sit then
