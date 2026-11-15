@@ -1214,38 +1214,32 @@ local function IsWideSolidGround(x, z)
 end
 
 -- ==============================================================================
--- 🚗 HYBRID DRIVE-CAR-TO (GPS ปกติ + โหมดทะลุ + กดมาร์คแผนที่)
+-- 🚗 HUMAN-LIKE DRIVE (V2 - ขับตรง + ทะลุเมื่อติด + ไม่ชิดขวา)
 -- ==============================================================================
-local PathfindingService = game:GetService("PathfindingService")
-
--- 🔥 สวิตช์เปิด/ปิดโหมดทะลุ (true = ทะลุทุกอย่าง, false = ขับตาม GPS)
--- * แนะนำให้ตั้ง false ถ้าไม่อยากโดนแบน*
-local isGhostModeEnabled = false 
-
 DriveCarTo = function(dest, check, categoryName)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if not hum or not root then return false end
-
-    -- 1. หารถ
-    local car = nil
-    if hum.Sit and hum.SeatPart then
-        car = hum.SeatPart:FindFirstAncestorOfClass("Model")
-        if car then MY_SPAWNED_CAR = car end
-    end
-    if not car then
-        car = GetNearbyPlayerVehicle(80) or GetPlayerVehicle()
-        if car then EnsurePlayerSeatedInCar(car) task.wait(0.2) end
-    end
+    if not hum or not hum.Sit then return false end
+    
+    local car = hum.SeatPart:FindFirstAncestorOfClass("Model")
     if not car or not car.PrimaryPart then return false end
 
-    -- 2. กดมาร์คบนแผนที่ให้เอง (ถ้ามีการส่งชื่อ Category มา และหน้า Map เปิดอยู่)
+    -- 🗺️ 1. กดมาร์คใน Map ให้เอง
     if categoryName then
         local pg = LocalPlayer:FindFirstChild("PlayerGui")
         local mapGui = pg and pg:FindFirstChild("Minimap")
-        if mapGui and mapGui:FindFirstChild("Big_Map") and mapGui.Big_Map.Visible then
-            local scroll = mapGui.Big_Map:FindFirstChild("map") and mapGui.Big_Map.map:FindFirstChild("scrolling")
+        local bigMap = mapGui and mapGui:FindFirstChild("Big_Map")
+        
+        if bigMap and not bigMap.Visible then
+            local vim = game:GetService("VirtualInputManager")
+            vim:SendKeyEvent(true, Enum.KeyCode.M, false, game)
+            task.wait(0.1)
+            vim:SendKeyEvent(false, Enum.KeyCode.M, false, game)
+            task.wait(0.5)
+        end
+
+        if bigMap and bigMap.Visible then
+            local scroll = bigMap:FindFirstChild("map") and bigMap.map:FindFirstChild("scrolling")
             if scroll then
                 for _, btn in ipairs(scroll:GetChildren()) do
                     if btn:IsA("GuiButton") and btn.Name:lower() == categoryName:lower() then
@@ -1253,91 +1247,122 @@ DriveCarTo = function(dest, check, categoryName)
                             if firesignal then firesignal(btn.MouseButton1Click) end
                             if firesignal then firesignal(btn.Activated) end
                         end)
-                        task.wait(0.5)
+                        task.wait(0.3)
                         break
                     end
                 end
             end
+            local vim = game:GetService("VirtualInputManager")
+            vim:SendKeyEvent(true, Enum.KeyCode.M, false, game)
+            task.wait(0.1)
+            vim:SendKeyEvent(false, Enum.KeyCode.M, false, game)
         end
     end
 
-    local startPos = car.PrimaryPart.Position
-    local distToDest = (Vector2.new(dest.X, dest.Z) - Vector2.new(startPos.X, startPos.Z)).Magnitude
-    if distToDest < 10 then return true end
+    -- 🚗 2. เริ่มขับรถ
+    local driveStartTime = os.clock()
+    local DRIVE_TIMEOUT = 120
+    local maxSpeed = 100 -- ปรับความเร็วตรงนี้ (100 = เร็วกำลังดี)
+    
+    -- 🔥 ระบบทะลุ: บังคับให้ CanCollide เป็น false ตลอดเวลาที่ขับ
+    for _, part in ipairs(car:GetDescendants()) do
+        if part:IsA("BasePart") then part.CanCollide = false end
+    end
 
-    -- 🚨 โหมดที่ 1: ทะลุทุกอย่าง (Ghost Mode)
-    if isGhostModeEnabled then
-        local speed = 150 
-        local driveStartTime = os.clock()
-        local DRIVE_TIMEOUT = 120
+    -- ล็อคไม่ให้หลุดจากรถ
+    local seatCheckConn = RunService.Stepped:Connect(function()
+        if hum and not hum.Sit then pcall(function() car.PrimaryPart.CFrame = car.PrimaryPart.CFrame end) end
+    end)
+
+    while (car.PrimaryPart.Position - dest).Magnitude > 15 do
+        if os.clock() - driveStartTime > DRIVE_TIMEOUT then break end
+        if check and not check() then break end
+
+        local cPos = car.PrimaryPart.Position
+        local cFrame = car.PrimaryPart.CFrame
+        local gy = GetGroundLevel(cPos.X, cPos.Z, cPos.Y)
         
-        -- เปิด Noclip รถ
-        for _, part in ipairs(car:GetDescendants()) do
-            if part:IsA("BasePart") then part.CanCollide = false end
+        -- 🔥 คำนวณทิศทางตรงไปจุดหมาย
+        local distToDest = (dest - cPos).Magnitude
+        local targetDir = Vector3.new(dest.X - cPos.X, 0, dest.Z - cPos.Z).Unit
+        
+        -- 🔥 คำนวณมุมเพื่อหันรถให้เนียน (ไม่หักศอก)
+        local currentDir = cFrame.LookVector
+        local targetAngle = math.atan2(targetDir.X, targetDir.Z)
+        local currentAngle = math.atan2(currentDir.X, currentDir.Z)
+        local angleDiff = (targetAngle - currentAngle + math.pi) % (2 * math.pi) - math.pi
+        
+        -- 🔥 ชะลอความเร็วเมื่อใกล้ถึง (เหมือนคนเล่น)
+        local currentSpeed = maxSpeed
+        if distToDest < 40 then
+            currentSpeed = maxSpeed * (distToDest / 40) 
         end
+        
+        -- 🔥 เลี้ยวทีละนิด (Smooth Turn)
+        local turnSpeed = math.clamp(angleDiff * 2, -3, 3)
+        local newLookDir = (currentDir + Vector3.new(turnSpeed, 0, turnSpeed)).Unit
+        
+        -- 🔥 บังคับให้ติดพื้น (ไม่บิน)
+        local targetY = gy + 3.0
+        
+        -- 🔥 ใส่ความเร็วตามทิศทางที่หัน
+        local forwardVel = newLookDir * currentSpeed
+        car.PrimaryPart.AssemblyLinearVelocity = Vector3.new(forwardVel.X, 0, forwardVel.Z)
+        
+        -- 🔥 หันหน้ารถอย่างนุ่มนวล
+        car.PrimaryPart.CFrame = CFrame.lookAt(
+            Vector3.new(cPos.X, targetY, cPos.Z),
+            Vector3.new(cPos.X + newLookDir.X, targetY, cPos.Z + newLookDir.Z)
+        )
 
-        while (car.PrimaryPart.Position - dest).Magnitude > 15 do
-            if os.clock() - driveStartTime > DRIVE_TIMEOUT then break end
-            if check and not check() then break end
-
-            local cPos = car.PrimaryPart.Position
-            local dir = Vector3.new(dest.X - cPos.X, 0, dest.Z - cPos.Z).Unit
-            local gy = GetGroundLevel(cPos.X, cPos.Z, cPos.Y)
-            local targetY = gy + 3.0 
-            
-            car.PrimaryPart.AssemblyLinearVelocity = Vector3.new(dir.X * speed, 0, dir.Z * speed)
-            car.PrimaryPart.CFrame = CFrame.lookAt(Vector3.new(cPos.X, targetY, cPos.Z), Vector3.new(cPos.X, targetY, cPos.Z) + dir)
-            
-            RunService.Heartbeat:Wait()
-        end
-
-    -- 🗺️ โหมดที่ 2: ขับตาม GPS (Pathfinding)
-    else
-        local path = PathfindingService:CreatePath({
-            AgentRadius = 3, AgentHeight = 5, AgentCanJump = true, AgentCanClimb = false, WaypointSpacing = 25
-        })
-        local success = pcall(function() path:ComputeAsync(startPos, dest) end)
-        if not success or path.Status ~= Enum.PathStatus.Success then path = nil end
-
-        local waypoints = path and path:GetWaypoints() or { {Position = dest} }
-        local driveStartTime = os.clock()
-        local DRIVE_TIMEOUT = 120
-        local speed = 230 
-
-        local seatCheckConn = RunService.Stepped:Connect(function()
-            if hum and not hum.Sit then pcall(function() car.PrimaryPart.CFrame = car.PrimaryPart.CFrame end) end
-        end)
-
-        for i, wp in ipairs(waypoints) do
-            if check and not check() then break end
-            local targetPos = wp.Position
-            while (car.PrimaryPart.Position - targetPos).Magnitude > 15 do
-                if os.clock() - driveStartTime > DRIVE_TIMEOUT then break end
-                if check and not check() then break end
-
-                local cPos = car.PrimaryPart.Position
-                local gy = GetGroundLevel(cPos.X, cPos.Z, cPos.Y)
-                local dir = Vector3.new(targetPos.X - cPos.X, 0, targetPos.Z - cPos.Z).Unit
-                
-                car.PrimaryPart.AssemblyLinearVelocity = Vector3.new(dir.X * speed, 0, dir.Z * speed)
-                local lookAt = CFrame.lookAt(cPos, cPos + dir)
-                car.PrimaryPart.CFrame = car.PrimaryPart.CFrame:Lerp(CFrame.new(cPos) * (lookAt - lookAt.Position), 0.1)
-
-                if cPos.Y > gy + 3.5 then
-                    car.PrimaryPart.CFrame = CFrame.new(cPos.X, gy + 3.0, cPos.Z) * (car.PrimaryPart.CFrame - car.PrimaryPart.Position)
-                end
-                RunService.Heartbeat:Wait()
-            end
-        end
-        if seatCheckConn then seatCheckConn:Disconnect() end
+        RunService.Heartbeat:Wait()
     end
 
-    -- เคลียร์ค่าตอนจบ
+    if seatCheckConn then seatCheckConn:Disconnect() end
+
+    -- หยุดรถ
     if car.PrimaryPart then
         car.PrimaryPart.AssemblyLinearVelocity = Vector3.zero
         car.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
     end
     task.wait(0.1)
+    return true
+end
+
+    -- ==========================================
+    -- 🔥 [เพิ่มใหม่] ถึงจุดหมายแล้ว สั่งลงจากรถทันที
+    -- ==========================================
+    task.wait(0.2) -- รอให้รถหยุดสนิทก่อน
+    
+    if hum and hum.Sit then
+        -- 1. สั่งให้ยืนขึ้น (ลงจากเบาะ)
+        hum.Sit = false 
+        task.wait(0.2)
+        
+        -- 2. หาพื้นดินตรงจุดหมายเพื่อวางตัวละครลงไป
+        local destGy = GetGroundLevel(dest.X, dest.Z, dest.Y)
+        local root = char:FindFirstChild("HumanoidRootPart")
+        local carRight = car.PrimaryPart.CFrame.RightVector
+        
+        if root then
+            -- วางตัวละครลงข้างๆ รถ (ขยับออกมาทางขวานิดนึง ไม่ให้ทับรถ)
+            local exitPos = Vector3.new(dest.X, destGy + 3.0, dest.Z) + (carRight * 4)
+            root.CFrame = CFrame.new(exitPos)
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+        end
+        
+        -- 3. คืนค่าการชนให้ตัวละครและรถ (จะได้ไม่ทะลุพื้น)
+        for _, p in ipairs(car:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide = true end
+        end
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide = true end
+        end
+        
+        task.wait(0.2)
+    end
+
     return true
 end
 
