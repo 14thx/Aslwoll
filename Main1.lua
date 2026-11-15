@@ -1270,7 +1270,7 @@ DriveCarTo = function(dest, check)
         local isSafe = (not inOcean) and IsWideSolidGround(tx, tz)
         if inOcean or not isSafe then safeF = 0 flying = true
         else safeF += 1 if safeF >= 8 or rem <= 12 then flying = false end end
-        local sY = gy + 3.5
+        local sY = math.max(flying and 400 or lY, 16.0)
         pcall(function()
             if hum then
                 hum:SetStateEnabled(Enum.HumanoidStateType.Swimming, false)
