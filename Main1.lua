@@ -1214,7 +1214,7 @@ local function IsWideSolidGround(x, z)
 end
 
 -- ============================================================
--- [FULL REPLACE] DriveCarTo (A* + Right Lane + Anti-Roll)
+-- [FULL REPLACE] DriveCarTo (A* + Right Lane + Stable + Ground Snap)
 -- ============================================================
 
 -- [1] ฟังก์ชันวาดเส้นนำทางบน Minimap
@@ -1269,7 +1269,7 @@ local function DrawMinimapRoute(waypoints)
     end
 end
 
--- [2] ฟังก์ชัน DriveCarTo
+-- [2] ฟังก์ชัน DriveCarTo (A* + Right Lane + Stable)
 DriveCarTo = function(dest, check)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -1513,39 +1513,42 @@ DriveCarTo = function(dest, check)
         end)
     end
 
-    -- === [3] ขับด้วย BodyVelocity + BodyGyro (เลนขวา + ล็อคพื้น) ===
+    -- === [3] ขับด้วย BodyVelocity + AlignOrientation (Stable + Ground Snap) ===
     local PRIMARY = car.PrimaryPart
     
-    -- BodyVelocity (ล็อค Y = 0 ไม่ให้ลอย)
+    -- BodyVelocity (ควบคุมความเร็ว + กดติดพื้น)
     local bv = Instance.new("BodyVelocity")
-    bv.MaxForce = Vector3.new(math.huge, 0, math.huge) 
+    bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge) -- แรงได้ทุกแกน
     bv.Velocity = Vector3.zero
     bv.Parent = PRIMARY
 
-    -- BodyGyro (บิดตัวรถให้หันตาม Waypoint)
-    local bg = Instance.new("BodyGyro")
-    bg.MaxTorque = Vector3.new(400000, 400000, 400000)
-    bg.D = 500 
-    bg.P = 3000 
-    bg.CFrame = PRIMARY.CFrame
-    bg.Parent = PRIMARY
+    -- Attachment สำหรับ AlignOrientation
+    local att = Instance.new("Attachment")
+    att.Parent = PRIMARY
+    
+    -- AlignOrientation (บิดตัวรถนุ่มนวล ไม่ส่าย)
+    local alignOri = Instance.new("AlignOrientation")
+    alignOri.Mode = Enum.OrientationAlignmentMode.OneAttachment
+    alignOri.Attachment0 = att
+    alignOri.MaxTorque = 50000 -- ลดแรงบิด (ไม่ให้ส่าย)
+    alignOri.Responsiveness = 30 -- ลดความไว (นุ่มนวล)
+    alignOri.CFrame = PRIMARY.CFrame
+    alignOri.Parent = PRIMARY
 
     local currentIdx = 1
     local driveStartTime = os.clock()
     local lastPos = PRIMARY.Position
     local stuckTime = 0
     local MAX_SPEED = 230
-    
-    -- [ตั้งค่าเลน] ระยะเยื้องไปทางขวา (studs)
-    local LANE_OFFSET = 6
+    local LANE_OFFSET = 6 -- [ปรับ] ระยะเยื้องเลนขวา
 
     while currentIdx <= #route do
         if os.clock() - driveStartTime > 120 then
-            bv:Destroy(); bg:Destroy()
+            bv:Destroy(); alignOri:Destroy(); att:Destroy()
             return false
         end
         if check and not check() then
-            bv:Destroy(); bg:Destroy()
+            bv:Destroy(); alignOri:Destroy(); att:Destroy()
             return false
         end
 
@@ -1565,28 +1568,31 @@ DriveCarTo = function(dest, check)
             continue
         end
 
-        -- [คำนวณแกนขวาของถนน]
+        -- คำนวณแกนขวาของถนน (สำหรับขับเลนขวา)
         local nextTarget = route[math.min(currentIdx + 1, #route)]
         local roadDir = (nextTarget - target)
         roadDir = Vector3.new(roadDir.X, 0, roadDir.Z).Unit
         local rightDir = Vector3.new(-roadDir.Z, 0, roadDir.X)
-        
-        -- จุดหมายที่เยื้องไปทางขวา
         local offsetTarget = target + (rightDir * LANE_OFFSET)
 
         local finalToTarget = Vector3.new(offsetTarget.X - carPos.X, 0, offsetTarget.Z - carPos.Z)
         local dir = finalToTarget.Unit
         
-        -- คำนวณความเร็ว (ผ่อนตอนใกล้ถึงจุดหมายจริง)
+        -- [กดติดพื้น] หาความสูงพื้น แล้วดึงลง
+        local groundY = GetGroundLevel(carPos.X, carPos.Z, carPos.Y)
+        local rideH = math.clamp(carPos.Y - groundY, 2.3, 3.2)
+        local targetY = groundY + rideH
+        local velY = (targetY - carPos.Y) * 10 -- แรงดึงลงพื้น
+        
+        -- คำนวณความเร็ว (ผ่อนตอนใกล้ถึง)
         local speed = MAX_SPEED
         if distT < 80 then speed = math.max(distT / 80 * MAX_SPEED, 30) end
 
         -- สั่งงาน BodyVelocity
-        bv.Velocity = Vector3.new(dir.X * speed, 0, dir.Z * speed)
+        bv.Velocity = Vector3.new(dir.X * speed, velY, dir.Z * speed)
         
-        -- สั่งงาน BodyGyro (หันหน้าไปทางจุดหมายที่เยื้อง)
-        local lookCF = CFrame.lookAt(carPos, Vector3.new(offsetTarget.X, carPos.Y, offsetTarget.Z))
-        bg.CFrame = lookCF
+        -- สั่งงาน AlignOrientation
+        alignOri.CFrame = CFrame.lookAt(carPos, Vector3.new(offsetTarget.X, carPos.Y, offsetTarget.Z))
 
         -- ระบบแก้รถติด
         if (carPos - lastPos).Magnitude < 2 then
@@ -1603,10 +1609,11 @@ DriveCarTo = function(dest, check)
     end
 
     bv.Velocity = Vector3.zero
-    bg.CFrame = PRIMARY.CFrame
+    alignOri.CFrame = PRIMARY.CFrame
     task.wait(0.1)
     bv:Destroy()
-    bg:Destroy()
+    alignOri:Destroy()
+    att:Destroy()
 
     -- ไม่ลบเส้น! (ให้ผู้เล่นเห็นเส้นต่อ)
     task.wait(0.1)
