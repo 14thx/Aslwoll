@@ -101,61 +101,6 @@ TYPER_LOCATIONS = {
     Economy  = {Market=Vector3.new(-462.0,18.0,5324.7)}
 }
 
--- ==============================================================================
--- 🚗 [เพิ่ม] ระบบ Waypoints & GPS Autopilot เชื่อมต่อผ่านระบบ DriveCarTo เดิม
--- ==============================================================================
-local _objects = {}
-local function _create(className, name, parent, properties)
-    local obj = Instance.new(className)
-    obj.Name = name
-    obj.Parent = parent
-    for prop, value in pairs(properties) do
-        obj[prop] = value
-    end
-    return obj
-end
-
-_objects[3166] = Instance.new("Folder", workspace)
-_objects[3166].Name = "WaypointFolder"
-_objects[3167] = _create("Model", "PathGroup", _objects[3166], {})
-
-_objects[3169] = _create("Part", "Point", _objects[3167], { 
-    Position = Vector3.new(1705.517, 14.141, 4181.761), 
-    Size = Vector3.new(1, 1, 1), Transparency = 1, Anchored = true, CanCollide = false 
-})
-
-_objects[3170] = _create("Part", "Point", _objects[3167], { 
-    Position = Vector3.new(1722.023, 14.141, 4196.115), 
-    Size = Vector3.new(1, 1, 1), Transparency = 1, Anchored = true, CanCollide = false 
-})
-
-local isGpsAutopilotRunning = false
-local function RunGpsAutopilot(waypointsList)
-    if isGpsAutopilotRunning then return end
-    isGpsAutopilotRunning = true
-    
-    task.spawn(function()
-        -- บังคับเปิด Noclip ขับทะลุตึกด้วยระบบหลักของพี่
-        isVehicleNoclipEnabled = true
-        
-        for _, wp in ipairs(waypointsList) do
-            if not isGpsAutopilotRunning then break end
-            if wp and wp:IsA("BasePart") then
-                -- เรียกใช้ฟังก์ชัน DriveCarTo ตัวเต็มของพี่ขับไปตามพิกัดจุดมาร์ค
-                DriveCarTo(wp.Position, function() return isGpsAutopilotRunning end)
-                task.wait(0.1)
-            end
-        end
-        
-        isGpsAutopilotRunning = false
-        print("ถึงจุดหมายปลายทางแล้ว!")
-    end)
-end
-
-local function StopGpsAutopilot()
-    isGpsAutopilotRunning = false
-end
-
 local function GetRealMarketPrices()
     local detectedPrices = {}
     local pgui = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
@@ -1268,6 +1213,9 @@ local function IsWideSolidGround(x, z)
     return true
 end
 
+-- ============================================================
+-- [REPLACE] DriveCarTo with GPS A* Route
+-- ============================================================
 DriveCarTo = function(dest, check)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -1287,17 +1235,225 @@ DriveCarTo = function(dest, check)
     seat = (hum and hum.SeatPart) or car:FindFirstChild("DriveSeat", true) or car:FindFirstChildWhichIsA("VehicleSeat", true)
     if not seat then return false end
     if not car.PrimaryPart then pcall(function() car.PrimaryPart = seat end) end
+
+    -- === [ส่วนที่เพิ่ม] คำนวณเส้นทาง A* ===
+    local route = nil
+    pcall(function()
+        local ROAD_CELL = 12
+        local ROAD_DIRS = {
+            {1, 0, 1}, {-1, 0, 1}, {0, 1, 1}, {0, -1, 1},
+            {1, 1, 1.41421356237}, {1, -1, 1.41421356237}, {-1, 1, 1.41421356237}, {-1, -1, 1.41421356237}
+        }
+        local function CellID(x, z) return (x + 5000) * 100000 + (z + 5000) end
+        local function CellPosition(id) return Vector3.new((id // 100000 - 5000) * ROAD_CELL, 0, (id % 100000 - 5000) * ROAD_CELL) end
+
+        local mapRoadsMod = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules")
+            and ReplicatedStorage.Systems.Modules:FindFirstChild("Data") and ReplicatedStorage.Systems.Modules.Data:FindFirstChild("Map_Roads")
+        if not mapRoadsMod then return end
+        local ok, raw = pcall(require, mapRoadsMod)
+        if not ok or type(raw) ~= "string" then return end
+
+        local cell, body = raw:match("^(%d+);(.*)$")
+        if not cell or tonumber(cell) ~= ROAD_CELL then return end
+
+        local cells, list = {}, {}
+        for xText, entries in body:gmatch("(-?%d+):([^;]+)") do
+            local x = tonumber(xText)
+            for zText, widthText in entries:gmatch("(-?%d+),(%d+)") do
+                local z, width = tonumber(zText), tonumber(widthText)
+                if x and z and width and width > 0 then
+                    for offset = 0, width - 1 do
+                        local id = CellID(z + offset, x)
+                        if not cells[id] then cells[id] = 6; list[#list + 1] = id end
+                    end
+                end
+            end
+        end
+        if #list == 0 then return end
+
+        local boundary = {}
+        for _, id in ipairs(list) do
+            if not (cells[id + 100000] and cells[id - 100000] and cells[id + 1] and cells[id - 1]) then
+                boundary[#boundary + 1] = id; cells[id] = 1
+            end
+        end
+        local head = 1
+        while head <= #boundary do
+            local id = boundary[head]; head += 1
+            local nextValue = cells[id] + 1
+            if nextValue < 6 then
+                for _, nextID in ipairs({id + 100000, id - 100000, id + 1, id - 1}) do
+                    if cells[nextID] and nextValue < cells[nextID] then
+                        cells[nextID] = nextValue; boundary[#boundary + 1] = nextID
+                    end
+                end
+            end
+        end
+        local groups, groupID = {}, 0
+        for _, startID in ipairs(list) do
+            if not groups[startID] then
+                groupID += 1
+                local queue = {startID}; local qHead = 1; groups[startID] = groupID
+                while qHead <= #queue do
+                    local id = queue[qHead]; qHead += 1
+                    for _, nextID in ipairs({id + 100000, id - 100000, id + 1, id - 1}) do
+                        if cells[nextID] and not groups[nextID] then
+                            groups[nextID] = groupID; queue[#queue + 1] = nextID
+                        end
+                    end
+                end
+            end
+        end
+
+        local road = { Cell = ROAD_CELL, Cells = cells, Groups = groups, List = list }
+
+        local function RoadSnap(position, group, maxRadius)
+            local cx, cz = math.round(position.X / ROAD_CELL), math.round(position.Z / ROAD_CELL)
+            for radius = 0, maxRadius do
+                local bestID, bestDistance = nil, math.huge
+                for dx = -radius, radius do
+                    for _, dz in ipairs({-radius, radius}) do
+                        local id = CellID(cx + dx, cz + dz)
+                        if cells[id] and (not group or groups[id] == group) then
+                            local distance = dx * dx + dz * dz
+                            if distance < bestDistance then bestDistance, bestID = distance, id end
+                        end
+                    end
+                end
+                if radius > 0 then
+                    for dz = -radius + 1, radius - 1 do
+                        for _, dx in ipairs({-radius, radius}) do
+                            local id = CellID(cx + dx, cz + dz)
+                            if cells[id] and (not group or groups[id] == group) then
+                                local distance = dx * dx + dz * dz
+                                if distance < bestDistance then bestDistance, bestID = distance, id end
+                            end
+                        end
+                    end
+                end
+                if bestID then return bestID end
+            end
+            return nil
+        end
+
+        local function RoadCenter(id)
+            while true do
+                local current, bestID = cells[id], nil
+                for _, nextID in ipairs({id + 100000, id - 100000, id + 1, id - 1}) do
+                    local value = cells[nextID]
+                    if value and value > current then current, bestID = value, nextID end
+                end
+                if not bestID then return id end
+                id = bestID
+            end
+        end
+
+        local startID = RoadSnap(car:GetPivot().Position, nil, 150)
+        if not startID then return end
+        local group = groups[startID]
+        local goalID = RoadSnap(dest, group, 100)
+        if not goalID then return end
+        startID, goalID = RoadCenter(startID), RoadCenter(goalID)
+
+        if startID == goalID then route = {CellPosition(startID)} return end
+
+        -- A* Search
+        local openPush, openPop, openCount = (function()
+            local scores, ids, count = {}, {}, 0
+            local function Push(score, id)
+                count += 1
+                local i = count
+                while i > 1 do
+                    local parent = i // 2
+                    if scores[parent] <= score then break end
+                    scores[i], ids[i] = scores[parent], ids[parent]
+                    i = parent
+                end
+                scores[i], ids[i] = score, id
+            end
+            local function Pop()
+                if count == 0 then return nil end
+                local score, id = scores[1], ids[1]
+                local lastScore, lastID = scores[count], ids[count]
+                scores[count], ids[count] = nil, nil
+                count -= 1
+                if count > 0 then
+                    local i = 1
+                    while true do
+                        local child = i * 2
+                        if child > count then break end
+                        if child < count and scores[child + 1] < scores[child] then child += 1 end
+                        if lastScore <= scores[child] then break end
+                        scores[i], ids[i] = scores[child], ids[child]
+                        i = child
+                    end
+                    scores[i], ids[i] = lastScore, lastID
+                end
+                return score, id
+            end
+            return Push, Pop, function() return count end
+        end)()
+
+        local cameFrom, gScore, closed = {}, {[startID] = 0}, {}
+        local gx, gz = goalID // 100000, goalID % 100000
+        local function Heuristic(id)
+            local x, z = math.abs(id // 100000 - gx), math.abs(id % 100000 - gz)
+            return math.max(x, z) + math.min(x, z) * 0.41421356237
+        end
+
+        openPush(Heuristic(startID), startID)
+        local iterations = 0
+
+        while openCount() > 0 do
+            local _, current = openPop()
+            if not current then break end
+            if closed[current] then continue end
+            if current == goalID then
+                local path, id = {}, current
+                while id do path[#path + 1] = id; id = cameFrom[id] end
+                route = {}
+                for i = #path, 1, -1 do route[#route + 1] = CellPosition(path[i]) end
+                return
+            end
+            closed[current] = true
+            iterations += 1
+            for _, dir in ipairs(ROAD_DIRS) do
+                local dx, dz, distance = dir[1], dir[2], dir[3]
+                local nextID = current + dx * 100000 + dz
+                local width = cells[nextID]
+                if not width or closed[nextID] then continue end
+                if dx ~= 0 and dz ~= 0 then
+                    if not (cells[current + dx * 100000] and cells[current + dz]) then continue end
+                end
+                local cost = distance * (1 + 3 / (width * width))
+                local tentative = gScore[current] + cost
+                if tentative < (gScore[nextID] or math.huge) then
+                    cameFrom[nextID] = current
+                    gScore[nextID] = tentative
+                    openPush(tentative + Heuristic(nextID), nextID)
+                end
+            end
+            if iterations % 1000 == 0 then task.wait() end
+        end
+    end)
+
+    -- === [ส่วนขับรถ] ถ้าหาเส้นทางได้ ให้ขับตาม Waypoint, ถ้าไม่ได้ให้ตรงไปจุดหมาย ===
+    if not route or #route == 0 then
+        warn("[GPS] หาเส้นทางไม่เจอ! ใช้การขับตรงไปจุดหมายแทน")
+        route = {dest}
+    else
+        table.insert(route, dest)
+    end
+
+    -- ขับตามเส้นทาง
     local cur = seat.Position
     local rideH = math.clamp(cur.Y - GetGroundLevel(cur.X, cur.Z, cur.Y), 2.3, 3.2)
-    local distT = (Vector2.new(dest.X, dest.Z) - Vector2.new(cur.X, cur.Z)).Magnitude
-    if distT < 5 then return true end
-    local trav, lastT = 0, os.clock()
-    local flying, safeF = false, 0
-    local DRIVE_TIMEOUT = 120
     local driveStartTime = os.clock()
+    local currentIdx = 1
+    local lastT = os.clock()
 
-    while trav < distT do
-        if os.clock() - driveStartTime > DRIVE_TIMEOUT then
+    while isDrivingGPS ~= false and currentIdx <= #route do
+        if os.clock() - driveStartTime > 120 then
             if vehiclePlatformPart then vehiclePlatformPart:Destroy() vehiclePlatformPart = nil end
             return false
         end
@@ -1305,60 +1461,57 @@ DriveCarTo = function(dest, check)
             if vehiclePlatformPart then vehiclePlatformPart:Destroy() vehiclePlatformPart = nil end
             return false
         end
+        
         if not hum.Sit or hum.SeatPart ~= seat then
             pcall(function() root.CFrame = seat.CFrame + Vector3.new(0,0.8,0) seat:Sit(hum) end)
         end
+
+        local carPos = car:GetPivot().Position
+        local target = route[currentIdx]
+        local distT = (Vector2.new(target.X, target.Z) - Vector2.new(carPos.X, carPos.Z)).Magnitude
+
+        if distT < 10 then
+            currentIdx += 1
+            continue
+        end
+
         local spd = math.clamp(tonumber(VehicleDriveSpeed) or 150, 10, 280)
-        local rem = distT - trav
-        if rem < 80 then spd = math.max(spd * math.clamp(rem/80, 0.2, 1), 30) end
+        if distT < 80 then spd = math.max(spd * math.clamp(distT/80, 0.2, 1), 30) end
+        
         local now = os.clock()
         local dt = math.min(now - lastT, 0.1)
         lastT = now
-        trav = math.min(distT, trav + (spd * dt))
-        local a = math.clamp(trav / distT, 0, 1)
-        local tx = cur.X + (dest.X - cur.X) * a
-        local tz = cur.Z + (dest.Z - cur.Z) * a
-        local ey = cur.Y + (dest.Y - cur.Y) * a
-        local gy = GetGroundLevel(tx, tz, ey)
-        local lY = gy + rideH
-        local inOcean = (tz >= 350 and tz <= 4050)
-        local isSafe = (not inOcean) and IsWideSolidGround(tx, tz)
-        if inOcean or not isSafe then safeF = 0 flying = true
-        else safeF += 1 if safeF >= 8 or rem <= 12 then flying = false end end
-        local sY = math.max(flying and 1000 or lY, 16.0)
-        pcall(function()
-            if hum then
-                hum:SetStateEnabled(Enum.HumanoidStateType.Swimming, false)
-                hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-                hum:SetStateEnabled(Enum.HumanoidStateType.Freefall, false)
-            end
-        end)
-        local dir = Vector3.new(dest.X - tx, 0, dest.Z - tz)
-        local cf = CFrame.new(tx, sY, tz)
-        if dir.Magnitude > 0.1 then cf = CFrame.lookAt(Vector3.new(tx, sY, tz), Vector3.new(tx, sY, tz) + dir) end
+
+        local a = math.clamp(spd * dt / distT, 0, 1)
+        local tx = carPos.X + (target.X - carPos.X) * a
+        local tz = carPos.Z + (target.Z - carPos.Z) * a
+        
+        local gy = GetGroundLevel(tx, tz, carPos.Y)
+        local finalY = gy + rideH
+        
+        local dir = Vector3.new(target.X - tx, 0, target.Z - tz)
+        local cf = CFrame.new(tx, finalY, tz)
+        if dir.Magnitude > 0.1 then cf = CFrame.lookAt(Vector3.new(tx, finalY, tz), Vector3.new(tx, finalY, tz) + dir) end
+        
         car:PivotTo(cf)
+        
         pcall(function()
             if car.PrimaryPart then
                 car.PrimaryPart.AssemblyLinearVelocity = Vector3.zero
                 car.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
             end
-            if seat and seat:IsA("BasePart") then
-                seat.AssemblyLinearVelocity = Vector3.zero
-                seat.AssemblyAngularVelocity = Vector3.zero
-            end
         end)
+        
         if isVehiclePlatformEnabled then
-            if flying then
-                if vehiclePlatformPart then vehiclePlatformPart.CanCollide = false end
-            else
-                EnsureVehiclePlatform(sY - rideH, Vector3.new(tx, sY, tz))
-            end
+            EnsureVehiclePlatform(finalY - rideH, Vector3.new(tx, finalY, tz))
         end
+        
         RunService.Heartbeat:Wait()
     end
+
     pcall(function()
         local fg = GetGroundLevel(dest.X, dest.Z, dest.Y)
-        car:PivotTo(CFrame.new(dest.X, math.max(fg + rideH, 16.0), dest.Z))
+        car:PivotTo(CFrame.new(dest.X, fg + rideH, dest.Z))
         if car.PrimaryPart then
             car.PrimaryPart.AssemblyLinearVelocity = Vector3.zero
             car.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
@@ -1368,46 +1521,6 @@ DriveCarTo = function(dest, check)
     task.wait(0.1)
     return true
 end
-
-RunService.Stepped:Connect(function()
-    local char = LocalPlayer.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if hum and hum.Sit and hum.SeatPart then
-        local myCar = hum.SeatPart:FindFirstAncestorOfClass("Model")
-        if myCar then
-            local sp = hum.SeatPart.Position
-            local gy = GetGroundLevel(sp.X, sp.Z, sp.Y)
-            if isVehiclePlatformEnabled then
-                EnsureVehiclePlatform(gy - 0.2, sp)
-            elseif vehiclePlatformPart then
-                vehiclePlatformPart:Destroy()
-                vehiclePlatformPart = nil
-            end
-            if isVehicleNoclipEnabled then
-                for _, part in ipairs(myCar:GetDescendants()) do
-                    if part:IsA("BasePart") and part ~= vehiclePlatformPart then
-                        local pn = part.Name:lower()
-                        if pn:find("groundguard") or pn:find("bumpstop") then
-                            part.CanCollide = true
-                        else
-                            part.CanCollide = false
-                        end
-                    end
-                end
-                for _, part in ipairs(char:GetDescendants()) do
-                    if part:IsA("BasePart") then part.CanCollide = false end
-                end
-            end
-        end
-    else
-        if vehiclePlatformPart then vehiclePlatformPart:Destroy() vehiclePlatformPart = nil end
-        if isVehicleNoclipEnabled and char then
-            for _, part in ipairs(char:GetDescendants()) do
-                if part:IsA("BasePart") then part.CanCollide = false end
-            end
-        end
-    end
-end)
 
 -- =====================================
 -- HARVEST SYSTEM
@@ -2149,6 +2262,7 @@ SellAtEconomyMarket = function(check)
     local marketPos, directPrompt = GetEconomyMarketPosition()
     marketPos = marketPos or TYPER_LOCATIONS.Economy.Market
 
+    -- จุดจอดรถ: offset ออกจากจุดขาย (ปรับระยะได้)
     local PARK_DISTANCE = 30
     local carParkPos = Vector3.new(marketPos.X, marketPos.Y, marketPos.Z + PARK_DISTANCE)
     local carGroundY = GetGroundLevel(carParkPos.X, carParkPos.Z, carParkPos.Y)
@@ -2162,6 +2276,7 @@ SellAtEconomyMarket = function(check)
     if not myCar then myCar = EnsureCarAvailable(TOWN_CAR_SPAWN) end
     if myCar then EnsurePlayerSeatedInCar(myCar) end
 
+    -- ขับ/วาปรถไปจุดจอด (ไม่ใช่จุดขาย)
     DriveCarTo(carParkPos, check)
     task.wait(0.3)
     if check and not check() then return end
@@ -2234,6 +2349,7 @@ SellAtEconomyMarket = function(check)
         if (h and h <= 75) or (e and e <= 75) then AutoEatThenDrink(95) end
     end
 
+    -- วาปกลับไปขึ้นรถคันเดิมที่จอดไว้
     local c2 = GetNearbyPlayerVehicle(80) or EnsureCarAvailable(TOWN_CAR_SPAWN)
     if c2 then
         if root and root.Parent and c2.PrimaryPart then
@@ -2747,7 +2863,7 @@ local function StopSession(key) MarvenSession[key] = (MarvenSession[key] or 0) +
 local Window = UI:CreateWindow({
     Title = "MarvenRiz Hub",
     Author = "by. zems.xz",
-    Version = "Premium + Nexus Engine (Ultimate Master 100%) [v2.6]",
+    Version = "Premium + Nexus Engine (Ultimate Master 100%) [v2.5]",
     Logo = "rbxassetid://124905448303407",
     Folder = "MarvenRizHub",
     ConfigAutoSave = true,
@@ -2760,7 +2876,7 @@ Window:SetTheme({ Accent = Color3.fromRGB(0, 110, 255) })
 -- STATUS
 local StatusTab = Window:Tab({Title = "สถานะ", Icon = "activity"})
 local Status = StatusTab:Section({Title = "ข้อมูลผู้เล่น"})
-Status:Banner({Title = "MarvenRiz Hub [v2.6]", SubTitle = "🔗 NEXUS Engine + ระบบคราฟสมบูรณ์ + GPS Autopilot (ทะลุตึก)"})
+Status:Banner({Title = "MarvenRiz Hub [v2.5]", SubTitle = "🔗 NEXUS Engine + ระบบคราฟสมบูรณ์ + เมนูภาษาไทย"})
 local StatsGrid = Status:StatGrid({
     {Label = "FPS", Value = "0"}, {Label = "Ping", Value = "0 ms"},
     {Label = "Executor", Value = "Unknown"}, {Label = "Players", Value = "0"},
@@ -3015,26 +3131,8 @@ SpeedSection:Toggle({
     Callback = function(v) isVehicleNoclipEnabled = v end
 })
 SpeedSection:Toggle({
-    Title = "หนีเซิร์ฟเวอร์อัตโนมัติเมื่อมีคนใกล้เคียง", Default = true, Flag = "AutoHopNearby",
+    Title = "หนีเซิร์ฟเวอร์อัตโนมัติเมื่อมีคนเข้าใกล้", Default = true, Flag = "AutoHopNearby",
     Callback = function(v) isAutoHopOnPlayerNearbyEnabled = v end
-})
-
--- [เพิ่ม] เชื่อมปุ่ม GPS Autopilot เข้ากับแท็บ "ขั้นสูง" ของพี่ตรงนี้ทันที
-local GpsSection = AdvTab:Section({Title = "ระบบขับรถตามพิกัด (GPS + ทะลุตึก)"})
-GpsSection:Button({
-    Title = "เริ่มวิ่งตามพิกัด (ขับทะลุตึก)",
-    Callback = function()
-        RunGpsAutopilot({
-            _objects[3169],
-            _objects[3170]
-        })
-    end
-})
-GpsSection:Button({
-    Title = "หยุดวิ่ง",
-    Callback = function()
-        StopGpsAutopilot()
-    end
 })
 
 local UnloadSection = AdvTab:Section({Title = "ปิดสคริปต์"})
