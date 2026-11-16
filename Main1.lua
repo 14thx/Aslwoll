@@ -1214,8 +1214,62 @@ local function IsWideSolidGround(x, z)
 end
 
 -- ============================================================
--- [REPLACE] DriveCarTo with GPS A* Route
+-- [FULL REPLACE] DriveCarTo + DrawMinimapRoute (A* + Marker)
 -- ============================================================
+
+-- [1] ฟังก์ชันวาดเส้นนำทางบน Minimap
+local function DrawMinimapRoute(waypoints)
+    local minimap = LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("Minimap")
+    if not minimap then return end
+
+    local canvasList = {}
+    if minimap.Big_Map and minimap.Big_Map.Visible then
+        local c = minimap.Big_Map:FindFirstChild("map") and minimap.Big_Map.map:FindFirstChild("minimap")
+            and minimap.Big_Map.map.minimap:FindFirstChild("MapLayer") and minimap.Big_Map.map.minimap.MapLayer:FindFirstChild("Canvas")
+        if c then table.insert(canvasList, c) end
+    end
+    if minimap.Minimap and minimap.Minimap.Visible then
+        local c = minimap.Minimap:FindFirstChild("MapLayer") and minimap.Minimap.MapLayer:FindFirstChild("Canvas")
+        if not c then c = minimap.Minimap:FindFirstChild("Canvas") end
+        if c then table.insert(canvasList, c) end
+    end
+
+    for _, canvas in ipairs(canvasList) do
+        local old = canvas:FindFirstChild("GPS_RouteLine")
+        if old then old:Destroy() end
+    end
+
+    if #waypoints < 2 then return end
+
+    local function W2M(wx, wz)
+        return UDim2.new(0.5 + (wx * 0.0000773), 0, 0.5 - (wz * 0.0000253), 0)
+    end
+
+    for _, canvas in ipairs(canvasList) do
+        for i = 1, #waypoints - 1 do
+            local p1, p2 = waypoints[i], waypoints[i+1]
+            local pos1, pos2 = W2M(p1.X, p1.Z), W2M(p2.X, p2.Z)
+            local dx = (pos2.X.Scale - pos1.X.Scale) * canvas.AbsoluteSize.X
+            local dy = (pos2.Y.Scale - pos1.Y.Scale) * canvas.AbsoluteSize.Y
+            local len = math.sqrt(dx*dx + dy*dy)
+            
+            if len > 1 then
+                local line = Instance.new("Frame")
+                line.Name = "GPS_RouteLine"
+                line.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+                line.BorderSizePixel = 0
+                line.AnchorPoint = Vector2.new(0.5, 0.5)
+                line.Size = UDim2.new(0, len, 0, 4)
+                line.Position = UDim2.new((pos1.X.Scale + pos2.X.Scale)/2, 0, (pos1.Y.Scale + pos2.Y.Scale)/2, 0)
+                line.Rotation = math.deg(math.atan2(dy, dx))
+                line.ZIndex = 100
+                line.Parent = canvas
+            end
+        end
+    end
+end
+
+-- [2] ฟังก์ชัน DriveCarTo (A* + วาดเส้น + ขับ)
 DriveCarTo = function(dest, check)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -1236,7 +1290,7 @@ DriveCarTo = function(dest, check)
     if not seat then return false end
     if not car.PrimaryPart then pcall(function() car.PrimaryPart = seat end) end
 
-    -- === [ส่วนที่เพิ่ม] คำนวณเส้นทาง A* ===
+    -- === [1] คำนวณเส้นทาง A* ===
     local route = nil
     pcall(function()
         local ROAD_CELL = 12
@@ -1305,8 +1359,6 @@ DriveCarTo = function(dest, check)
             end
         end
 
-        local road = { Cell = ROAD_CELL, Cells = cells, Groups = groups, List = list }
-
         local function RoadSnap(position, group, maxRadius)
             local cx, cz = math.round(position.X / ROAD_CELL), math.round(position.Z / ROAD_CELL)
             for radius = 0, maxRadius do
@@ -1357,7 +1409,6 @@ DriveCarTo = function(dest, check)
 
         if startID == goalID then route = {CellPosition(startID)} return end
 
-        -- A* Search
         local openPush, openPop, openCount = (function()
             local scores, ids, count = {}, {}, 0
             local function Push(score, id)
@@ -1437,22 +1488,41 @@ DriveCarTo = function(dest, check)
         end
     end)
 
-    -- === [ส่วนขับรถ] ถ้าหาเส้นทางได้ ให้ขับตาม Waypoint, ถ้าไม่ได้ให้ตรงไปจุดหมาย ===
+    -- === [2] วาดเส้นนำทาง + มาร์คหมุด ===
     if not route or #route == 0 then
         warn("[GPS] หาเส้นทางไม่เจอ! ใช้การขับตรงไปจุดหมายแทน")
         route = {dest}
     else
         table.insert(route, dest)
+        DrawMinimapRoute(route)
+        
+        -- มาร์คหมุดของเกม
+        pcall(function()
+            local minimap = PlayerGui:FindFirstChild("Minimap")
+            if minimap then
+                local smallMap = minimap:FindFirstChild("Minimap")
+                if smallMap then smallMap.Visible = true end
+            end
+            for _, obj in pairs(getgc(true)) do
+                if type(obj) == "table" then
+                    local markFunc = rawget(obj, "Mark")
+                    if markFunc and type(markFunc) == "function" then
+                        pcall(function() markFunc(dest.X, dest.Z) end)
+                        break
+                    end
+                end
+            end
+        end)
     end
 
-    -- ขับตามเส้นทาง
+    -- === [3] ขับรถ (Smooth Pivot) ===
     local cur = seat.Position
     local rideH = math.clamp(cur.Y - GetGroundLevel(cur.X, cur.Z, cur.Y), 2.3, 3.2)
     local driveStartTime = os.clock()
     local currentIdx = 1
     local lastT = os.clock()
 
-    while isDrivingGPS ~= false and currentIdx <= #route do
+    while currentIdx <= #route do
         if os.clock() - driveStartTime > 120 then
             if vehiclePlatformPart then vehiclePlatformPart:Destroy() vehiclePlatformPart = nil end
             return false
@@ -1518,6 +1588,29 @@ DriveCarTo = function(dest, check)
         end
     end)
     if vehiclePlatformPart then vehiclePlatformPart:Destroy() vehiclePlatformPart = nil end
+    
+    -- ลบเส้นนำทางเมื่อถึงจุดหมาย
+    pcall(function()
+        local minimap = LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("Minimap")
+        if minimap then
+            local canvasList = {}
+            if minimap.Big_Map and minimap.Big_Map.Visible then
+                local c = minimap.Big_Map:FindFirstChild("map") and minimap.Big_Map.map:FindFirstChild("minimap")
+                    and minimap.Big_Map.map.minimap:FindFirstChild("MapLayer") and minimap.Big_Map.map.minimap.MapLayer:FindFirstChild("Canvas")
+                if c then table.insert(canvasList, c) end
+            end
+            if minimap.Minimap and minimap.Minimap.Visible then
+                local c = minimap.Minimap:FindFirstChild("MapLayer") and minimap.Minimap.MapLayer:FindFirstChild("Canvas")
+                if not c then c = minimap.Minimap:FindFirstChild("Canvas") end
+                if c then table.insert(canvasList, c) end
+            end
+            for _, canvas in ipairs(canvasList) do
+                local old = canvas:FindFirstChild("GPS_RouteLine")
+                if old then old:Destroy() end
+            end
+        end
+    end)
+    
     task.wait(0.1)
     return true
 end
