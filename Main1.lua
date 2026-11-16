@@ -1214,7 +1214,7 @@ local function IsWideSolidGround(x, z)
 end
 
 -- ============================================================
--- [FULL REPLACE] DriveCarTo + DrawMinimapRoute (A* + Marker)
+-- [FULL REPLACE] DriveCarTo (Physics Drive + Noclip + A* + Marker)
 -- ============================================================
 
 -- [1] ฟังก์ชันวาดเส้นนำทางบน Minimap
@@ -1269,7 +1269,19 @@ local function DrawMinimapRoute(waypoints)
     end
 end
 
--- [2] ฟังก์ชัน DriveCarTo (A* + วาดเส้น + ขับ)
+-- [2] ฟังก์ชัน Noclip สำหรับรถ
+local function SetCarNoclipPhysics(car, enabled)
+    if not car then return end
+    for _, part in ipairs(car:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = not enabled
+            part.CanQuery = not enabled
+            part.CanTouch = not enabled
+        end
+    end
+end
+
+-- [3] ฟังก์ชัน DriveCarTo (ฟิสิกส์ + Noclip)
 DriveCarTo = function(dest, check)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -1496,7 +1508,6 @@ DriveCarTo = function(dest, check)
         table.insert(route, dest)
         DrawMinimapRoute(route)
         
-        -- มาร์คหมุดของเกม
         pcall(function()
             local minimap = PlayerGui:FindFirstChild("Minimap")
             if minimap then
@@ -1515,81 +1526,90 @@ DriveCarTo = function(dest, check)
         end)
     end
 
-    -- === [3] ขับรถ (Smooth Pivot) ===
-    local cur = seat.Position
-    local rideH = math.clamp(cur.Y - GetGroundLevel(cur.X, cur.Z, cur.Y), 2.3, 3.2)
-    local driveStartTime = os.clock()
+    -- === [3] ขับรถด้วยฟิสิกส์ (Throttle/Steer) + Noclip ===
+    SetCarNoclipPhysics(car, true) -- เปิด Noclip (ทะลุของ)
+
     local currentIdx = 1
-    local lastT = os.clock()
+    local steer = 0
+    local driveStartTime = os.clock()
+    local lastPos = car:GetPivot().Position
+    local stuckTime = 0
+
+    -- กำหนดความเร็วสูงสุด
+    local MAX_SPEED = 230 -- ปรับได้ตามต้องการ (studs/sec)
 
     while currentIdx <= #route do
         if os.clock() - driveStartTime > 120 then
-            if vehiclePlatformPart then vehiclePlatformPart:Destroy() vehiclePlatformPart = nil end
+            SetCarNoclipPhysics(car, false)
             return false
         end
         if check and not check() then
-            if vehiclePlatformPart then vehiclePlatformPart:Destroy() vehiclePlatformPart = nil end
+            SetCarNoclipPhysics(car, false)
             return false
         end
-        
+
+        local dt = RunService.Heartbeat:Wait()
+
         if not hum.Sit or hum.SeatPart ~= seat then
             pcall(function() root.CFrame = seat.CFrame + Vector3.new(0,0.8,0) seat:Sit(hum) end)
+            SetCarNoclipPhysics(car, true)
         end
 
         local carPos = car:GetPivot().Position
         local target = route[currentIdx]
-        local distT = (Vector2.new(target.X, target.Z) - Vector2.new(carPos.X, carPos.Z)).Magnitude
+        local toTarget = Vector3.new(target.X - carPos.X, 0, target.Z - carPos.Z)
+        local distT = toTarget.Magnitude
 
-        if distT < 10 then
+        -- ถึง Waypoint นี้แล้ว
+        if distT < 25 then
             currentIdx += 1
             continue
         end
 
-        local spd = math.clamp(tonumber(VehicleDriveSpeed) or 150, 10, 280)
-        if distT < 80 then spd = math.max(spd * math.clamp(distT/80, 0.2, 1), 30) end
+        -- คำนวณการเลี้ยว (ตามทิศทางไป Waypoint)
+        local look = car.PrimaryPart.CFrame.LookVector
+        look = Vector3.new(look.X, 0, look.Z).Unit
+        local cross = look:Cross(toTarget.Unit)
+        local dot = look:Dot(toTarget.Unit)
         
-        local now = os.clock()
-        local dt = math.min(now - lastT, 0.1)
-        lastT = now
-
-        local a = math.clamp(spd * dt / distT, 0, 1)
-        local tx = carPos.X + (target.X - carPos.X) * a
-        local tz = carPos.Z + (target.Z - carPos.Z) * a
-        
-        local gy = GetGroundLevel(tx, tz, carPos.Y)
-        local finalY = gy + rideH
-        
-        local dir = Vector3.new(target.X - tx, 0, target.Z - tz)
-        local cf = CFrame.new(tx, finalY, tz)
-        if dir.Magnitude > 0.1 then cf = CFrame.lookAt(Vector3.new(tx, finalY, tz), Vector3.new(tx, finalY, tz) + dir) end
-        
-        car:PivotTo(cf)
-        
-        pcall(function()
-            if car.PrimaryPart then
-                car.PrimaryPart.AssemblyLinearVelocity = Vector3.zero
-                car.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
-            end
-        end)
-        
-        if isVehiclePlatformEnabled then
-            EnsureVehiclePlatform(finalY - rideH, Vector3.new(tx, finalY, tz))
+        local targetSteer = 0
+        if dot < 0.95 then
+            if cross.Y > 0 then targetSteer = -1 else targetSteer = 1 end
         end
-        
-        RunService.Heartbeat:Wait()
+        steer += math.clamp(targetSteer - steer, -5 * dt, 5 * dt)
+
+        -- คำนวณคันเร่ง (เหยียบเต็มตลอด แต่ผ่อนตอนใกล้ถึง)
+        local throttle = 1
+        if distT < 80 then throttle = math.max(distT / 80, 0.2) end
+
+        -- ระบบแก้รถติด
+        if (carPos - lastPos).Magnitude < 2 then
+            stuckTime += dt
+            if stuckTime > 2 then
+                throttle = -1
+                steer = -targetSteer
+                task.wait(0.5)
+                stuckTime = 0
+            end
+        else
+            stuckTime = 0
+        end
+        lastPos = carPos
+
+        pcall(function()
+            seat.ThrottleFloat = throttle
+            seat.SteerFloat = steer
+        end)
     end
 
+    -- หยุดรถและปิด Noclip
     pcall(function()
-        local fg = GetGroundLevel(dest.X, dest.Z, dest.Y)
-        car:PivotTo(CFrame.new(dest.X, fg + rideH, dest.Z))
-        if car.PrimaryPart then
-            car.PrimaryPart.AssemblyLinearVelocity = Vector3.zero
-            car.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
-        end
+        seat.ThrottleFloat = 0
+        seat.SteerFloat = 0
     end)
-    if vehiclePlatformPart then vehiclePlatformPart:Destroy() vehiclePlatformPart = nil end
-    
-    -- ลบเส้นนำทางเมื่อถึงจุดหมาย
+    SetCarNoclipPhysics(car, false)
+
+    -- ลบเส้นนำทาง
     pcall(function()
         local minimap = LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("Minimap")
         if minimap then
@@ -1610,7 +1630,7 @@ DriveCarTo = function(dest, check)
             end
         end
     end)
-    
+
     task.wait(0.1)
     return true
 end
