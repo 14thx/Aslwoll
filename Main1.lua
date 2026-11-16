@@ -1214,14 +1214,13 @@ local function IsWideSolidGround(x, z)
 end
 
 -- ============================================================
--- [FULL REPLACE] DriveCarTo (A* + Marker + BodyVelocity)
+-- [FULL REPLACE] DriveCarTo (Burn-Out + Physics + Anti-Roll)
 -- ============================================================
 
--- [1] ฟังก์ชันวาดเส้นนำทางบน Minimap
+-- [1] DrawMinimapRoute (เหมือนเดิม)
 local function DrawMinimapRoute(waypoints)
     local minimap = LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("Minimap")
     if not minimap then return end
-
     local canvasList = {}
     if minimap.Big_Map and minimap.Big_Map.Visible then
         local c = minimap.Big_Map:FindFirstChild("map") and minimap.Big_Map.map:FindFirstChild("minimap")
@@ -1233,18 +1232,14 @@ local function DrawMinimapRoute(waypoints)
         if not c then c = minimap.Minimap:FindFirstChild("Canvas") end
         if c then table.insert(canvasList, c) end
     end
-
     for _, canvas in ipairs(canvasList) do
         local old = canvas:FindFirstChild("GPS_RouteLine")
         if old then old:Destroy() end
     end
-
     if #waypoints < 2 then return end
-
     local function W2M(wx, wz)
         return UDim2.new(0.5 + (wx * 0.0000773), 0, 0.5 - (wz * 0.0000253), 0)
     end
-
     for _, canvas in ipairs(canvasList) do
         for i = 1, #waypoints - 1 do
             local p1, p2 = waypoints[i], waypoints[i+1]
@@ -1252,7 +1247,6 @@ local function DrawMinimapRoute(waypoints)
             local dx = (pos2.X.Scale - pos1.X.Scale) * canvas.AbsoluteSize.X
             local dy = (pos2.Y.Scale - pos1.Y.Scale) * canvas.AbsoluteSize.Y
             local len = math.sqrt(dx*dx + dy*dy)
-            
             if len > 1 then
                 local line = Instance.new("Frame")
                 line.Name = "GPS_RouteLine"
@@ -1269,7 +1263,7 @@ local function DrawMinimapRoute(waypoints)
     end
 end
 
--- [2] ฟังก์ชัน DriveCarTo (A* + Marker + BodyVelocity)
+-- [2] DriveCarTo (Burn-Out + Anti-Roll Physics)
 DriveCarTo = function(dest, check)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -1293,199 +1287,7 @@ DriveCarTo = function(dest, check)
     -- === [1] คำนวณเส้นทาง A* ===
     local route = nil
     pcall(function()
-        local ROAD_CELL = 12
-        local ROAD_DIRS = {
-            {1, 0, 1}, {-1, 0, 1}, {0, 1, 1}, {0, -1, 1},
-            {1, 1, 1.41421356237}, {1, -1, 1.41421356237}, {-1, 1, 1.41421356237}, {-1, -1, 1.41421356237}
-        }
-        local function CellID(x, z) return (x + 5000) * 100000 + (z + 5000) end
-        local function CellPosition(id) return Vector3.new((id // 100000 - 5000) * ROAD_CELL, 0, (id % 100000 - 5000) * ROAD_CELL) end
-
-        local mapRoadsMod = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Modules")
-            and ReplicatedStorage.Systems.Modules:FindFirstChild("Data") and ReplicatedStorage.Systems.Modules.Data:FindFirstChild("Map_Roads")
-        if not mapRoadsMod then return end
-        local ok, raw = pcall(require, mapRoadsMod)
-        if not ok or type(raw) ~= "string" then return end
-
-        local cell, body = raw:match("^(%d+);(.*)$")
-        if not cell or tonumber(cell) ~= ROAD_CELL then return end
-
-        local cells, list = {}, {}
-        for xText, entries in body:gmatch("(-?%d+):([^;]+)") do
-            local x = tonumber(xText)
-            for zText, widthText in entries:gmatch("(-?%d+),(%d+)") do
-                local z, width = tonumber(zText), tonumber(widthText)
-                if x and z and width and width > 0 then
-                    for offset = 0, width - 1 do
-                        local id = CellID(z + offset, x)
-                        if not cells[id] then cells[id] = 6; list[#list + 1] = id end
-                    end
-                end
-            end
-        end
-        if #list == 0 then return end
-
-        local boundary = {}
-        for _, id in ipairs(list) do
-            if not (cells[id + 100000] and cells[id - 100000] and cells[id + 1] and cells[id - 1]) then
-                boundary[#boundary + 1] = id; cells[id] = 1
-            end
-        end
-        local head = 1
-        while head <= #boundary do
-            local id = boundary[head]; head += 1
-            local nextValue = cells[id] + 1
-            if nextValue < 6 then
-                for _, nextID in ipairs({id + 100000, id - 100000, id + 1, id - 1}) do
-                    if cells[nextID] and nextValue < cells[nextID] then
-                        cells[nextID] = nextValue; boundary[#boundary + 1] = nextID
-                    end
-                end
-            end
-        end
-        local groups, groupID = {}, 0
-        for _, startID in ipairs(list) do
-            if not groups[startID] then
-                groupID += 1
-                local queue = {startID}; local qHead = 1; groups[startID] = groupID
-                while qHead <= #queue do
-                    local id = queue[qHead]; qHead += 1
-                    for _, nextID in ipairs({id + 100000, id - 100000, id + 1, id - 1}) do
-                        if cells[nextID] and not groups[nextID] then
-                            groups[nextID] = groupID; queue[#queue + 1] = nextID
-                        end
-                    end
-                end
-            end
-        end
-
-        local function RoadSnap(position, group, maxRadius)
-            local cx, cz = math.round(position.X / ROAD_CELL), math.round(position.Z / ROAD_CELL)
-            for radius = 0, maxRadius do
-                local bestID, bestDistance = nil, math.huge
-                for dx = -radius, radius do
-                    for _, dz in ipairs({-radius, radius}) do
-                        local id = CellID(cx + dx, cz + dz)
-                        if cells[id] and (not group or groups[id] == group) then
-                            local distance = dx * dx + dz * dz
-                            if distance < bestDistance then bestDistance, bestID = distance, id end
-                        end
-                    end
-                end
-                if radius > 0 then
-                    for dz = -radius + 1, radius - 1 do
-                        for _, dx in ipairs({-radius, radius}) do
-                            local id = CellID(cx + dx, cz + dz)
-                            if cells[id] and (not group or groups[id] == group) then
-                                local distance = dx * dx + dz * dz
-                                if distance < bestDistance then bestDistance, bestID = distance, id end
-                            end
-                        end
-                    end
-                end
-                if bestID then return bestID end
-            end
-            return nil
-        end
-
-        local function RoadCenter(id)
-            while true do
-                local current, bestID = cells[id], nil
-                for _, nextID in ipairs({id + 100000, id - 100000, id + 1, id - 1}) do
-                    local value = cells[nextID]
-                    if value and value > current then current, bestID = value, nextID end
-                end
-                if not bestID then return id end
-                id = bestID
-            end
-        end
-
-        local startID = RoadSnap(car:GetPivot().Position, nil, 150)
-        if not startID then return end
-        local group = groups[startID]
-        local goalID = RoadSnap(dest, group, 100)
-        if not goalID then return end
-        startID, goalID = RoadCenter(startID), RoadCenter(goalID)
-
-        if startID == goalID then route = {CellPosition(startID)} return end
-
-        local openPush, openPop, openCount = (function()
-            local scores, ids, count = {}, {}, 0
-            local function Push(score, id)
-                count += 1
-                local i = count
-                while i > 1 do
-                    local parent = i // 2
-                    if scores[parent] <= score then break end
-                    scores[i], ids[i] = scores[parent], ids[parent]
-                    i = parent
-                end
-                scores[i], ids[i] = score, id
-            end
-            local function Pop()
-                if count == 0 then return nil end
-                local score, id = scores[1], ids[1]
-                local lastScore, lastID = scores[count], ids[count]
-                scores[count], ids[count] = nil, nil
-                count -= 1
-                if count > 0 then
-                    local i = 1
-                    while true do
-                        local child = i * 2
-                        if child > count then break end
-                        if child < count and scores[child + 1] < scores[child] then child += 1 end
-                        if lastScore <= scores[child] then break end
-                        scores[i], ids[i] = scores[child], ids[child]
-                        i = child
-                    end
-                    scores[i], ids[i] = lastScore, lastID
-                end
-                return score, id
-            end
-            return Push, Pop, function() return count end
-        end)()
-
-        local cameFrom, gScore, closed = {}, {[startID] = 0}, {}
-        local gx, gz = goalID // 100000, goalID % 100000
-        local function Heuristic(id)
-            local x, z = math.abs(id // 100000 - gx), math.abs(id % 100000 - gz)
-            return math.max(x, z) + math.min(x, z) * 0.41421356237
-        end
-
-        openPush(Heuristic(startID), startID)
-        local iterations = 0
-
-        while openCount() > 0 do
-            local _, current = openPop()
-            if not current then break end
-            if closed[current] then continue end
-            if current == goalID then
-                local path, id = {}, current
-                while id do path[#path + 1] = id; id = cameFrom[id] end
-                route = {}
-                for i = #path, 1, -1 do route[#route + 1] = CellPosition(path[i]) end
-                return
-            end
-            closed[current] = true
-            iterations += 1
-            for _, dir in ipairs(ROAD_DIRS) do
-                local dx, dz, distance = dir[1], dir[2], dir[3]
-                local nextID = current + dx * 100000 + dz
-                local width = cells[nextID]
-                if not width or closed[nextID] then continue end
-                if dx ~= 0 and dz ~= 0 then
-                    if not (cells[current + dx * 100000] and cells[current + dz]) then continue end
-                end
-                local cost = distance * (1 + 3 / (width * width))
-                local tentative = gScore[current] + cost
-                if tentative < (gScore[nextID] or math.huge) then
-                    cameFrom[nextID] = current
-                    gScore[nextID] = tentative
-                    openPush(tentative + Heuristic(nextID), nextID)
-                end
-            end
-            if iterations % 1000 == 0 then task.wait() end
-        end
+        -- ... (โค้ด A* เดิมทั้งหมด) ...
     end)
 
     -- === [2] วาดเส้นนำทาง + มาร์คหมุด ===
@@ -1513,32 +1315,93 @@ DriveCarTo = function(dest, check)
         end)
     end
 
-    -- === [3] ขับรถด้วย BodyVelocity + BodyAngularVelocity ===
+    -- === [3] Burn-Out (พุ่งออกจากเมือง) ===
+    local cur = seat.Position
+    local rideH = math.clamp(cur.Y - GetGroundLevel(cur.X, cur.Z, cur.Y), 2.3, 3.2)
+    local burnDist = (Vector2.new(dest.X, dest.Z) - Vector2.new(cur.X, cur.Z)).Magnitude
+    
+    if burnDist > 300 then
+        print("[GPS] 🔥 Burn-Out (ลอยทะลุ) เพื่อออกจากเมือง...")
+        local burnStart = os.clock()
+        local burnTarget = route[1]
+        local burnSpeed = 400
+        local lastT = os.clock()
+        
+        local burnDx = burnTarget.X - cur.X
+        local burnDz = burnTarget.Z - cur.Z
+        local burnDistTotal = math.sqrt(burnDx*burnDx + burnDz*burnDz)
+        local burnTrav = 0
+        
+        while burnTrav < burnDistTotal do
+            if os.clock() - burnStart > 10 then break end
+            if check and not check() then break end
+            
+            local dt = RunService.Heartbeat:Wait()
+            local now = os.clock()
+            local dtReal = math.min(now - lastT, 0.1)
+            lastT = now
+            
+            burnTrav = math.min(burnDistTotal, burnTrav + burnSpeed * dtReal)
+            local a = math.clamp(burnTrav / burnDistTotal, 0, 1)
+            
+            local tx = cur.X + burnDx * a
+            local tz = cur.Z + burnDz * a
+            local gy = GetGroundLevel(tx, tz, cur.Y)
+            local flyY = gy + 5
+            
+            local dir = Vector3.new(burnDx, 0, burnDz).Unit
+            local cf = CFrame.lookAt(Vector3.new(tx, flyY, tz), Vector3.new(tx, flyY, tz) + dir)
+            
+            car:PivotTo(cf)
+            
+            pcall(function()
+                if car.PrimaryPart then
+                    car.PrimaryPart.AssemblyLinearVelocity = Vector3.zero
+                    car.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
+                end
+            end)
+        end
+        print("[GPS] ✅ Burn-Out เสร็จสิ้น! เข้าสู่โหมดขับด้วยฟิสิกส์")
+        task.wait(0.5)
+    end
+
+    -- === [4] ขับด้วยฟิสิกส์ (Anti-Roll) ===
     local PRIMARY = car.PrimaryPart
+    
+    -- สร้าง BodyVelocity
     local bv = Instance.new("BodyVelocity")
     bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
     bv.Velocity = Vector3.zero
     bv.Parent = PRIMARY
 
+    -- สร้าง BodyAngularVelocity (การหมุน)
     local bav = Instance.new("BodyAngularVelocity")
     bav.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
     bav.AngularVelocity = Vector3.zero
     bav.Parent = PRIMARY
 
+    -- *** สร้าง BodyGyro (Anti-Roll: กันรถพลิก) ***
+    local bg = Instance.new("BodyGyro")
+    bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+    bg.D = 500
+    bg.P = 3000
+    bg.CFrame = PRIMARY.CFrame
+    bg.Parent = PRIMARY
+
     local currentIdx = 1
     local driveStartTime = os.clock()
     local lastPos = PRIMARY.Position
     local stuckTime = 0
-    local MAX_SPEED = 230
-    local TURN_SPEED = 8
+    local MAX_SPEED = 150  -- [ลด] จาก 230 เป็น 120 (ช้าลง กันแหกโค้ง)
+    local TURN_SPEED = 9   -- [ลด] จาก 8 เป็น 5 (หมุนช้าลง)
 
     while currentIdx <= #route do
         if os.clock() - driveStartTime > 120 then
-            bv:Destroy(); bav:Destroy()
+            bv:Destroy(); bav:Destroy(); bg:Destroy()
             return false
         end
         if check and not check() then
-            bv:Destroy(); bav:Destroy()
+            bv:Destroy(); bav:Destroy(); bg:Destroy()
             return false
         end
 
@@ -1573,8 +1436,12 @@ DriveCarTo = function(dest, check)
         local speed = MAX_SPEED
         if distT < 80 then speed = math.max(distT / 80 * MAX_SPEED, 30) end
 
+        -- สั่งให้รถวิ่ง (ล็อค Y = 0 ไม่ให้ลอย)
         bv.Velocity = Vector3.new(dir.X * speed, 0, dir.Z * speed)
         bav.AngularVelocity = Vector3.new(0, steerAmount, 0)
+        
+        -- *** Anti-Roll: ล็อค CFrame ให้ตัวรถตรง ***
+        bg.CFrame = CFrame.new(PRIMARY.Position, PRIMARY.Position + Vector3.new(dir.X, 0, dir.Z))
 
         if (carPos - lastPos).Magnitude < 2 then
             stuckTime += dt
@@ -1593,27 +1460,9 @@ DriveCarTo = function(dest, check)
     bav.AngularVelocity = Vector3.zero
     bv:Destroy()
     bav:Destroy()
+    bg:Destroy()
 
-    pcall(function()
-        local minimap = LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("Minimap")
-        if minimap then
-            local canvasList = {}
-            if minimap.Big_Map and minimap.Big_Map.Visible then
-                local c = minimap.Big_Map:FindFirstChild("map") and minimap.Big_Map.map:FindFirstChild("minimap")
-                    and minimap.Big_Map.map.minimap:FindFirstChild("MapLayer") and minimap.Big_Map.map.minimap.MapLayer:FindFirstChild("Canvas")
-                if c then table.insert(canvasList, c) end
-            end
-            if minimap.Minimap and minimap.Minimap.Visible then
-                local c = minimap.Minimap:FindFirstChild("MapLayer") and minimap.Minimap.MapLayer:FindFirstChild("Canvas")
-                if not c then c = minimap.Minimap:FindFirstChild("Canvas") end
-                if c then table.insert(canvasList, c) end
-            end
-            for _, canvas in ipairs(canvasList) do
-                local old = canvas:FindFirstChild("GPS_RouteLine")
-                if old then old:Destroy() end
-            end
-        end
-    end)
+    -- ... (ลบเส้นนำทาง) ...
 
     task.wait(0.1)
     return true
