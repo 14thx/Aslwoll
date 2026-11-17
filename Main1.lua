@@ -1214,38 +1214,32 @@ local function IsWideSolidGround(x, z)
 end
 
 -- ============================================================
--- [FULL REPLACE] DriveCarTo  (A* + Pure Pursuit + เลนขวา)
--- วิธีใช้: ลบตั้งแต่บรรทัด "-- [FULL REPLACE] DriveCarTo (A* + Right Lane + Anti-Roll)"
---          ไปจนถึง end ของ DriveCarTo (ก่อน "-- HARVEST SYSTEM")
---          แล้ววางไฟล์นี้แทน  (signature เดิม: DriveCarTo(dest, check) -> true/false)
+-- [FULL REPLACE] DriveCarTo (Pure Pursuit Controller + Dynamic Look-Ahead)
+-- Signature: DriveCarTo(dest, check) -> true/false
 -- ============================================================
 do
     local CFG = {
-        STEER_SIGN  = 1,      -- รถเลี้ยวหนีเป้าหมาย -> -1
-        FLIP_FRONT  = false,  -- หน้ารถกลับด้าน -> true
-        DEBUG       = true,   -- พิมพ์ค่าขับทุก 0.5 วิ (ปิดได้เมื่อไม่ใช้)
-        WARP_TO_ROAD = true,  -- ถ้ารถอยู่ไกลถนน (เช่น จุดเบิกในเมือง) วาร์ปขึ้นถนนก่อนแล้วค่อยขับ
-        WARP_DIST    = 40,    -- ไกลจากถนนเกินกี่ studs ถึงจะวาร์ป
-        CRUISE_SPEED = 150,   -- ความเร็วคงที่ (ใช้ค่านี้แทนสไลเดอร์ ไม่ลดในโค้ง)
-        LOCK_LANE   = true,   -- ล็อครถให้อยู่กลางเส้นถนน (ดึงกลับเข้าเส้นทุกเฟรม)
-        LOCK_PULL   = 6,      -- แรงดึงเข้ากลาง (เท่าระยะเบี่ยง) สูง = ล็อคแน่น
-        LOCK_MAX    = 50,     -- ความเร็วดึงเข้ากลางสูงสุด (studs/s)
-        LOCK_RATE   = 14,     -- ความเร็วที่ปรับความเร็วด้านข้างให้ตรงเป้า
-        STEER_RESPONSE = 12,  -- ความไวพวงมาลัย (สูง = หักตามเส้นเร็ว, ต่ำ = นุ่ม/อืด)
-        STEER_ANGLE    = 0.3, -- มุมที่หักสุดพวงมาลัย (rad) ยิ่งต่ำ ยิ่งหักคม
-        THROTTLE_SOFT  = 4,   -- ยิ่งต่ำ ยิ่งกดคันเร่ง/เบรกเต็มแรงเร็ว
-        KEEP_SPEED  = true,   -- true = ไม่ลดความเร็วเพราะโค้ง (ยังเบรกก่อนถึงปลายทาง)
-        LAT_ACCEL   = 140,    -- ยิ่งต่ำ ยิ่งช้าในโค้ง (ใช้เมื่อ KEEP_SPEED = false ให้ลองสัก 55)
-        SMOOTH_PASSES = 3,    -- เกลี่ยเส้น: ยิ่งมาก ยิ่งตัดโค้ง
-        CENTER_STEPS  = 3,    -- ดึงจุดเข้ากลางถนนได้สูงสุดกี่ cell
-        CENTER_COST   = 10,   -- ยิ่งสูง A* ยิ่งเลือกกลางถนน
-        BRAKE_DECEL = 70,     -- ยิ่งต่ำ ยิ่งเบรกเร็ว
-        MIN_LOOK    = 14,
-        MAX_LOOK    = 80,
-        LANE_OFFSET = 0,      -- เยื้องเลนขวา (0 = กลางถนน)
-        ARRIVE      = 10,     -- ถึงเมื่อห่างปลายทางไม่เกินกี่ studs
-        TIMEOUT     = 240,
-        MAX_REROUTE = 3,
+        STEER_SIGN     = 1,      -- รถเลี้ยวหนีเป้าหมาย -> -1
+        FLIP_FRONT     = false,  -- หน้ารถกลับด้าน -> true
+        DEBUG          = true,   -- พิมพ์ค่าสถานะทุก 0.5 วิ
+        WARP_TO_ROAD   = true,   -- วาร์ปขึ้นถนนอัตโนมัติหากรถอยู่ไกลเส้นทาง
+        WARP_DIST      = 40,     -- ระยะห่างจากจุดเริ่มต้นที่ให้วาร์ป (studs)
+        CRUISE_SPEED   = 160,    -- ความเร็วเป้าหมายสูงสุด (studs/s)
+        LOOK_AHEAD     = 18,     -- ระยะมองล่วงหน้าพื้นฐานสำหรับ Pure Pursuit (Base Look-Ahead)
+        LOOK_AHEAD_GAIN= 0.35,   -- เพิ่มระยะมองล่วงหน้าตามสัดส่วนความเร็วรถ
+        MIN_LOOK       = 12,     -- ระยะมองล่วงหน้าต่ำสุด
+        MAX_LOOK       = 95,     -- ระยะมองล่วงหน้าสูงสุด
+        WHEEL_BASE     = 9,      -- ระยะห่างล้อหน้า-หลังของรถโดยประมาณ (สำหรับคำนวณมุมล้อเลี้ยว)
+        STEER_RESPONSE = 18,     -- ความไวในการตอบสนองพวงมาลัย (สูง = หักไวตามคำสั่ง)
+        THROTTLE_SOFT  = 3.5,    -- ความเร่ง/เบรก (ยิ่งน้อย ยิ่งกดเต็มแรงไว)
+        BRAKE_DECEL    = 65,     -- อัตราการชะลอความเร็วก่อนถึงโค้งหรือปลายทาง
+        SMOOTH_PASSES  = 4,      -- จำนวนรอบในการเกลี่ยเส้นทางให้เนียน
+        CENTER_STEPS   = 3,      -- ดึงเส้นทางเข้ากลางถนน
+        CENTER_COST    = 10,     -- ค่าน้ำหนัก A* ให้อยู่กลางถนน
+        LANE_OFFSET    = 0,      -- ระยะเยื้องเลน (0 = กลางถนน)
+        ARRIVE         = 10,     -- ระยะถึงจุดหมาย (studs)
+        TIMEOUT        = 240,    -- เวลาสูงสุดในการขับก่อนตัดจบ (วินาที)
+        MAX_REROUTE    = 4,      -- จำนวนครั้งสูงสุดในการคำนวณเส้นทางใหม่เมื่อหลุดทาง
     }
 
     local ROAD_CELL = 12
@@ -1259,7 +1253,6 @@ do
     local function CellID(x, z) return (x + 5000) * 100000 + (z + 5000) end
     local function CellPosition(id) return Vector3.new((id // 100000 - 5000) * ROAD_CELL, 0, (id % 100000 - 5000) * ROAD_CELL) end
 
-    -- ---------- ข้อมูลถนน (parse ครั้งเดียว แล้วเก็บ cache) ----------
     local function ParseRoads(raw)
         if type(raw) ~= "string" then return nil end
         local cell, body = raw:match("^(%d+);(.*)$")
@@ -1355,7 +1348,6 @@ do
         end
     end
 
-    -- ดึง cell เข้าหากลางถนน (ค่ามาก = ห่างขอบมาก) จำกัดจำนวนก้าว กันกระโดดข้ามถนน
     local function CenterClimb(cells, id, steps)
         for _ = 1, steps do
             local cur, best = cells[id], nil
@@ -1456,7 +1448,6 @@ do
         return nil
     end
 
-    -- ---------- เส้นนำทางบน Minimap ----------
     local function MinimapCanvases()
         local list = {}
         local mm = PlayerGui:FindFirstChild("Minimap")
@@ -1523,12 +1514,11 @@ do
         end)
     end
 
-    -- ---------- เส้นทางเนียน + เลนขวา + โปรไฟล์ความเร็ว ----------
     local function BuildPath(route)
         local p = {Flat(route[1])}
         for i = 2, #route do
             local a, b = p[#p], Flat(route[i])
-            local steps = math.max(1, math.ceil((b - a).Magnitude / 6))
+            local steps = math.max(1, math.ceil((b - a).Magnitude / 5))
             for k = 1, steps do p[#p + 1] = a:Lerp(b, k / steps) end
         end
         for _ = 1, CFG.SMOOTH_PASSES do
@@ -1540,33 +1530,12 @@ do
             end
             p = q
         end
-        if CFG.LANE_OFFSET ~= 0 and #p > 2 then
-            local remain = table.create(#p, 0)
-            for i = #p - 1, 1, -1 do remain[i] = remain[i + 1] + (p[i + 1] - p[i]).Magnitude end
-            local out = table.clone(p)
-            for i = 1, #p do
-                local d = p[math.min(i + 1, #p)] - p[math.max(i - 1, 1)]
-                if d.Magnitude > 0.01 then
-                    d = d.Unit
-                    out[i] = p[i] + Vector3.new(-d.Z, 0, d.X) * CFG.LANE_OFFSET * math.clamp(remain[i] / 40, 0, 1)
-                end
-            end
-            p = out
-        end
         return p
     end
 
     local function BuildSpeedProfile(p, maxSpeed)
         local n = #p
         local v = table.create(n, maxSpeed)
-        for i = 3, (CFG.LOCK_LANE and 0 or n - 2) do -- ล็อคเลน = ไม่ลดความเร็วตามโค้ง
-            local a, b = p[i] - p[i - 2], p[i + 2] - p[i]
-            if a.Magnitude > 0.01 and b.Magnitude > 0.01 then
-                local ang = math.acos(math.clamp(a.Unit:Dot(b.Unit), -1, 1))
-                local k = ang / ((a.Magnitude + b.Magnitude) / 2)
-                v[i] = math.clamp(math.sqrt(CFG.LAT_ACCEL / math.max(k, 1e-4)), 10, maxSpeed)
-            end
-        end
         v[n] = 3
         for i = n - 1, 1, -1 do
             local ds = (p[i + 1] - p[i]).Magnitude
@@ -1600,7 +1569,6 @@ do
         if not seat then return false end
         if not car.PrimaryPart then pcall(function() car.PrimaryPart = seat end) end
 
-        -- ไม่ใช่ VehicleSeat -> ขับจริงไม่ได้ วาร์ปรถแทน
         if not seat:IsA("VehicleSeat") then
             warn("[GPS] ที่นั่งไม่ใช่ VehicleSeat -> วาร์ปรถไปจุดหมายแทน")
             local gy = GetGroundLevel(dest.X, dest.Z, dest.Y)
@@ -1628,7 +1596,6 @@ do
         MarkDestination(dest)
         local n = #path
 
-        -- วาร์ปรถจากในเมืองขึ้นถนน หันหน้าไปตามเส้นทาง แล้วค่อยเริ่มขับ
         if CFG.WARP_TO_ROAD and n >= 2 then
             local pivot = car:GetPivot()
             if (Flat(pivot.Position) - path[1]).Magnitude > CFG.WARP_DIST then
@@ -1670,7 +1637,6 @@ do
             if os.clock() - t0 > CFG.TIMEOUT then break end
             if check and not check() then break end
 
-            -- ให้ตัวละครนั่งในรถตลอด
             if (not hum.Sit or hum.SeatPart ~= seat) and os.clock() - lastSeat > 0.5 then
                 lastSeat = os.clock()
                 pcall(function() root.CFrame = seat.CFrame + Vector3.new(0, 0.8, 0) seat:Sit(hum) end)
@@ -1682,18 +1648,17 @@ do
             local fwd = Flat(cf.LookVector)
             local speed = fwd.Magnitude > 0 and Flat(seat.AssemblyLinearVelocity):Dot(fwd.Unit) or 0
 
+            -- อัปเดต Index เส้นทางที่รถวิ่งผ่านไปแล้ว
             for _ = 1, 8 do
                 if idx < n and (path[idx + 1] - pos).Magnitude <= (path[idx] - pos).Magnitude then idx += 1 else break end
             end
 
             local toEnd = (destFlat - pos).Magnitude
             if toEnd < CFG.ARRIVE then arrived = true break end
-            -- ใกล้ปลายทางและรถหยุดแล้ว (เช่น จุดจอดอยู่นอกถนน) ถือว่าถึง
             if toEnd < 30 and math.abs(speed) < 1.5 then nearT += dt else nearT = 0 end
             if nearT > 1 then arrived = true break end
 
-            -- หลุดเส้นนาน -> คำนวณใหม่
-            if (path[idx] - pos).Magnitude > 45 then offT += dt else offT = 0 end
+            if (path[idx] - pos).Magnitude > 50 then offT += dt else offT = 0 end
             if offT > 2 and reroutes < CFG.MAX_REROUTE then
                 reroutes += 1; offT = 0
                 Release()
@@ -1707,48 +1672,57 @@ do
                 continue
             end
 
-            -- จุดเล็ง (ยิ่งเร็วยิ่งมองไกล)
-            local look = math.clamp(CFG.MIN_LOOK + math.max(speed, 0) * 0.4, CFG.MIN_LOOK, CFG.MAX_LOOK)
-            -- โค้งข้างหน้ายิ่งหัก ยิ่งมองสั้นลง (ลดการตัดโค้ง โดยไม่ต้องลดความเร็ว)
-            do
-                local p1, p2, p3 = path[math.min(idx + 1, n)], path[math.min(idx + 5, n)], path[math.min(idx + 13, n)]
-                local d1, d2 = p2 - p1, p3 - p2
-                if d1.Magnitude > 0.5 and d2.Magnitude > 0.5 then
-                    local turn = math.acos(math.clamp(d1.Unit:Dot(d2.Unit), -1, 1))
-                    look = math.max(CFG.MIN_LOOK * 0.6, look * math.clamp(1 - turn * 1.2, 0.4, 1))
+            -- ---------- PURE PURSUIT ALGORITHM ----------
+            -- คำนวณระยะมองล่วงหน้า (Look-Ahead Distance) แบบ Dynamic ตามความเร็ว
+            local lookAhead = math.clamp(CFG.LOOK_AHEAD + math.max(speed, 0) * CFG.LOOK_AHEAD_GAIN, CFG.MIN_LOOK, CFG.MAX_LOOK)
+            
+            -- ค้นหาจุดบนเส้นทางที่อยู่ห่างจากรถเท่ากับระยะ lookAhead พอดี
+            local targetPt = path[n]
+            local foundTarget = false
+            for i = idx, n do
+                if (path[i] - pos).Magnitude >= lookAhead then
+                    targetPt = path[i]
+                    foundTarget = true
+                    break
                 end
             end
-            local j, acc = idx, (path[idx] - pos).Magnitude
-            while j < n and acc < look do
-                j += 1
-                acc += (path[j] - path[j - 1]).Magnitude
-            end
-            local l = cf:VectorToObjectSpace(path[j] - pos)
-            local angle = math.atan2(l.X, -l.Z)
+            if not foundTarget then targetPt = path[n] end
 
-            -- หักคมขึ้นเมื่อเร็ว (กันรถอืด) แล้วกรองให้ลื่น ไม่กระชาก
-            local maxAng = CFG.STEER_ANGLE + math.clamp(math.abs(speed) / 120, 0, 1) * 0.3
-            local targetSteer = math.clamp(angle / maxAng, -1, 1) * CFG.STEER_SIGN
+            -- แปลงพิกัดจุดเป้าหมายให้เป็นพิกัดสัมพัทธ์เทียบกับหน้ารถ (Local Space)
+            local localTarget = cf:VectorToObjectSpace(targetPt - pos)
+            local Ld2 = localTarget.Magnitude * localTarget.Magnitude
+            
+            -- คำนวณมุมพวงมาลัยด้วยสูตร Pure Pursuit: Curvature = 2 * x / Ld^2
+            local targetSteer = 0
+            if Ld2 > 0.01 then
+                local curvature = (2 * localTarget.X) / Ld2
+                -- แปลงความโค้งเป็นมุมเลี้ยวพวงมาลัย (SteerFloat [-1, 1])
+                targetSteer = math.clamp(curvature * (CFG.WHEEL_BASE * 0.75), -1, 1) * CFG.STEER_SIGN
+            end
+
+            -- กรองพวงมาลัยให้มีความลื่น ไม่กระชาก
             steer += (targetSteer - steer) * (1 - math.exp(-dt * CFG.STEER_RESPONSE))
 
-            local vt = vlim[idx]
-            for i = idx, math.min(n, j + 3) do vt = math.min(vt, vlim[i]) end
-            local a = math.abs(angle)
-            if not CFG.KEEP_SPEED then
-                if a > 0.9 then vt = math.min(vt, 15) elseif a > 0.5 then vt = math.min(vt, 30) end
+            -- จัดการความเร็วตาม Speed Profile และมุมหักเลี้ยว
+            local vt = vlim[idx] or maxSpeed
+            local absSteer = math.abs(steer)
+            if absSteer > 0.5 then
+                vt = math.min(vt, maxSpeed * 0.55) -- ชะลอความเร็วอัตโนมัติเมื่อต้องเลี้ยวโค้งแคบ
+            elseif absSteer > 0.25 then
+                vt = math.min(vt, maxSpeed * 0.8)
             end
 
             local throttle = math.clamp((vt - speed) / CFG.THROTTLE_SOFT, -1, 1)
             if throttle < 0 then throttle = speed > 4 and throttle or 0 end
 
-            -- ติดขัด -> ถอยสั้นๆ
+            -- ระบบแก้ติดหล่ม (Stuck / Reverse Recovery)
             if revT > 0 then
                 revT -= dt
                 throttle = -1
                 steer = -targetSteer
-            elseif vt > 8 and math.abs(speed) < 1.5 then
+            elseif vt > 6 and math.abs(speed) < 1.0 then
                 stuckT += dt
-                if stuckT > 2 then stuckT = 0; revT = 1.3 end
+                if stuckT > 2 then stuckT = 0; revT = 1.5 end
             else
                 stuckT = 0
             end
@@ -1757,30 +1731,8 @@ do
                 dbgT += dt
                 if dbgT >= 0.5 then
                     dbgT = 0
-                    print(string.format("[GPS] speed=%.0f target=%.0f angle=%.2f steer=%.2f throttle=%.2f off=%.1f look=%.0f idx=%d/%d",
-                        speed, vt, angle, steer, throttle, (path[idx] - pos).Magnitude, look, idx, n))
-                end
-            end
-
-            -- ล็อคกลางถนน: ตัดความเร็วด้านข้างและดึงรถกลับเข้าเส้นทาง
-            if CFG.LOCK_LANE and revT <= 0 and idx < n then
-                local p1, p2 = path[idx], path[math.min(idx + 1, n)]
-                local seg = p2 - p1
-                if seg.Magnitude > 0.1 then
-                    local tdir = seg.Unit
-                    local rel = pos - p1
-                    local lat = rel - tdir * rel:Dot(tdir)
-                    local cte = lat.Magnitude
-                    if cte > 0.2 then
-                        local ldir = lat.Unit
-                        local vel = seat.AssemblyLinearVelocity
-                        local vlat = Vector3.new(vel.X, 0, vel.Z):Dot(ldir)
-                        local want = -math.min(cte * CFG.LOCK_PULL, CFG.LOCK_MAX)
-                        local blend = math.min(1, dt * CFG.LOCK_RATE)
-                        pcall(function()
-                            seat.AssemblyLinearVelocity = vel + ldir * (want - vlat) * blend
-                        end)
-                    end
+                    print(string.format("[PurePursuit] speed=%.0f target=%.0f steer=%.2f throttle=%.2f look=%.0f idx=%d/%d",
+                        speed, vt, steer, throttle, lookAhead, idx, n))
                 end
             end
 
