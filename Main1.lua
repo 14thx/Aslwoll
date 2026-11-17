@@ -1224,6 +1224,8 @@ do
         STEER_SIGN  = 1,      -- รถเลี้ยวหนีเป้าหมาย -> -1
         FLIP_FRONT  = false,  -- หน้ารถกลับด้าน -> true
         DEBUG       = true,   -- พิมพ์ค่าขับทุก 0.5 วิ (ปิดได้เมื่อไม่ใช้)
+        WARP_TO_ROAD = true,  -- ถ้ารถอยู่ไกลถนน (เช่น จุดเบิกในเมือง) วาร์ปขึ้นถนนก่อนแล้วค่อยขับ
+        WARP_DIST    = 40,    -- ไกลจากถนนเกินกี่ studs ถึงจะวาร์ป
         CRUISE_SPEED = 150,   -- ความเร็วคงที่ (ใช้ค่านี้แทนสไลเดอร์ ไม่ลดในโค้ง)
         LOCK_LANE   = true,   -- ล็อครถให้อยู่กลางเส้นถนน (ดึงกลับเข้าเส้นทุกเฟรม)
         LOCK_PULL   = 6,      -- แรงดึงเข้ากลาง (เท่าระยะเบี่ยง) สูง = ล็อคแน่น
@@ -1625,6 +1627,25 @@ do
         local path, vlim = Plan()
         MarkDestination(dest)
         local n = #path
+
+        -- วาร์ปรถจากในเมืองขึ้นถนน หันหน้าไปตามเส้นทาง แล้วค่อยเริ่มขับ
+        if CFG.WARP_TO_ROAD and n >= 2 then
+            local pivot = car:GetPivot()
+            if (Flat(pivot.Position) - path[1]).Magnitude > CFG.WARP_DIST then
+                local aim = path[math.min(6, n)]
+                local gy = GetGroundLevel(path[1].X, path[1].Z, pivot.Position.Y)
+                local from = Vector3.new(path[1].X, gy + 3, path[1].Z)
+                pcall(function()
+                    local desired = CFrame.lookAt(from, Vector3.new(aim.X, from.Y, aim.Z))
+                    if CFG.FLIP_FRONT then desired = desired * CFrame.Angles(0, math.pi, 0) end
+                    local rel = pivot:ToObjectSpace(seat.CFrame)
+                    car:PivotTo(desired * rel:Inverse())
+                    seat.AssemblyLinearVelocity = Vector3.zero
+                    seat.AssemblyAngularVelocity = Vector3.zero
+                end)
+                task.wait(0.3)
+            end
+        end
 
         local function Release()
             pcall(function() seat.ThrottleFloat = 0; seat.SteerFloat = 0 end)
