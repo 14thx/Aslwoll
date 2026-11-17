@@ -1223,12 +1223,21 @@ do
     local CFG = {
         STEER_SIGN  = 1,      -- รถเลี้ยวหนีเป้าหมาย -> -1
         FLIP_FRONT  = false,  -- หน้ารถกลับด้าน -> true
+        DEBUG       = true,   -- พิมพ์ค่าขับทุก 0.5 วิ (ปิดได้เมื่อไม่ใช้)
+        CRUISE_SPEED = 150,   -- ความเร็วคงที่ (ใช้ค่านี้แทนสไลเดอร์ ไม่ลดในโค้ง)
+        LOCK_LANE   = true,   -- ล็อครถให้อยู่กลางเส้นถนน (ดึงกลับเข้าเส้นทุกเฟรม)
+        LOCK_PULL   = 6,      -- แรงดึงเข้ากลาง (เท่าระยะเบี่ยง) สูง = ล็อคแน่น
+        LOCK_MAX    = 50,     -- ความเร็วดึงเข้ากลางสูงสุด (studs/s)
+        LOCK_RATE   = 14,     -- ความเร็วที่ปรับความเร็วด้านข้างให้ตรงเป้า
+        STEER_RESPONSE = 12,  -- ความไวพวงมาลัย (สูง = หักตามเส้นเร็ว, ต่ำ = นุ่ม/อืด)
+        STEER_ANGLE    = 0.3, -- มุมที่หักสุดพวงมาลัย (rad) ยิ่งต่ำ ยิ่งหักคม
+        THROTTLE_SOFT  = 4,   -- ยิ่งต่ำ ยิ่งกดคันเร่ง/เบรกเต็มแรงเร็ว
         KEEP_SPEED  = true,   -- true = ไม่ลดความเร็วเพราะโค้ง (ยังเบรกก่อนถึงปลายทาง)
         LAT_ACCEL   = 140,    -- ยิ่งต่ำ ยิ่งช้าในโค้ง (ใช้เมื่อ KEEP_SPEED = false ให้ลองสัก 55)
         SMOOTH_PASSES = 3,    -- เกลี่ยเส้น: ยิ่งมาก ยิ่งตัดโค้ง
         CENTER_STEPS  = 3,    -- ดึงจุดเข้ากลางถนนได้สูงสุดกี่ cell
         CENTER_COST   = 10,   -- ยิ่งสูง A* ยิ่งเลือกกลางถนน
-        BRAKE_DECEL = 30,     -- ยิ่งต่ำ ยิ่งเบรกเร็ว
+        BRAKE_DECEL = 70,     -- ยิ่งต่ำ ยิ่งเบรกเร็ว
         MIN_LOOK    = 14,
         MAX_LOOK    = 80,
         LANE_OFFSET = 0,      -- เยื้องเลนขวา (0 = กลางถนน)
@@ -1548,7 +1557,7 @@ do
     local function BuildSpeedProfile(p, maxSpeed)
         local n = #p
         local v = table.create(n, maxSpeed)
-        for i = 3, n - 2 do
+        for i = 3, (CFG.LOCK_LANE and 0 or n - 2) do -- ล็อคเลน = ไม่ลดความเร็วตามโค้ง
             local a, b = p[i] - p[i - 2], p[i + 2] - p[i]
             if a.Magnitude > 0.01 and b.Magnitude > 0.01 then
                 local ang = math.acos(math.clamp(a.Unit:Dot(b.Unit), -1, 1))
@@ -1598,7 +1607,7 @@ do
         end
 
         local destFlat = Vector3.new(dest.X, 0, dest.Z)
-        local maxSpeed = math.clamp(VehicleDriveSpeed or 70, 10, 280)
+        local maxSpeed = math.clamp(CFG.CRUISE_SPEED or VehicleDriveSpeed or 70, 10, 280)
 
         local function Plan()
             local route = ComputeRoute(car:GetPivot().Position, dest)
@@ -1624,6 +1633,7 @@ do
         local idx, steer = 1, 0
         local stuckT, offT, revT, nearT = 0, 0, 0, 0
         local reroutes, arrived = 0, false
+        local dbgT = 0
         local t0, lastSeat = os.clock(), 0
 
         do
@@ -1695,10 +1705,10 @@ do
             local l = cf:VectorToObjectSpace(path[j] - pos)
             local angle = math.atan2(l.X, -l.Z)
 
-            local maxAng = 0.5 + math.clamp(math.abs(speed) / 60, 0, 1) * 0.5
+            -- หักคมขึ้นเมื่อเร็ว (กันรถอืด) แล้วกรองให้ลื่น ไม่กระชาก
+            local maxAng = CFG.STEER_ANGLE + math.clamp(math.abs(speed) / 120, 0, 1) * 0.3
             local targetSteer = math.clamp(angle / maxAng, -1, 1) * CFG.STEER_SIGN
-            local rate = 3.5 * dt
-            steer += math.clamp(targetSteer - steer, -rate, rate)
+            steer += (targetSteer - steer) * (1 - math.exp(-dt * CFG.STEER_RESPONSE))
 
             local vt = vlim[idx]
             for i = idx, math.min(n, j + 3) do vt = math.min(vt, vlim[i]) end
@@ -1707,8 +1717,8 @@ do
                 if a > 0.9 then vt = math.min(vt, 15) elseif a > 0.5 then vt = math.min(vt, 30) end
             end
 
-            local throttle = math.clamp((vt - speed) / 10, -1, 1)
-            if throttle < 0 then throttle = speed > 4 and math.max(throttle, -0.7) or 0 end
+            local throttle = math.clamp((vt - speed) / CFG.THROTTLE_SOFT, -1, 1)
+            if throttle < 0 then throttle = speed > 4 and throttle or 0 end
 
             -- ติดขัด -> ถอยสั้นๆ
             if revT > 0 then
@@ -1720,6 +1730,37 @@ do
                 if stuckT > 2 then stuckT = 0; revT = 1.3 end
             else
                 stuckT = 0
+            end
+
+            if CFG.DEBUG then
+                dbgT += dt
+                if dbgT >= 0.5 then
+                    dbgT = 0
+                    print(string.format("[GPS] speed=%.0f target=%.0f angle=%.2f steer=%.2f throttle=%.2f off=%.1f look=%.0f idx=%d/%d",
+                        speed, vt, angle, steer, throttle, (path[idx] - pos).Magnitude, look, idx, n))
+                end
+            end
+
+            -- ล็อคกลางถนน: ตัดความเร็วด้านข้างและดึงรถกลับเข้าเส้นทาง
+            if CFG.LOCK_LANE and revT <= 0 and idx < n then
+                local p1, p2 = path[idx], path[math.min(idx + 1, n)]
+                local seg = p2 - p1
+                if seg.Magnitude > 0.1 then
+                    local tdir = seg.Unit
+                    local rel = pos - p1
+                    local lat = rel - tdir * rel:Dot(tdir)
+                    local cte = lat.Magnitude
+                    if cte > 0.2 then
+                        local ldir = lat.Unit
+                        local vel = seat.AssemblyLinearVelocity
+                        local vlat = Vector3.new(vel.X, 0, vel.Z):Dot(ldir)
+                        local want = -math.min(cte * CFG.LOCK_PULL, CFG.LOCK_MAX)
+                        local blend = math.min(1, dt * CFG.LOCK_RATE)
+                        pcall(function()
+                            seat.AssemblyLinearVelocity = vel + ldir * (want - vlat) * blend
+                        end)
+                    end
+                end
             end
 
             pcall(function()
