@@ -1183,62 +1183,35 @@ local function IsWideSolidGround(x, z)
 end
 
 -- ============================================================
--- [FULL REPLACE] Fast Lock - No Brake System
+-- DriveCarTo (รวมแพตช์แล้ว)
+-- วิธีใช้: ลบ "DriveCarTo = function(dest, check) ... end" ตัวเดิมทั้งก้อน
+-- (ต่อจาก DrawMinimapRoute) แล้ววางไฟล์นี้แทนทั้งหมด
+-- แก้: NaN จาก .Unit, ความเร็วตามสไลเดอร์, getgc แคชครั้งเดียว, cleanup เสมอ
 -- ============================================================
 
--- [1] ฟังก์ชันวาดเส้นนำทางบน Minimap
-local function DrawMinimapRoute(waypoints)
-    local minimap = LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("Minimap")
-    if not minimap then return end
-
-    local canvasList = {}
-    if minimap.Big_Map and minimap.Big_Map.Visible then
-        local c = minimap.Big_Map:FindFirstChild("map") and minimap.Big_Map.map:FindFirstChild("minimap")
-            and minimap.Big_Map.map.minimap:FindFirstChild("MapLayer") and minimap.Big_Map.map.minimap.MapLayer:FindFirstChild("Canvas")
-        if c then table.insert(canvasList, c) end
-    end
-    if minimap.Minimap and minimap.Minimap.Visible then
-        local c = minimap.Minimap:FindFirstChild("MapLayer") and minimap.Minimap.MapLayer:FindFirstChild("Canvas")
-        if not c then c = minimap.Minimap:FindFirstChild("Canvas") end
-        if c then table.insert(canvasList, c) end
-    end
-
-    for _, canvas in ipairs(canvasList) do
-        local old = canvas:FindFirstChild("GPS_RouteLine")
-        if old then old:Destroy() end
-    end
-
-    if #waypoints < 2 then return end
-
-    local function W2M(wx, wz)
-        return UDim2.new(0.5 + (wx * 0.0000773), 0, 0.5 - (wz * 0.0000253), 0)
-    end
-
-    for _, canvas in ipairs(canvasList) do
-        for i = 1, #waypoints - 1 do
-            local p1, p2 = waypoints[i], waypoints[i+1]
-            local pos1, pos2 = W2M(p1.X, p1.Z), W2M(p2.X, p2.Z)
-            local dx = (pos2.X.Scale - pos1.X.Scale) * canvas.AbsoluteSize.X
-            local dy = (pos2.Y.Scale - pos1.Y.Scale) * canvas.AbsoluteSize.Y
-            local len = math.sqrt(dx*dx + dy*dy)
-            
-            if len > 1 then
-                local line = Instance.new("Frame")
-                line.Name = "GPS_RouteLine"
-                line.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-                line.BorderSizePixel = 0
-                line.AnchorPoint = Vector2.new(0.5, 0.5)
-                line.Size = UDim2.new(0, len, 0, 4)
-                line.Position = UDim2.new((pos1.X.Scale + pos2.X.Scale)/2, 0, (pos1.Y.Scale + pos2.Y.Scale)/2, 0)
-                line.Rotation = math.deg(math.atan2(dy, dx))
-                line.ZIndex = 100
-                line.Parent = canvas
+local CachedMarkFn = nil
+local function GetMarkFn()
+    if CachedMarkFn then return CachedMarkFn end
+    pcall(function()
+        for _, obj in pairs(getgc(true)) do
+            if type(obj) == "table" then
+                local f = rawget(obj, "Mark")
+                if type(f) == "function" then
+                    CachedMarkFn = f
+                    break
+                end
             end
         end
-    end
+    end)
+    return CachedMarkFn
 end
 
--- [2] ฟังก์ชัน DriveCarTo (Fast Lock - No Brake)
+local function FlatUnit(v)
+    local f = Vector3.new(v.X, 0, v.Z)
+    if f.Magnitude < 0.01 then return nil end
+    return f.Unit
+end
+
 DriveCarTo = function(dest, check)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -1470,105 +1443,97 @@ DriveCarTo = function(dest, check)
                 local smallMap = minimap:FindFirstChild("Minimap")
                 if smallMap then smallMap.Visible = true end
             end
-            for _, obj in pairs(getgc(true)) do
-                if type(obj) == "table" then
-                    local markFunc = rawget(obj, "Mark")
-                    if markFunc and type(markFunc) == "function" then
-                        pcall(function() markFunc(dest.X, dest.Z) end)
-                        break
-                    end
-                end
-            end
         end)
+        local markFunc = GetMarkFn()
+        if markFunc then pcall(markFunc, dest.X, dest.Z) end
     end
 
-    -- === [3] Fast Lock - No Brake ===
+    -- === [3] Fast Lock (กัน NaN / ใช้สไลเดอร์ / cleanup เสมอ) ===
     local PRIMARY = car.PrimaryPart
-    
-    -- BodyVelocity (คุมความเร็ว + กดติดพื้น)
+    if not PRIMARY then return false end
+    local LANE_OFFSET = 6
+
     local bv = Instance.new("BodyVelocity")
     bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
     bv.Velocity = Vector3.zero
     bv.Parent = PRIMARY
 
-    -- Attachment สำหรับ AlignOrientation
     local att = Instance.new("Attachment")
     att.Parent = PRIMARY
-    
-    -- AlignOrientation (ล็อกหัวรถตาม Waypoint)
+
     local alignOri = Instance.new("AlignOrientation")
     alignOri.Mode = Enum.OrientationAlignmentMode.OneAttachment
     alignOri.Attachment0 = att
-    alignOri.MaxTorque = 80000 -- สูงพอให้เลี้ยวตาม แต่ไม่ส่าย
-    alignOri.Responsiveness = 50 -- ตอบสนองไว (ล็อกถนน)
+    alignOri.MaxTorque = 80000
+    alignOri.Responsiveness = 50
     alignOri.CFrame = PRIMARY.CFrame
     alignOri.Parent = PRIMARY
 
-    local currentIdx = 1
-    local driveStartTime = os.clock()
-    local MAX_SPEED = 230
-    local LANE_OFFSET = 6 -- ขับเลนขวา
+    local ok, result = pcall(function()
+        local currentIdx = 1
+        local driveStartTime = os.clock()
 
-    while currentIdx <= #route do
-        if os.clock() - driveStartTime > 180 then
-            bv:Destroy(); alignOri:Destroy(); att:Destroy()
-            return false
+        while currentIdx <= #route do
+            if os.clock() - driveStartTime > 180 then return false end
+            if check and not check() then return false end
+            if not PRIMARY.Parent or not car.Parent then return false end
+
+            RunService.Heartbeat:Wait()
+
+            if not hum.Sit or hum.SeatPart ~= seat then
+                pcall(function()
+                    root.CFrame = seat.CFrame + Vector3.new(0, 0.8, 0)
+                    seat:Sit(hum)
+                end)
+            end
+
+            local carPos = PRIMARY.Position
+            local target = route[currentIdx]
+            local toTarget = Vector3.new(target.X - carPos.X, 0, target.Z - carPos.Z)
+
+            if toTarget.Magnitude < 20 then
+                currentIdx += 1
+                continue
+            end
+
+            -- ทิศถนน: ถ้า waypoint ซ้อนกัน (จุดสุดท้าย) ใช้ทิศไปหาเป้าแทน
+            local nextTarget = route[math.min(currentIdx + 1, #route)]
+            local roadDir = FlatUnit(nextTarget - target) or FlatUnit(toTarget)
+            if not roadDir then
+                currentIdx += 1
+                continue
+            end
+            local rightDir = Vector3.new(-roadDir.Z, 0, roadDir.X)
+            local offsetTarget = target + rightDir * LANE_OFFSET
+
+            local dir = FlatUnit(offsetTarget - carPos) or FlatUnit(toTarget)
+            if not dir then
+                currentIdx += 1
+                continue
+            end
+
+            local groundY = GetGroundLevel(carPos.X, carPos.Z, carPos.Y)
+            local rideH = math.clamp(carPos.Y - groundY, 2.3, 3.2)
+            local velY = (groundY + rideH - carPos.Y) * 10
+
+            local speed = math.clamp(VehicleDriveSpeed, 10, 280)
+            bv.Velocity = Vector3.new(dir.X * speed, velY, dir.Z * speed)
+            alignOri.CFrame = CFrame.lookAt(carPos, Vector3.new(offsetTarget.X, carPos.Y, offsetTarget.Z))
         end
-        if check and not check() then
-            bv:Destroy(); alignOri:Destroy(); att:Destroy()
-            return false
-        end
+        return true
+    end)
 
-        local dt = RunService.Heartbeat:Wait()
+    -- cleanup ทำเสมอ ไม่ว่าจะ error หรือออกกลางทาง
+    pcall(function() bv.Velocity = Vector3.zero end)
+    pcall(function() bv:Destroy() end)
+    pcall(function() alignOri:Destroy() end)
+    pcall(function() att:Destroy() end)
 
-        if not hum.Sit or hum.SeatPart ~= seat then
-            pcall(function() root.CFrame = seat.CFrame + Vector3.new(0,0.8,0) seat:Sit(hum) end)
-        end
-
-        local carPos = PRIMARY.Position
-        local target = route[currentIdx]
-        local toTarget = Vector3.new(target.X - carPos.X, 0, target.Z - carPos.Z)
-        local distT = toTarget.Magnitude
-
-        -- ถึง Waypoint นี้แล้ว ให้ไปจุดถัดไป
-        if distT < 20 then
-            currentIdx += 1
-            continue
-        end
-
-        -- คำนวณแกนขวาของถนน (ขับเลนขวา)
-        local nextTarget = route[math.min(currentIdx + 1, #route)]
-        local roadDir = (nextTarget - target)
-        roadDir = Vector3.new(roadDir.X, 0, roadDir.Z).Unit
-        local rightDir = Vector3.new(-roadDir.Z, 0, roadDir.X)
-        local offsetTarget = target + (rightDir * LANE_OFFSET)
-
-        local finalToTarget = Vector3.new(offsetTarget.X - carPos.X, 0, offsetTarget.Z - carPos.Z)
-        local dir = finalToTarget.Unit
-        
-        -- [กดติดพื้น] คำนวณความสูงพื้น แล้วดึงลง
-        local groundY = GetGroundLevel(carPos.X, carPos.Z, carPos.Y)
-        local rideH = math.clamp(carPos.Y - groundY, 2.3, 3.2)
-        local targetY = groundY + rideH
-        local velY = (targetY - carPos.Y) * 10
-
-        -- สั่งความเร็วเต็ม (ไม่เบรก!)
-        bv.Velocity = Vector3.new(dir.X * MAX_SPEED, velY, dir.Z * MAX_SPEED)
-        
-        -- ล็อกพวงมาลัยตาม Waypoint
-        alignOri.CFrame = CFrame.lookAt(carPos, Vector3.new(offsetTarget.X, carPos.Y, offsetTarget.Z))
+    if not ok then
+        warn("[DriveCarTo] error: " .. tostring(result))
+        return false
     end
-
-    bv.Velocity = Vector3.zero
-    alignOri.CFrame = PRIMARY.CFrame
-    task.wait(0.1)
-    bv:Destroy()
-    alignOri:Destroy()
-    att:Destroy()
-
-    -- ไม่ลบเส้น! (ให้ผู้เล่นเห็นเส้นต่อ)
-    task.wait(0.1)
-    return true
+    return result == true
 end
 
 -- =====================================
