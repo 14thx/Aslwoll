@@ -1183,11 +1183,29 @@ local function IsWideSolidGround(x, z)
 end
 
 -- ============================================================
--- DriveCarTo (รวมแพตช์แล้ว)
--- วิธีใช้: ลบ "DriveCarTo = function(dest, check) ... end" ตัวเดิมทั้งก้อน
--- (ต่อจาก DrawMinimapRoute) แล้ววางไฟล์นี้แทนทั้งหมด
--- แก้: NaN จาก .Unit, ความเร็วตามสไลเดอร์, getgc แคชครั้งเดียว, cleanup เสมอ
+-- Fast Lock - No Brake  (แทน DriveCarTo ตัวเดิมทั้งก้อน)
+-- วิธีใช้: ลบ "DriveCarTo = function(dest, check) ... end" เดิม
+-- (ต่อจาก DrawMinimapRoute) แล้ววางไฟล์นี้แทน ชื่อฟังก์ชันเดิม ตัวเรียกอื่นไม่ต้องแก้
+--
+-- หลักการ:
+--  1) เรียก DriveCarTo(dest) -> ระบบเริ่มขับเอง
+--  2) คำนวณเส้นทาง A* ตามแนวถนน
+--  3) คันเร่งเต็ม (Throttle = 1) ตลอดทาง ไม่มีเบรก ไม่ผ่อนคันเร่ง
+--  4) เข้าโค้ง: มุมต่างมาก = ล็อกพวงมาลัยสุด, มุมน้อย = ปรับตามสัดส่วน
+--  5) ออกโค้ง (มุมเข้าใกล้ 0) คืนพวงมาลัยเป็นกลางอัตโนมัติ
+--  6) ไม่วาร์ป ไม่ตั้งความเร็ว/แรงให้รถ ใช้แค่ input คันเร่ง+พวงมาลัย
+--  7) ถึงจุดหมาย -> ปล่อยคันเร่ง ปิดระบบ (FastLock.Active = false)
 -- ============================================================
+
+local FastLock = { Active = false }
+_G.FastLock = FastLock
+
+local FL_STEER_FULL = math.rad(28)   -- มุมต่างที่ถือว่าล็อกพวงมาลัยสุด
+local FL_STEER_DEAD = math.rad(3)    -- มุมต่างน้อยกว่านี้ = พวงมาลัยตรง
+local FL_LOOKAHEAD  = 35             -- มองไปข้างหน้ากี่ studs บนเส้นทาง
+local FL_ARRIVE     = 18             -- ถึงจุดหมายเมื่อห่างไม่เกินกี่ studs
+local FL_TIMEOUT    = 180            -- ขับนานสุด (วินาที)
+local FL_STUCK_TIME = 6              -- ไม่ขยับเกินกี่วินาที = ยกเลิก (ไม่ถอย ไม่เบรก)
 
 local CachedMarkFn = nil
 local function GetMarkFn()
@@ -1212,27 +1230,53 @@ local function FlatUnit(v)
     return f.Unit
 end
 
-DriveCarTo = function(dest, check)
-    local char = LocalPlayer.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if not hum or not root then return false end
-    local car, seat = nil, nil
-    if hum.Sit and hum.SeatPart then
-        seat = hum.SeatPart
-        car = seat:FindFirstAncestorOfClass("Model")
-        if car then MY_SPAWNED_CAR = car end
-    end
-    if not car then
-        car = GetNearbyPlayerVehicle(80) or GetPlayerVehicle()
-        if car then EnsurePlayerSeatedInCar(car) task.wait(0.2) end
-    end
-    if not car then return false end
-    seat = (hum and hum.SeatPart) or car:FindFirstChild("DriveSeat", true) or car:FindFirstChildWhichIsA("VehicleSeat", true)
-    if not seat then return false end
-    if not car.PrimaryPart then pcall(function() car.PrimaryPart = seat end) end
+local function FlatDist(a, b)
+    return Vector3.new(a.X - b.X, 0, a.Z - b.Z).Magnitude
+end
 
-    -- === [1] คำนวณเส้นทาง A* ===
+-- ---------- ส่ง input คันเร่ง/พวงมาลัย ----------
+local function FL_CreateInput(seat)
+    local held = { W = false, A = false, D = false }
+    local codes = { W = Enum.KeyCode.W, A = Enum.KeyCode.A, D = Enum.KeyCode.D }
+
+    local function setKey(name, down)
+        if held[name] == down then return end
+        held[name] = down
+        pcall(function()
+            VirtualInputManager:SendKeyEvent(down, codes[name], false, game)
+        end)
+    end
+
+    local self = {}
+
+    function self.Set(throttle, steer)
+        -- รถแบบ VehicleSeat
+        pcall(function()
+            if seat:IsA("VehicleSeat") then
+                seat.ThrottleFloat = throttle
+                seat.SteerFloat = steer
+                seat.Throttle = throttle > 0.5 and 1 or 0
+                seat.Steer = (steer > 0.2 and 1) or (steer < -0.2 and -1) or 0
+            end
+        end)
+        -- สำรอง: กดปุ่มจริง (เผื่อแชสซีของเกมอ่านคีย์บอร์ด)
+        setKey("W", throttle > 0.5)
+        setKey("D", steer > 0.25)
+        setKey("A", steer < -0.25)
+    end
+
+    function self.Release()
+        self.Set(0, 0)
+        setKey("W", false)
+        setKey("A", false)
+        setKey("D", false)
+    end
+
+    return self
+end
+
+-- ---------- คำนวณเส้นทาง A* ตามถนน ----------
+local function FL_ComputeRoute(car, dest)
     local route = nil
     pcall(function()
         local ROAD_CELL = 12
@@ -1429,111 +1473,130 @@ DriveCarTo = function(dest, check)
             if iterations % 1000 == 0 then task.wait() end
         end
     end)
+    return route
+end
 
-    -- === [2] วาดเส้นนำทาง + มาร์คหมุด ===
+-- ============================================================
+-- DriveCarTo = Fast Lock - No Brake
+-- คืนค่า true เมื่อถึงจุดหมาย, false เมื่อถูกยกเลิก/ติด/หมดเวลา
+-- ============================================================
+DriveCarTo = function(dest, check)
+    if FastLock.Active then return false end -- กันเรียกซ้อน
+
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root then return false end
+
+    local car, seat = nil, nil
+    if hum.Sit and hum.SeatPart then
+        seat = hum.SeatPart
+        car = seat:FindFirstAncestorOfClass("Model")
+        if car then MY_SPAWNED_CAR = car end
+    end
+    if not car then
+        car = GetNearbyPlayerVehicle(80) or GetPlayerVehicle()
+        if car then EnsurePlayerSeatedInCar(car) task.wait(0.2) end
+    end
+    if not car then return false end
+    seat = (hum and hum.SeatPart) or car:FindFirstChild("DriveSeat", true) or car:FindFirstChildWhichIsA("VehicleSeat", true)
+    if not seat or not hum.Sit then return false end
+
+    -- [1] เส้นทาง
+    local route = FL_ComputeRoute(car, dest)
     if not route or #route == 0 then
-        warn("[GPS] หาเส้นทางไม่เจอ! ใช้การขับตรงไปจุดหมายแทน")
-        route = {dest}
+        warn("[FastLock] หาเส้นทางไม่เจอ ใช้ขับตรงไปจุดหมายแทน")
+        route = { dest }
     else
         table.insert(route, dest)
-        DrawMinimapRoute(route)
+        pcall(DrawMinimapRoute, route)
         pcall(function()
             local minimap = PlayerGui:FindFirstChild("Minimap")
-            if minimap then
-                local smallMap = minimap:FindFirstChild("Minimap")
-                if smallMap then smallMap.Visible = true end
-            end
+            local smallMap = minimap and minimap:FindFirstChild("Minimap")
+            if smallMap then smallMap.Visible = true end
         end)
         local markFunc = GetMarkFn()
         if markFunc then pcall(markFunc, dest.X, dest.Z) end
     end
 
-    -- === [3] Fast Lock (กัน NaN / ใช้สไลเดอร์ / cleanup เสมอ) ===
-    local PRIMARY = car.PrimaryPart
-    if not PRIMARY then return false end
-    local LANE_OFFSET = 6
+    -- [2] ขับ: คันเร่งเต็ม + ล็อกพวงมาลัยตามเส้นทาง
+    FastLock.Active = true
+    local input = FL_CreateInput(seat)
+    local arrived = false
 
-    local bv = Instance.new("BodyVelocity")
-    bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-    bv.Velocity = Vector3.zero
-    bv.Parent = PRIMARY
+    local ok, err = pcall(function()
+        local idx = 1
+        local startT = os.clock()
+        local lastPos = seat.Position
+        local lastMoveT = os.clock()
 
-    local att = Instance.new("Attachment")
-    att.Parent = PRIMARY
-
-    local alignOri = Instance.new("AlignOrientation")
-    alignOri.Mode = Enum.OrientationAlignmentMode.OneAttachment
-    alignOri.Attachment0 = att
-    alignOri.MaxTorque = 80000
-    alignOri.Responsiveness = 50
-    alignOri.CFrame = PRIMARY.CFrame
-    alignOri.Parent = PRIMARY
-
-    local ok, result = pcall(function()
-        local currentIdx = 1
-        local driveStartTime = os.clock()
-
-        while currentIdx <= #route do
-            if os.clock() - driveStartTime > 180 then return false end
-            if check and not check() then return false end
-            if not PRIMARY.Parent or not car.Parent then return false end
+        while FastLock.Active do
+            if os.clock() - startT > FL_TIMEOUT then return end
+            if check and not check() then return end
+            if not seat.Parent or not car.Parent then return end
+            if not hum.Sit or hum.SeatPart ~= seat then return end -- ตกรถ = หยุด ไม่วาร์ปกลับ
 
             RunService.Heartbeat:Wait()
 
-            if not hum.Sit or hum.SeatPart ~= seat then
-                pcall(function()
-                    root.CFrame = seat.CFrame + Vector3.new(0, 0.8, 0)
-                    seat:Sit(hum)
-                end)
+            local pos = seat.Position
+
+            -- ถึงจุดหมายแล้ว
+            if FlatDist(pos, dest) <= FL_ARRIVE then
+                arrived = true
+                return
             end
 
-            local carPos = PRIMARY.Position
-            local target = route[currentIdx]
-            local toTarget = Vector3.new(target.X - carPos.X, 0, target.Z - carPos.Z)
-
-            if toTarget.Magnitude < 20 then
-                currentIdx += 1
-                continue
+            -- ตรวจติด (ไม่ขยับ)
+            if (pos - lastPos).Magnitude > 1 then
+                lastPos = pos
+                lastMoveT = os.clock()
+            elseif os.clock() - lastMoveT > FL_STUCK_TIME then
+                warn("[FastLock] รถติด ยกเลิกการขับ")
+                return
             end
 
-            -- ทิศถนน: ถ้า waypoint ซ้อนกัน (จุดสุดท้าย) ใช้ทิศไปหาเป้าแทน
-            local nextTarget = route[math.min(currentIdx + 1, #route)]
-            local roadDir = FlatUnit(nextTarget - target) or FlatUnit(toTarget)
-            if not roadDir then
-                currentIdx += 1
-                continue
-            end
-            local rightDir = Vector3.new(-roadDir.Z, 0, roadDir.X)
-            local offsetTarget = target + rightDir * LANE_OFFSET
-
-            local dir = FlatUnit(offsetTarget - carPos) or FlatUnit(toTarget)
-            if not dir then
-                currentIdx += 1
-                continue
+            -- ข้าม waypoint ที่ผ่านแล้ว
+            while idx < #route and FlatDist(route[idx], pos) < 14 do
+                idx += 1
             end
 
-            local groundY = GetGroundLevel(carPos.X, carPos.Z, carPos.Y)
-            local rideH = math.clamp(carPos.Y - groundY, 2.3, 3.2)
-            local velY = (groundY + rideH - carPos.Y) * 10
+            -- จุดมองไปข้างหน้า (pure pursuit)
+            local tIdx = idx
+            while tIdx < #route and FlatDist(route[tIdx], pos) < FL_LOOKAHEAD do
+                tIdx += 1
+            end
+            local target = route[tIdx]
 
-            local speed = math.clamp(VehicleDriveSpeed, 10, 280)
-            bv.Velocity = Vector3.new(dir.X * speed, velY, dir.Z * speed)
-            alignOri.CFrame = CFrame.lookAt(carPos, Vector3.new(offsetTarget.X, carPos.Y, offsetTarget.Z))
+            local desired = FlatUnit(target - pos)
+            local forward = FlatUnit(seat.CFrame.LookVector)
+
+            local steer = 0
+            if desired and forward then
+                -- มุมต่างแบบมีเครื่องหมาย: บวก = เป้าอยู่ทางขวา
+                local crossY = forward.Z * desired.X - forward.X * desired.Z
+                local dot = forward.X * desired.X + forward.Z * desired.Z
+                local angle = math.atan2(-crossY, dot)
+
+                if math.abs(angle) <= FL_STEER_DEAD then
+                    steer = 0                                   -- ออกโค้ง: คืนพวงมาลัย
+                else
+                    steer = math.clamp(angle / FL_STEER_FULL, -1, 1) -- เข้าโค้ง: ล็อกตามมุม
+                end
+            end
+
+            input.Set(1, steer) -- คันเร่งเต็มเสมอ ไม่เบรก ไม่ผ่อน
         end
-        return true
     end)
 
-    -- cleanup ทำเสมอ ไม่ว่าจะ error หรือออกกลางทาง
-    pcall(function() bv.Velocity = Vector3.zero end)
-    pcall(function() bv:Destroy() end)
-    pcall(function() alignOri:Destroy() end)
-    pcall(function() att:Destroy() end)
+    -- [3] ปิดระบบ: ปล่อยคันเร่ง/พวงมาลัยเสมอ
+    pcall(input.Release)
+    FastLock.Active = false
 
     if not ok then
-        warn("[DriveCarTo] error: " .. tostring(result))
+        warn("[FastLock] error: " .. tostring(err))
         return false
     end
-    return result == true
+    return arrived
 end
 
 -- =====================================
