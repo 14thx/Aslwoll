@@ -1204,6 +1204,7 @@ local FL_STEER_FULL = math.rad(28)   -- มุมต่างที่ถือ�
 local FL_STEER_DEAD = math.rad(3)    -- มุมต่างน้อยกว่านี้ = พวงมาลัยตรง
 local FL_LOOKAHEAD  = 35             -- มองไปข้างหน้ากี่ studs บนเส้นทาง
 local FL_ARRIVE     = 18             -- ถึงจุดหมายเมื่อห่างไม่เกินกี่ studs
+local FL_TURN_RATE  = math.rad(140)  -- อัตราหมุนหัวรถสูงสุด (องศา/วินาที) ยิ่งต่ำยิ่งนิ่ง
 local FL_TIMEOUT    = 180            -- ขับนานสุด (วินาที)
 local FL_STUCK_TIME = 6              -- ไม่ขยับเกินกี่วินาที = ยกเลิก (ไม่ถอย ไม่เบรก)
 
@@ -1524,6 +1525,23 @@ DriveCarTo = function(dest, check)
     local input = FL_CreateInput(seat)
     local arrived = false
 
+    -- ตัวล็อกหัวรถ: กันรถหมุน/ส่ายตอนเข้าโค้ง (คุมแค่ทิศหัวรถ ไม่ดันความเร็ว ไม่วาร์ป)
+    local lockAtt = Instance.new("Attachment")
+    lockAtt.Name = "FastLockAtt"
+    lockAtt.Parent = seat
+    local lock = Instance.new("AlignOrientation")
+    lock.Name = "FastLockOri"
+    lock.Mode = Enum.OrientationAlignmentMode.OneAttachment
+    lock.Attachment0 = lockAtt
+    lock.RigidityEnabled = false
+    lock.MaxTorque = 1e8
+    lock.MaxAngularVelocity = math.huge
+    lock.Responsiveness = 40
+    lock.CFrame = seat.CFrame.Rotation
+    lock.Parent = seat
+    local lockDir = FlatUnit(seat.CFrame.LookVector) or Vector3.new(0, 0, -1)
+    local steerSm = 0
+
     local ok, err = pcall(function()
         local idx = 1
         local startT = os.clock()
@@ -1536,7 +1554,7 @@ DriveCarTo = function(dest, check)
             if not seat.Parent or not car.Parent then return end
             if not hum.Sit or hum.SeatPart ~= seat then return end -- ตกรถ = หยุด ไม่วาร์ปกลับ
 
-            RunService.Heartbeat:Wait()
+            local dt = RunService.Heartbeat:Wait()
 
             local pos = seat.Position
 
@@ -1584,12 +1602,27 @@ DriveCarTo = function(dest, check)
                 end
             end
 
-            input.Set(1, steer) -- คันเร่งเต็มเสมอ ไม่เบรก ไม่ผ่อน
+            -- ล็อกหัวรถ: ทิศเป้าหมายหมุนตามเส้นทางด้วยอัตราจำกัด รถจึงเลี้ยวนิ่งไม่หมุน
+            if desired then
+                local lcY = lockDir.Z * desired.X - lockDir.X * desired.Z
+                local ldot = lockDir.X * desired.X + lockDir.Z * desired.Z
+                local la = math.atan2(-lcY, ldot)
+                local step = math.clamp(la, -FL_TURN_RATE * dt, FL_TURN_RATE * dt)
+                lockDir = FlatUnit(CFrame.Angles(0, -step, 0) * lockDir) or lockDir
+            end
+            local ly = seat.CFrame.LookVector.Y -- คงมุมก้มเงยตามเนินไว้
+            local s = math.sqrt(math.max(0, 1 - ly * ly))
+            lock.CFrame = CFrame.lookAt(Vector3.zero, Vector3.new(lockDir.X * s, ly, lockDir.Z * s))
+
+            steerSm += (steer - steerSm) * math.min(1, dt * 12) -- พวงมาลัยนุ่มขึ้น ไม่กระชาก
+            input.Set(1, steerSm) -- คันเร่งเต็มเสมอ ไม่เบรก ไม่ผ่อน
         end
     end)
 
     -- [3] ปิดระบบ: ปล่อยคันเร่ง/พวงมาลัยเสมอ
     pcall(input.Release)
+    pcall(function() lock:Destroy() end)
+    pcall(function() lockAtt:Destroy() end)
     FastLock.Active = false
 
     if not ok then
