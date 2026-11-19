@@ -1430,12 +1430,15 @@ DriveCarTo = function(dest, check)
     end
 
     -- ============================================================
-    -- [3] Hard Steering Lock / Heading Lock + Waypoint Tracking
+    -- [3] Hard Lock + Anti-Sway (แก้ส่าย)
     -- ============================================================
     local driveStartTime = os.clock()
     local currentIdx = 1
     local MAX_SPEED = 230
-    local LANE_OFFSET = 6 -- ขับเลนขวา
+    
+    -- ตัวแปรสำหรับ Smooth Interpolation (กันส่าย)
+    local currentCFrame = car:GetPivot()
+    local SMOOTH_FACTOR = 0.25 -- [ปรับ] ยิ่งต่ำ ยิ่งนุ่ม (0.1-0.3)
 
     -- ล็อคเมาส์กลางจอ
     local UserInputService = game:GetService("UserInputService")
@@ -1465,37 +1468,29 @@ DriveCarTo = function(dest, check)
             continue
         end
 
-        -- Heading Lock: คำนวณทิศทางถนน (จาก Waypoint ปัจจุบัน → ถัดไป)
-        local nextTarget = route[math.min(currentIdx + 1, #route)]
-        local roadDir = (nextTarget - target)
-        roadDir = Vector3.new(roadDir.X, 0, roadDir.Z).Unit
-
-        -- Road Alignment: หาแกนขวา (สำหรับขับเลนขวา)
-        local rightDir = Vector3.new(-roadDir.Z, 0, roadDir.X)
-        local offsetTarget = target + (rightDir * LANE_OFFSET)
-
-        -- Steering Correction: คำนวณทิศทางจากรถไปยังจุดหมายที่เยื้อง
-        local finalToTarget = Vector3.new(offsetTarget.X - carPos.X, 0, offsetTarget.Z - carPos.Z)
-        local dir = finalToTarget.Unit
-
-        -- ความเร็วคงที่ (ไม่เบรก!)
-        local spd = MAX_SPEED
-        local moveDist = spd * dt
-        local a = math.clamp(moveDist / distT, 0, 1)
-
-        -- ตำแหน่งใหม่
-        local newX = carPos.X + (offsetTarget.X - carPos.X) * a
-        local newZ = carPos.Z + (offsetTarget.Z - carPos.Z) * a
-
-        -- Ground Snap: ล็อค Y ให้ติดพื้น
-        local gy = GetGroundLevel(newX, newZ, carPos.Y)
+        -- คำนวณตำแหน่งเป้าหมาย (ไม่เยื้อง เพื่อตัดปัญหาส่าย)
+        local targetPos = Vector3.new(target.X, carPos.Y, target.Z)
+        
+        -- Heading Lock: ทิศทางที่ต้องหัน
+        local dir = (targetPos - carPos)
+        dir = Vector3.new(dir.X, 0, dir.Z).Unit
+        
+        -- Ground Snap: หาความสูงพื้น
+        local gy = GetGroundLevel(targetPos.X, targetPos.Z, carPos.Y)
         local rideH = math.clamp(carPos.Y - GetGroundLevel(carPos.X, carPos.Z, carPos.Y), 2.3, 3.2)
         local finalY = gy + rideH
+        
+        -- สร้าง CFrame เป้าหมาย (ตำแหน่ง + ทิศทาง)
+        local goalCFrame = CFrame.lookAt(
+            Vector3.new(carPos.X, finalY, carPos.Z), 
+            Vector3.new(carPos.X, finalY, carPos.Z) + dir
+        )
 
-        -- ล็อค CFrame (Hard Lock: ตำแหน่ง + ทิศทาง)
-        local finalPos = Vector3.new(newX, finalY, newZ)
-        local lookCF = CFrame.lookAt(finalPos, finalPos + dir)
-        car:PivotTo(lookCF)
+        -- [Anti-Sway] ค่อยๆ หมุนไปหาเป้าหมาย (Smooth Interpolation)
+        currentCFrame = currentCFrame:Lerp(goalCFrame, SMOOTH_FACTOR)
+
+        -- Hard Lock: บังคับ CFrame
+        car:PivotTo(currentCFrame)
 
         -- ล้างความเร็ว (ไม่ให้ Physics ต่อต้าน)
         pcall(function()
@@ -1505,8 +1500,17 @@ DriveCarTo = function(dest, check)
             end
         end)
 
+        -- เคลื่อนที่ไปข้างหน้า (ใช้ทิศทางที่หมุนแล้ว)
+        local forward = currentCFrame.LookVector
+        local moveDist = MAX_SPEED * dt
+        local newPos = currentCFrame.Position + Vector3.new(forward.X, 0, forward.Z).Unit * moveDist
+        
+        -- อัปเดต CFrame (ตำแหน่งใหม่)
+        currentCFrame = CFrame.lookAt(newPos, newPos + forward)
+        car:PivotTo(currentCFrame)
+
         if isVehiclePlatformEnabled then
-            EnsureVehiclePlatform(finalY - rideH, finalPos)
+            EnsureVehiclePlatform(finalY - rideH, newPos)
         end
     end
 
