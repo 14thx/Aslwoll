@@ -1183,7 +1183,7 @@ local function IsWideSolidGround(x, z)
 end
 
 -- =====================================
--- DRIVE CAR TO (A* + RAIL LOCK - NO SWAY)
+-- DRIVE CAR TO (A* + RAIL LOCK - SAFE UIS)
 -- =====================================
 DriveCarTo = function(dest, check)
     local char = LocalPlayer.Character
@@ -1206,8 +1206,19 @@ DriveCarTo = function(dest, check)
     if not seat then return false end
     if not car.PrimaryPart then pcall(function() car.PrimaryPart = seat end) end
 
-    local prevMouseBehavior = UserInputService.MouseBehavior
-    local prevMouseIcon = UserInputService.MouseIconEnabled
+    local uis = nil
+    pcall(function() uis = game:GetService("UserInputService") end)
+    local isTouch = false
+    pcall(function() isTouch = uis and uis.TouchEnabled or false end)
+
+    local prevMouseBehavior, prevMouseIcon = nil, nil
+    if uis and not isTouch then
+        pcall(function()
+            prevMouseBehavior = uis.MouseBehavior
+            prevMouseIcon = uis.MouseIconEnabled
+        end)
+    end
+
     local savedCanCollide = {}
 
     local function SetTempNoClip(enabled)
@@ -1235,10 +1246,12 @@ DriveCarTo = function(dest, check)
     local function CleanupDrive()
         isRoadDriving = false
         SetTempNoClip(false)
-        pcall(function()
-            UserInputService.MouseBehavior = prevMouseBehavior
-            UserInputService.MouseIconEnabled = prevMouseIcon
-        end)
+        if uis and not isTouch then
+            pcall(function()
+                if prevMouseBehavior ~= nil then uis.MouseBehavior = prevMouseBehavior end
+                if prevMouseIcon ~= nil then uis.MouseIconEnabled = prevMouseIcon end
+            end)
+        end
         if vehiclePlatformPart then
             vehiclePlatformPart:Destroy()
             vehiclePlatformPart = nil
@@ -1495,10 +1508,12 @@ DriveCarTo = function(dest, check)
     local smoothY = startPivot.Position.Y
     local arrived = false
 
-    pcall(function()
-        UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
-        UserInputService.MouseIconEnabled = false
-    end)
+    if uis and not isTouch then
+        pcall(function()
+            uis.MouseBehavior = Enum.MouseBehavior.LockCenter
+            uis.MouseIconEnabled = false
+        end)
+    end
 
     local okLoop, errLoop = pcall(function()
         while ScriptRunning and currentIdx <= #route do
@@ -1522,7 +1537,6 @@ DriveCarTo = function(dest, check)
             local maxSpeed = math.clamp(tonumber(VehicleDriveSpeed) or 150, 10, 280)
             local step = maxSpeed * dt
 
-            -- เดินตามเส้นทางตรงเป๊ะทีละช่วง ไม่มีการวิ่งเป๋ออกนอกเส้น
             while step > 0 and currentIdx <= #route do
                 local wp = route[currentIdx]
                 local seg = Vector3.new(wp.X - flatPos.X, 0, wp.Z - flatPos.Z)
@@ -1534,7 +1548,6 @@ DriveCarTo = function(dest, check)
                 else
                     local dir = seg.Unit
                     flatPos += dir * step
-                    -- เกลี่ยเฉพาะมุมหมุนโมเดลรถให้เลี้ยวนุ่ม (ตำแหน่ง flatPos ยังเกาะเส้น 100%)
                     local lookTarget = route[math.min(currentIdx + 1, #route)]
                     local aimVec = Vector3.new(lookTarget.X - flatPos.X, 0, lookTarget.Z - flatPos.Z)
                     local desiredDir = (aimVec.Magnitude > 0.5) and aimVec.Unit or dir
@@ -1549,7 +1562,6 @@ DriveCarTo = function(dest, check)
                 break
             end
 
-            -- หาความสูงพื้นจากตำแหน่งจริงของรถ + เกลี่ย Y กันกระตุก
             local groundY = GetGroundLevel(flatPos.X, flatPos.Z, smoothY)
             local targetY = groundY + 2.6 + (tonumber(VehicleHeightOffset) or 0)
             smoothY += (targetY - smoothY) * math.clamp(dt * 18, 0.15, 1)
