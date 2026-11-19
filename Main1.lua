@@ -1186,25 +1186,16 @@ end
 -- Fast Lock - No Brake  (แทน DriveCarTo ตัวเดิมทั้งก้อน)
 -- วิธีใช้: ลบ "DriveCarTo = function(dest, check) ... end" เดิม
 -- (ต่อจาก DrawMinimapRoute) แล้ววางไฟล์นี้แทน ชื่อฟังก์ชันเดิม ตัวเรียกอื่นไม่ต้องแก้
---
--- หลักการ:
---  1) เรียก DriveCarTo(dest) -> ระบบเริ่มขับเอง
---  2) คำนวณเส้นทาง A* ตามแนวถนน
---  3) คันเร่งเต็ม (Throttle = 1) ตลอดทาง ไม่มีเบรก ไม่ผ่อนคันเร่ง
---  4) เข้าโค้ง: มุมต่างมาก = ล็อกพวงมาลัยสุด, มุมน้อย = ปรับตามสัดส่วน
---  5) ออกโค้ง (มุมเข้าใกล้ 0) คืนพวงมาลัยเป็นกลางอัตโนมัติ
---  6) ไม่วาร์ป ไม่ตั้งความเร็ว/แรงให้รถ ใช้แค่ input คันเร่ง+พวงมาลัย
---  7) ถึงจุดหมาย -> ปล่อยคันเร่ง ปิดระบบ (FastLock.Active = false)
 -- ============================================================
 
 local FastLock = { Active = false }
 _G.FastLock = FastLock
 
-local FL_STEER_FULL = math.rad(28)   -- มุมต่างที่ถือว่าล็อกพวงมาลัยสุด
-local FL_STEER_DEAD = math.rad(3)    -- มุมต่างน้อยกว่านี้ = พวงมาลัยตรง
-local FL_LOOKAHEAD  = 35             -- มองไปข้างหน้ากี่ studs บนเส้นทาง
+local FL_STEER_FULL = math.rad(45)   -- มุมต่างที่ถือว่าล็อกพวงมาลัยสุด
+local FL_STEER_DEAD = math.rad(5)    -- มุมต่างน้อยกว่านี้ = พวงมาลัยตรง
+local FL_LOOKAHEAD  = 55             -- มองไปข้างหน้ากี่ studs บนเส้นทาง
 local FL_ARRIVE     = 18             -- ถึงจุดหมายเมื่อห่างไม่เกินกี่ studs
-local FL_TURN_RATE  = math.rad(140)  -- อัตราหมุนหัวรถสูงสุด (องศา/วินาที) ยิ่งต่ำยิ่งนิ่ง
+local FL_TURN_RATE  = math.rad(90)   -- อัตราหมุนหัวรถสูงสุด (องศา/วินาที) ยิ่งต่ำยิ่งนิ่ง
 local FL_TIMEOUT    = 180            -- ขับนานสุด (วินาที)
 local FL_STUCK_TIME = 6              -- ไม่ขยับเกินกี่วินาที = ยกเลิก (ไม่ถอย ไม่เบรก)
 
@@ -1614,7 +1605,7 @@ DriveCarTo = function(dest, check)
             local s = math.sqrt(math.max(0, 1 - ly * ly))
             lock.CFrame = CFrame.lookAt(Vector3.zero, Vector3.new(lockDir.X * s, ly, lockDir.Z * s))
 
-            steerSm += (steer - steerSm) * math.min(1, dt * 12) -- พวงมาลัยนุ่มขึ้น ไม่กระชาก
+            steerSm += (steer - steerSm) * math.min(1, dt * 8) -- พวงมาลัยนุ่มขึ้น ไม่กระชาก
             input.Set(1, steerSm) -- คันเร่งเต็มเสมอ ไม่เบรก ไม่ผ่อน
         end
     end)
