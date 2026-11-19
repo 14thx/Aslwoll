@@ -1183,7 +1183,7 @@ local function IsWideSolidGround(x, z)
 end
 
 -- ============================================================
--- [FULL] DriveCarTo (A* + DrawMinimapRoute + DriveAlongGPSWithAvoidance)
+-- [FULL REPLACE] DriveCarTo (Humanoid:MoveTo + A* + Marker)
 -- ============================================================
 
 -- [1] ฟังก์ชันวาดเส้นนำทางบน Minimap
@@ -1238,12 +1238,13 @@ local function DrawMinimapRoute(waypoints)
     end
 end
 
--- [2] ฟังก์ชันหลัก DriveCarTo (A* + DriveAlongGPSWithAvoidance)
+-- [2] ฟังก์ชัน DriveCarTo (Humanoid:MoveTo)
 DriveCarTo = function(dest, check)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not hum or not root then return false end
+
     local car, seat = nil, nil
     if hum.Sit and hum.SeatPart then
         seat = hum.SeatPart
@@ -1482,9 +1483,65 @@ DriveCarTo = function(dest, check)
         end)
     end
 
-    -- === [3] ขับด้วย DriveAlongGPSWithAvoidance ===
-    -- (ใช้ฟังก์ชันของคุณโดยตรง)
-    return DriveAlongGPSWithAvoidance(route, seat, check)
+    -- === [3] ขับด้วย Humanoid:MoveTo ===
+    print("[GPS] ใช้วิธี Humanoid:MoveTo (บังคับคนขับ)")
+    
+    local currentIdx = 1
+    local driveStartTime = os.clock()
+    local lastPos = root.Position
+    local stuckTime = 0
+
+    while currentIdx <= #route do
+        if os.clock() - driveStartTime > 180 then
+            print("[GPS] Timeout")
+            return false
+        end
+        if check and not check() then
+            return false
+        end
+
+        local dt = RunService.Heartbeat:Wait()
+
+        if not hum.Sit or hum.SeatPart ~= seat then
+            pcall(function() root.CFrame = seat.CFrame + Vector3.new(0,0.8,0) seat:Sit(hum) end)
+        end
+
+        local carPos = root.Position
+        local target = route[currentIdx]
+        local toTarget = Vector3.new(target.X - carPos.X, 0, target.Z - carPos.Z)
+        local distT = toTarget.Magnitude
+
+        if distT < 20 then
+            currentIdx += 1
+            continue
+        end
+
+        -- [จุดสำคัญ] สั่ง Humanoid เดินไปที่ Waypoint
+        pcall(function()
+            hum:MoveTo(Vector3.new(target.X, carPos.Y, target.Z))
+        end)
+
+        -- ระบบแก้รถติด
+        if (carPos - lastPos).Magnitude < 2 then
+            stuckTime += dt
+            if stuckTime > 3 then
+                hum.Jump = true
+                task.wait(0.3)
+                stuckTime = 0
+            end
+        else
+            stuckTime = 0
+        end
+        lastPos = carPos
+    end
+
+    pcall(function()
+        hum:MoveTo(root.Position)
+    end)
+
+    print("[GPS] ถึงจุดหมายแล้ว")
+    task.wait(0.1)
+    return true
 end
 
 -- =====================================
