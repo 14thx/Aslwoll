@@ -1182,63 +1182,6 @@ local function IsWideSolidGround(x, z)
     return true
 end
 
--- ============================================================
--- [FULL REPLACE] DriveCarTo (Humanoid:MoveTo + A* + Marker)
--- ============================================================
-
--- [1] ฟังก์ชันวาดเส้นนำทางบน Minimap
-local function DrawMinimapRoute(waypoints)
-    local minimap = LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("Minimap")
-    if not minimap then return end
-
-    local canvasList = {}
-    if minimap.Big_Map and minimap.Big_Map.Visible then
-        local c = minimap.Big_Map:FindFirstChild("map") and minimap.Big_Map.map:FindFirstChild("minimap")
-            and minimap.Big_Map.map.minimap:FindFirstChild("MapLayer") and minimap.Big_Map.map.minimap.MapLayer:FindFirstChild("Canvas")
-        if c then table.insert(canvasList, c) end
-    end
-    if minimap.Minimap and minimap.Minimap.Visible then
-        local c = minimap.Minimap:FindFirstChild("MapLayer") and minimap.Minimap.MapLayer:FindFirstChild("Canvas")
-        if not c then c = minimap.Minimap:FindFirstChild("Canvas") end
-        if c then table.insert(canvasList, c) end
-    end
-
-    for _, canvas in ipairs(canvasList) do
-        local old = canvas:FindFirstChild("GPS_RouteLine")
-        if old then old:Destroy() end
-    end
-
-    if #waypoints < 2 then return end
-
-    local function W2M(wx, wz)
-        return UDim2.new(0.5 + (wx * 0.0000773), 0, 0.5 - (wz * 0.0000253), 0)
-    end
-
-    for _, canvas in ipairs(canvasList) do
-        for i = 1, #waypoints - 1 do
-            local p1, p2 = waypoints[i], waypoints[i+1]
-            local pos1, pos2 = W2M(p1.X, p1.Z), W2M(p2.X, p2.Z)
-            local dx = (pos2.X.Scale - pos1.X.Scale) * canvas.AbsoluteSize.X
-            local dy = (pos2.Y.Scale - pos1.Y.Scale) * canvas.AbsoluteSize.Y
-            local len = math.sqrt(dx*dx + dy*dy)
-            
-            if len > 1 then
-                local line = Instance.new("Frame")
-                line.Name = "GPS_RouteLine"
-                line.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-                line.BorderSizePixel = 0
-                line.AnchorPoint = Vector2.new(0.5, 0.5)
-                line.Size = UDim2.new(0, len, 0, 4)
-                line.Position = UDim2.new((pos1.X.Scale + pos2.X.Scale)/2, 0, (pos1.Y.Scale + pos2.Y.Scale)/2, 0)
-                line.Rotation = math.deg(math.atan2(dy, dx))
-                line.ZIndex = 100
-                line.Parent = canvas
-            end
-        end
-    end
-end
-
--- [2] ฟังก์ชัน DriveCarTo (Humanoid:MoveTo)
 DriveCarTo = function(dest, check)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -1260,7 +1203,9 @@ DriveCarTo = function(dest, check)
     if not seat then return false end
     if not car.PrimaryPart then pcall(function() car.PrimaryPart = seat end) end
 
-    -- === [1] คำนวณเส้นทาง A* ===
+    -- ============================================================
+    -- [1] คำนวณเส้นทาง A* (Road Grid)
+    -- ============================================================
     local route = nil
     pcall(function()
         local ROAD_CELL = 12
@@ -1458,13 +1403,14 @@ DriveCarTo = function(dest, check)
         end
     end)
 
-    -- === [2] วาดเส้นนำทาง + มาร์คหมุด ===
+    -- ============================================================
+    -- [2] วาดเส้นนำทาง + มาร์คหมุด
+    -- ============================================================
     if not route or #route == 0 then
         warn("[GPS] หาเส้นทางไม่เจอ! ใช้การขับตรงไปจุดหมายแทน")
         route = {dest}
     else
         table.insert(route, dest)
-        DrawMinimapRoute(route)
         pcall(function()
             local minimap = PlayerGui:FindFirstChild("Minimap")
             if minimap then
@@ -1483,22 +1429,24 @@ DriveCarTo = function(dest, check)
         end)
     end
 
-    -- === [3] ขับด้วย Humanoid:MoveTo ===
-    print("[GPS] ใช้วิธี Humanoid:MoveTo (บังคับคนขับ)")
-    
-    local currentIdx = 1
+    -- ============================================================
+    -- [3] Hard Steering Lock / Heading Lock + Waypoint Tracking
+    -- ============================================================
     local driveStartTime = os.clock()
-    local lastPos = root.Position
-    local stuckTime = 0
+    local currentIdx = 1
+    local MAX_SPEED = 230
+    local LANE_OFFSET = 6 -- ขับเลนขวา
+
+    -- ล็อคเมาส์กลางจอ
+    local UserInputService = game:GetService("UserInputService")
+    pcall(function()
+        UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+        UserInputService.MouseIconEnabled = false
+    end)
 
     while currentIdx <= #route do
-        if os.clock() - driveStartTime > 180 then
-            print("[GPS] Timeout")
-            return false
-        end
-        if check and not check() then
-            return false
-        end
+        if os.clock() - driveStartTime > 120 then break end
+        if check and not check() then break end
 
         local dt = RunService.Heartbeat:Wait()
 
@@ -1506,40 +1454,69 @@ DriveCarTo = function(dest, check)
             pcall(function() root.CFrame = seat.CFrame + Vector3.new(0,0.8,0) seat:Sit(hum) end)
         end
 
-        local carPos = root.Position
+        local carPos = car:GetPivot().Position
         local target = route[currentIdx]
         local toTarget = Vector3.new(target.X - carPos.X, 0, target.Z - carPos.Z)
         local distT = toTarget.Magnitude
 
-        if distT < 20 then
+        -- Waypoint Tracking: ถึงจุดแล้วไปจุดถัดไป
+        if distT < 15 then
             currentIdx += 1
             continue
         end
 
-        -- [จุดสำคัญ] สั่ง Humanoid เดินไปที่ Waypoint
+        -- Heading Lock: คำนวณทิศทางถนน (จาก Waypoint ปัจจุบัน → ถัดไป)
+        local nextTarget = route[math.min(currentIdx + 1, #route)]
+        local roadDir = (nextTarget - target)
+        roadDir = Vector3.new(roadDir.X, 0, roadDir.Z).Unit
+
+        -- Road Alignment: หาแกนขวา (สำหรับขับเลนขวา)
+        local rightDir = Vector3.new(-roadDir.Z, 0, roadDir.X)
+        local offsetTarget = target + (rightDir * LANE_OFFSET)
+
+        -- Steering Correction: คำนวณทิศทางจากรถไปยังจุดหมายที่เยื้อง
+        local finalToTarget = Vector3.new(offsetTarget.X - carPos.X, 0, offsetTarget.Z - carPos.Z)
+        local dir = finalToTarget.Unit
+
+        -- ความเร็วคงที่ (ไม่เบรก!)
+        local spd = MAX_SPEED
+        local moveDist = spd * dt
+        local a = math.clamp(moveDist / distT, 0, 1)
+
+        -- ตำแหน่งใหม่
+        local newX = carPos.X + (offsetTarget.X - carPos.X) * a
+        local newZ = carPos.Z + (offsetTarget.Z - carPos.Z) * a
+
+        -- Ground Snap: ล็อค Y ให้ติดพื้น
+        local gy = GetGroundLevel(newX, newZ, carPos.Y)
+        local rideH = math.clamp(carPos.Y - GetGroundLevel(carPos.X, carPos.Z, carPos.Y), 2.3, 3.2)
+        local finalY = gy + rideH
+
+        -- ล็อค CFrame (Hard Lock: ตำแหน่ง + ทิศทาง)
+        local finalPos = Vector3.new(newX, finalY, newZ)
+        local lookCF = CFrame.lookAt(finalPos, finalPos + dir)
+        car:PivotTo(lookCF)
+
+        -- ล้างความเร็ว (ไม่ให้ Physics ต่อต้าน)
         pcall(function()
-            hum:MoveTo(Vector3.new(target.X, carPos.Y, target.Z))
+            if car.PrimaryPart then
+                car.PrimaryPart.AssemblyLinearVelocity = Vector3.zero
+                car.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
+            end
         end)
 
-        -- ระบบแก้รถติด
-        if (carPos - lastPos).Magnitude < 2 then
-            stuckTime += dt
-            if stuckTime > 3 then
-                hum.Jump = true
-                task.wait(0.3)
-                stuckTime = 0
-            end
-        else
-            stuckTime = 0
+        if isVehiclePlatformEnabled then
+            EnsureVehiclePlatform(finalY - rideH, finalPos)
         end
-        lastPos = carPos
     end
 
+    -- ปลดล็อคเมาส์
     pcall(function()
-        hum:MoveTo(root.Position)
+        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        UserInputService.MouseIconEnabled = true
     end)
 
-    print("[GPS] ถึงจุดหมายแล้ว")
+    if vehiclePlatformPart then vehiclePlatformPart:Destroy() vehiclePlatformPart = nil end
     task.wait(0.1)
     return true
 end
