@@ -1660,7 +1660,45 @@ local function ResolveCropPrompt(cropName, leaf)
 end
 
 local function GetFarmPrompt(cropName) return ResolveCropPrompt(cropName, "Farm") end
-local function GetStoragePrompt(cropName) return ResolveCropPrompt(cropName, "Storage") end
+
+-- Storage prompt จริงจาก Inspector อยู่ที่ Workspace.<Vehicle>.Chassis.Storage.Storage
+-- ไม่ได้อยู่ใต้ Systems.Farm.<Crop> จึงต้องค้นหาจากรถด้วย
+local function GetStoragePrompt(cropName)
+    local cropPrompt = ResolveCropPrompt(cropName, "Storage")
+    if cropPrompt and cropPrompt:IsA("ProximityPrompt") and cropPrompt.Enabled then
+        return cropPrompt
+    end
+
+    -- ตรวจโครงสร้างที่พบจริงก่อน: Lamborghini.Chassis.Storage.Storage
+    local vehicle = workspace:FindFirstChild("Lamborghini")
+    local chassis = vehicle and vehicle:FindFirstChild("Chassis")
+    local storageNode = chassis and chassis:FindFirstChild("Storage")
+    local exact = storageNode and storageNode:FindFirstChild("Storage")
+    if exact and exact:IsA("ProximityPrompt") and exact.Enabled then
+        return exact
+    end
+
+    -- Fallback สำหรับชื่อรถที่เปลี่ยน: Prompt ชื่อ Storage ใต้โหนด Storage ของรถ
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") and obj.Name == "Storage" and obj.Enabled then
+            local parent = obj.Parent
+            local hasStorageAncestor = false
+            local hasVehicleAncestor = false
+            while parent and parent ~= workspace do
+                local n = parent.Name:lower()
+                if n == "storage" then hasStorageAncestor = true end
+                if n == "chassis" or n == "vehicle" or n == "lamborghini" then
+                    hasVehicleAncestor = true
+                end
+                parent = parent.Parent
+            end
+            if hasStorageAncestor and hasVehicleAncestor then
+                return obj
+            end
+        end
+    end
+    return nil
+end
 
 -- (ใช้ดีบัก) พิมพ์ prompt ทั้งหมดของพืชนั้น เพื่อดูว่ามีตัวไหนบ้าง
 local function DebugFarmPrompts(cropName)
@@ -3534,97 +3572,63 @@ end
 
 -- ใช้ Path ที่ตรวจพบจาก UI จริง: เลือกไอเทม -> MAX -> CONFIRM
 local function TransferCropToStorage(cropName)
-    local gui
-    local started = os.clock()
-
-    repeat
-        gui = FindStorageGui()
-        if gui then break end
-        task.wait(0.2)
-    until os.clock() - started >= 6
-
-    if not gui then
-        warn("[StorageFarm] ไม่พบ PlayerGui.Car_Storage หรือหน้าต่างยังไม่เปิด")
+    -- อ้างอิงลำดับพารามิเตอร์จาก DumpedMap_119554426329370:
+    -- Remotes.Invoke("_storage_tx", "Deposit", vehicleName, itemName, amount)
+    local prompt = GetStoragePrompt(cropName)
+    if not prompt then
+        warn("[StorageFarm] ไม่พบ Storage prompt ของรถ")
         return false
     end
 
-    local group = gui:FindFirstChild("Group")
-    local mainFrame = group and group:FindFirstChild("Main")
-    if not mainFrame then
-        warn("[StorageFarm] ไม่พบ Car_Storage.Group.Main")
+    -- หา Model รถที่เป็นเจ้าของ Storage prompt
+    local node = prompt
+    local vehicle = nil
+    while node and node ~= workspace do
+        if node:IsA("Model") and node.Parent == workspace then
+            vehicle = node
+            break
+        end
+        node = node.Parent
+    end
+    if not vehicle then
+        -- fallback: หา Model บรรพบุรุษที่ใกล้ที่สุดซึ่งมี Chassis
+        node = prompt.Parent
+        while node and node ~= workspace do
+            if node:IsA("Model") and node:FindFirstChild("Chassis") then
+                vehicle = node
+                break
+            end
+            node = node.Parent
+        end
+    end
+    if not vehicle then
+        warn("[StorageFarm] หา Model รถจาก Storage prompt ไม่พบ:", prompt:GetFullName())
         return false
     end
 
-    -- 1) เลือกช่องไอเทมตามชื่อที่กำลังฟาร์ม
-    local slotButton = WaitForChildPath(mainFrame, {
-        "Scrolling", "Inventory", "Scrolling", cropName, "Holder", "Button"
-    }, 5)
-
-    if not slotButton or not slotButton:IsA("GuiObject") or not IsGuiShown(slotButton) then
-        warn("[StorageFarm] ไม่พบช่องไอเทม:", cropName)
+    local amount = math.floor(GetPlayerInventoryCount(cropName))
+    if amount <= 0 then
+        warn("[StorageFarm] ไม่มีจำนวนไอเทมให้ฝาก:", cropName, amount)
         return false
     end
 
-    local itemFrame = slotButton.Parent and slotButton.Parent.Parent
-    local itemCountLabel = itemFrame and itemFrame:FindFirstChild("items")
-    print("[StorageFarm] INVENTORY ITEM:", cropName, "count=", itemCountLabel and itemCountLabel.Text or "unknown")
-    print("[StorageFarm] SELECT:", slotButton:GetFullName())
-    if not ClickGuiObject(slotButton) then
-        warn("[StorageFarm] เลือกไอเทมไม่สำเร็จ:", cropName)
+    local R = GetRemotes()
+    if not R or type(R.Invoke) ~= "function" then
+        warn("[StorageFarm] ไม่พบ Remotes.Invoke")
         return false
     end
 
-    -- The inspector showed Menu.Visible=false even though Menu.Main.Visible=true.
-    -- Wait for the parent menu to become visible after selecting an inventory item.
-    local menuFrame = mainFrame:FindFirstChild("Menu")
-    local menuStarted = os.clock()
-    repeat
-        if menuFrame and menuFrame.Visible and IsGuiShown(menuFrame) then break end
-        task.wait(0.1)
-    until os.clock() - menuStarted >= 3
-
-    if not menuFrame or not menuFrame.Visible or not IsGuiShown(menuFrame) then
-        warn("[StorageFarm] เลือก", cropName, "แล้ว แต่ Menu ยังซ่อนอยู่ (Menu.Visible=false); ยกเลิกก่อนกด MAX")
-        return false
-    end
-    task.wait(0.2)
-
-    -- 2) กด MAX ตาม Path ที่ตรวจพบ
-    local maxButton = WaitForChildPath(mainFrame, {
-        "Menu", "Main", "Amount", "Max"
-    }, 5)
-
-    if not maxButton or not maxButton:IsA("GuiObject") or not IsGuiShown(maxButton) then
-        warn("[StorageFarm] ไม่พบปุ่ม MAX ที่ Car_Storage.Group.Main.Menu.Main.Amount.Max")
-        return false
-    end
-
-    print("[StorageFarm] MAX:", maxButton:GetFullName())
-    if not ClickGuiObject(maxButton) then
-        warn("[StorageFarm] กด MAX ไม่สำเร็จ")
-        return false
-    end
-    task.wait(0.35)
-
-    -- 3) กด CONFIRM ตาม Path ที่ตรวจพบ
-    local confirmButton = WaitForChildPath(mainFrame, {
-        "Menu", "Main", "Button", "Confirm"
-    }, 5)
-
-    if not confirmButton or not confirmButton:IsA("GuiObject") or not IsGuiShown(confirmButton) then
-        warn("[StorageFarm] ไม่พบปุ่ม CONFIRM ที่ Car_Storage.Group.Main.Menu.Main.Button.Confirm")
-        return false
-    end
-
-    print("[StorageFarm] CONFIRM:", confirmButton:GetFullName())
-    if not ClickGuiObject(confirmButton) then
-        warn("[StorageFarm] กด CONFIRM ไม่สำเร็จ")
+    print("[StorageFarm] DEPOSIT:", vehicle.Name, cropName, amount)
+    local ok, result = pcall(function()
+        return R.Invoke("_storage_tx", "Deposit", vehicle.Name, cropName, amount)
+    end)
+    if not ok then
+        warn("[StorageFarm] _storage_tx error:", tostring(result))
         return false
     end
 
     task.wait(0.8)
-    CloseStorageGui(gui)
-    print("[StorageFarm] ส่งคำสั่งโอนแล้ว รอตรวจจำนวนของ:", cropName)
+    print("[StorageFarm] ส่งคำสั่ง Deposit แล้ว; result=", tostring(result))
     return true
 end
 -- กดเก็บของเข้ารถผ่านหน้าต่าง Storage
@@ -3656,7 +3660,10 @@ local function StoreAtPole(cropName, check, moveNear)
 
     if check and not check() then return false end
 
-    TriggerStoragePrompt(cropName)
+    if not TriggerStoragePrompt(cropName) then
+        warn("[StorageFarm] กด Storage prompt ไม่สำเร็จ:", prompt:GetFullName())
+        return false
+    end
     task.wait(1.0)
 
     if check and not check() then return false end
