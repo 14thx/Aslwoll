@@ -1674,6 +1674,35 @@ local function DebugFarmPrompts(cropName)
     end
 end
 
+-- สำรอง: ถ้าไม่มี path Prompt.Farm.Prompt.Farm.Prompt (เช่นแร่) ใช้วิธีสแกนแบบเดิม
+-- (ข้าม spawn / car / storage)
+local function LegacyFindFarmPrompt(cropName, nearRoot)
+    local farmSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Farm")
+    local farmFolder = farmSys and farmSys:FindFirstChild(cropName)
+    local function ok(d)
+        local n = (d.Parent and d.Parent.Name or ""):lower()
+        local a = (d.ActionText or ""):lower()
+        local o = (d.ObjectText or ""):lower()
+        local full = d:GetFullName():lower()
+        return not n:find("spawn") and not a:find("spawn") and not a:find("car") and not o:find("car")
+            and not full:find("storage")
+    end
+    if farmFolder then
+        for _, d in ipairs(farmFolder:GetDescendants()) do
+            if d:IsA("ProximityPrompt") and d.Enabled and ok(d) then return d end
+        end
+    end
+    if nearRoot then
+        for _, d in ipairs(workspace:GetDescendants()) do
+            if d:IsA("ProximityPrompt") and d.Enabled and ok(d) then
+                local pp = PromptWorldPos(d)
+                if pp and (pp - nearRoot.Position).Magnitude <= 18 then return d end
+            end
+        end
+    end
+    return nil
+end
+
 local function TriggerFarmPromptDirectly(cropName)
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -1688,7 +1717,7 @@ local function TriggerFarmPromptDirectly(cropName)
         task.wait(0.15)
     end
 
-    local targetPrompt = GetFarmPrompt(cropName)
+    local targetPrompt = GetFarmPrompt(cropName) or LegacyFindFarmPrompt(cropName, root)
     if not targetPrompt then return false end
 
     pcall(function()
@@ -1730,7 +1759,7 @@ end
 
 local function GetExactFarmPromptPosition(cropName)
     local locData = TYPER_LOCATIONS[cropName]
-    local p = GetFarmPrompt(cropName)
+    local p = GetFarmPrompt(cropName) or LegacyFindFarmPrompt(cropName, nil)
     local pos = p and PromptWorldPos(p)
     if pos then return pos end
     return locData and locData.Farm
@@ -3309,7 +3338,7 @@ UnloadSection:Button({
 -- =====================================
 -- แท็บ: ฟาร์มเก็บเข้ารถ
 -- =====================================
-local StorageSel = { Crop = "Bread", Amount = 60 }
+local StorageSel = { Crop = "Bread", Mode = "Sell" }
 local STORAGE_KEY = "AutoStorageFarm"
 MarvenState[STORAGE_KEY] = false
 
@@ -3347,8 +3376,10 @@ local function ClickNewStorageUi(before)
     end
 end
 
--- ไปยืนที่เสา แล้วกด Storage (เก็บของใส่รถ)
-local function StoreAtPole(cropName, check)
+-- กดเก็บของใส่รถที่เสา
+--   moveNear=false : ยืนอยู่ตรงนี้แล้วยิง prompt เลย (ไม่เบิกรถ ไม่เดิน)
+--   moveNear=true  : วาร์ปไปยืนข้างเสาก่อน (ใช้เมื่อกดจากที่ยืนไม่ติด)
+local function StoreAtPole(cropName, check, moveNear)
     local prompt = GetStoragePrompt(cropName)
     if not prompt then
         warn("[StorageFarm] ไม่เจอ Storage prompt ของ", cropName)
@@ -3356,27 +3387,168 @@ local function StoreAtPole(cropName, check)
     end
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    local pos = PromptWorldPos(prompt)
-    if not root or not hum or not pos then return false end
+    if not root then return false end
 
-    if hum.Sit then ExitCarNaturally(GetPlayerVehicle() or GetNearbyPlayerVehicle(80)) end
+    if moveNear then
+        local pos = PromptWorldPos(prompt)
+        if not pos then return false end
+        local gy = GetGroundLevel(pos.X, pos.Z, pos.Y)
+        root.CFrame = CFrame.lookAt(Vector3.new(pos.X + 2.5, gy + 2.5, pos.Z), Vector3.new(pos.X, gy + 2.5, pos.Z))
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+        GrantAntiXGrace(10)
+        task.wait(0.4)
+    end
     if check and not check() then return false end
-
-    local gy = GetGroundLevel(pos.X, pos.Z, pos.Y)
-    root.CFrame = CFrame.lookAt(Vector3.new(pos.X + 2.5, gy + 2.5, pos.Z), Vector3.new(pos.X, gy + 2.5, pos.Z))
-    root.AssemblyLinearVelocity = Vector3.zero
-    root.AssemblyAngularVelocity = Vector3.zero
-    GrantAntiXGrace(10)
-    task.wait(0.4)
 
     local before = SnapshotOpenGuis()
     TriggerStoragePrompt(cropName)
     task.wait(1.0)
     ClickNewStorageUi(before)
-    task.wait(0.8)
     return true
 end
+
+-- รอให้จำนวนของในตัวลดลง (แปลว่าเก็บเข้ารถสำเร็จ)
+local function WaitCountDrop(cropName, fromCount, timeout)
+    local t0 = os.clock()
+    while os.clock() - t0 < timeout do
+        if GetPlayerInventoryCount(cropName) < fromCount then return true end
+        task.wait(0.25)
+    end
+    return false
+end
+
+-- ฟาร์มต่อเนื่องที่เดิม: ครบ N ชิ้น -> กดเก็บเข้ารถที่เสา -> ฟาร์มต่อ -> วนจนรถเต็ม
+local function StorageFarmSession(cropName, amount, check)
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local locData = TYPER_LOCATIONS[cropName]
+    if not root or not hum or not locData then return "stopped" end
+
+    local exactCenter = GetExactFarmPromptPosition(cropName) or locData.Farm
+
+    local function StandAtFarm()
+        local pos = GetHumanLikeFarmStandingSpot(exactCenter)
+        local fg = GetGroundLevel(pos.X, pos.Z, exactCenter.Y)
+        local r = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if r then
+            r.CFrame = CFrame.lookAt(Vector3.new(pos.X, fg + 2.5, pos.Z), Vector3.new(exactCenter.X, fg + 2.5, exactCenter.Z))
+            r.AssemblyLinearVelocity = Vector3.zero
+            r.AssemblyAngularVelocity = Vector3.zero
+        end
+    end
+
+    -- ไปถึงฟาร์มครั้งเดียว (ถ้าอยู่ใกล้ฟาร์มแล้วข้าม)
+    if (root.Position - exactCenter).Magnitude > 40 then
+        local myCar = GetNearbyPlayerVehicle(80)
+        if not myCar or not hum.Sit then
+            if myCar then EnsurePlayerSeatedInCar(myCar)
+            else myCar = EnsureCarAvailable(locData.Booth) end
+        end
+        DriveCarTo(GetFarmParkingPosition(cropName), check)
+        task.wait(0.1)
+        if not check() then return "stopped" end
+    end
+
+    hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+    if hum and hum.Sit then
+        hum.Sit = false
+        pcall(function()
+            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+            if hum.SeatPart then hum.SeatPart = nil end
+        end)
+        task.wait(0.2)
+    end
+    StandAtFarm()
+    task.wait(0.2)
+
+    -- รอ prompt เก็บของโหลด (StreamingEnabled) ถ้างานนี้ไม่มีที่เก็บหลังรถให้ออก
+    do
+        local tw = os.clock()
+        while check() and not GetStoragePrompt(cropName) and os.clock() - tw < 4.0 do task.wait(0.3) end
+        if not check() then return "stopped" end
+        if not GetStoragePrompt(cropName) then return "nostorage" end
+    end
+
+    -- เริ่มฟาร์ม
+    local startCount = GetPlayerInventoryCount(cropName)
+    local t0 = os.clock()
+    while check() and os.clock() - t0 < 4.0 do
+        TriggerFarmPromptDirectly(cropName)
+        task.wait(0.5)
+        local af = PlayerGui:FindFirstChild("Auto Farm") or PlayerGui:FindFirstChild("AutoFarm")
+        if af and af.Enabled then break end
+        if GetPlayerInventoryCount(cropName) > startCount then break end
+    end
+
+    local lastN = GetPlayerInventoryCount(cropName)
+    local farmTO, lastGain = os.clock(), os.clock()
+    local stores = 0
+    local result = "stopped"
+
+    while check() do
+        -- กิน/ดื่มเมื่อหิว
+        if isAutoEatAndDrinkEnabled and not isConsumingItem then
+            local h, e = GetPlayerHunger(), GetPlayerEnergy()
+            if (h and h <= 75) or (e and e <= 75) then
+                CancelGameFarm()
+                task.wait(0.3)
+                if h and h <= 75 then CheckAndAutoEat() end
+                if e and e <= 75 then CheckAndAutoDrinkCoffee() end
+                task.wait(0.3)
+                if not check() then break end
+                TriggerFarmPromptDirectly(cropName)
+                task.wait(1.2)
+                farmTO, lastGain = os.clock(), os.clock()
+            end
+        end
+        if not check() then break end
+        GrantAntiXGrace(15)
+
+        local n = GetPlayerInventoryCount(cropName)
+        if n >= amount then
+            -- ครบแล้ว: กดเก็บเข้ารถที่เสาเลย (ไม่ไปเบิกรถ)
+            CancelGameFarm()
+            local stored = false
+            for attempt = 1, 2 do
+                if not check() then break end
+                StoreAtPole(cropName, check, attempt == 2) -- ครั้งที่ 2 ค่อยวาร์ปไปข้างเสา
+                if WaitCountDrop(cropName, n, 3.0) then stored = true break end
+            end
+            if not check() then break end
+            StandAtFarm() -- กลับมายืนที่ฟาร์ม (เผื่อวาร์ปไปที่เสา)
+            if not stored then
+                warn("[StorageFarm] เก็บเข้ารถไม่เข้า (รถน่าจะเต็ม)")
+                result = "full"
+                break
+            end
+            stores += 1
+            print(string.format("[StorageFarm] เก็บเข้ารถรอบที่ %d (%s x%d)", stores, cropName, n))
+            lastN = GetPlayerInventoryCount(cropName)
+            TriggerFarmPromptDirectly(cropName)
+            task.wait(1.0)
+            farmTO, lastGain = os.clock(), os.clock()
+        else
+            if n > lastN then
+                farmTO, lastGain = os.clock(), os.clock()
+            elseif os.clock() - farmTO > 15 then
+                TriggerFarmPromptDirectly(cropName) -- ฟาร์มหยุดค้าง กดซ้ำ
+                farmTO = os.clock()
+            end
+            lastN = n
+            if os.clock() - lastGain > 180 then
+                warn("[StorageFarm] ของไม่เพิ่มเกิน 3 นาที หยุดฟาร์ม")
+                break
+            end
+        end
+        task.wait(0.5)
+    end
+    CancelGameFarm()
+    return result
+end
+
+local ORE_JOBS = { Rock = true, Svibranium = true }
 
 local function RunStorageFarm()
     if not MarvenState[STORAGE_KEY] then return end
@@ -3387,55 +3559,79 @@ local function RunStorageFarm()
             and not MarvenState.AutoMineFarm and not MarvenState.AutoFish
     end
     task.spawn(function()
-        local first, fails = true, 0
+        local crop, mode = StorageSel.Crop, StorageSel.Mode
+        if not TYPER_LOCATIONS[crop] then return end
+        local amount = ORE_JOBS[crop] and 120 or 60 -- เท่ากับฟาร์มปกติ ไม่ต้องตั้งเอง
+
+        -- มีรถอยู่ใกล้แล้วไม่ต้องวาร์ปไปเมืองใหม่
+        if not GetNearbyPlayerVehicle(80) then WarpToTownAndSpawnCar() end
+
         while check() do
-            if first then WarpToTownAndSpawnCar() first = false end
-            if not check() then break end
-
-            local crop = StorageSel.Crop
-            if not TYPER_LOCATIONS[crop] then break end
-
-            HarvestSingleCrop(crop, StorageSel.Amount, check)
-            if not check() then break end
-
-            local before = GetPlayerInventoryCount(crop)
-            StoreAtPole(crop, check)
-            local after = GetPlayerInventoryCount(crop)
-
-            if after >= before and before > 0 then
-                fails += 1
-                warn(string.format("[StorageFarm] เก็บเข้ารถไม่สำเร็จ (%d/3) ของก่อน=%d หลัง=%d", fails, before, after))
-                if fails >= 3 then
-                    warn("[StorageFarm] หยุด: เก็บไม่เข้า (รถอาจเต็ม/กดผิด prompt)")
-                    MarvenState[STORAGE_KEY] = false
+            if mode == "Sell" then
+                -- ขายทันที (ปกติ): ฟาร์มครบแล้วไปขายเลย
+                HarvestSingleCrop(crop, amount, check)
+                if not check() then break end
+                SellAtEconomyMarket(check)
+            else
+                -- เก็บหลังรถ จนรถเต็ม แล้วค่อยไปทำปลายทาง
+                local reason = StorageFarmSession(crop, amount, check)
+                if not check() then break end
+                if reason == "nostorage" then
+                    warn("[StorageFarm] งานนี้ไม่มีจุดเก็บหลังรถ (Storage) ให้ใช้โหมดขายทันทีแทน")
+                    break
+                elseif reason ~= "full" then
                     break
                 end
-            else
-                fails = 0
+
+                if mode == "TrunkSell" then
+                    SellAtEconomyMarket(check)
+                elseif mode == "TrunkVault" then
+                    DepositAllToVault(check)
+                elseif mode == "TrunkProcess" then
+                    if crop == "Rock" or crop == "Svibranium" then
+                        ProcessOreAtStation(crop, (crop == "Svibranium") and 4 or 2, check)
+                    elseif crop == "Banana" then
+                        ProcessBananaAtStation(check)
+                    else
+                        warn("[StorageFarm] งานนี้ไม่มีสถานีแปรรูป (ใช้ได้กับ หิน / ไวเบรเนียม / กล้วย) หยุดทำงาน")
+                        break
+                    end
+                end
             end
             task.wait(0.5)
         end
+        MarvenState[STORAGE_KEY] = false
     end)
 end
 
 -- ---------- UI ----------
 local StorageTab = Window:Tab({Title = "ฟาร์มเก็บรถ", Icon = "package"})
-local StorageSection = StorageTab:Section({Title = "ฟาร์มแล้วเก็บเข้าท้ายรถ (ไม่ขาย)"})
+local StorageSection = StorageTab:Section({Title = "เลือกงาน + เลือกวิธีเก็บ/ส่ง"})
 StorageSection:Dropdown({
-    Title = "เลือกฟาร์ม",
-    Options = {"ขนมปัง (วัตถุดิบ)", "ซอสมะเขือเทศ (วัตถุดิบ)", "หมู (วัตถุดิบ)", "มะม่วง (วัตถุดิบ)", "ข้าว (วัตถุดิบ)", "มะเขือเทศ (วัตถุดิบ)", "กล้วย (วัตถุดิบ)", "ปู (วัตถุดิบ)", "มะพร้าว (วัตถุดิบ)", "ข้าวโพด (วัตถุดิบ)", "ไข่ไก่ (วัตถุดิบ)", "นม (วัตถุดิบ)", "อ้อย (วัตถุดิบ)"},
+    Title = "เลือกงาน",
+    Options = {"ขนมปัง (วัตถุดิบ)", "ซอสมะเขือเทศ (วัตถุดิบ)", "หมู (วัตถุดิบ)", "มะม่วง (วัตถุดิบ)", "ข้าว (วัตถุดิบ)", "มะเขือเทศ (วัตถุดิบ)", "กล้วย (วัตถุดิบ)", "ปู (วัตถุดิบ)", "มะพร้าว (วัตถุดิบ)", "ข้าวโพด (วัตถุดิบ)", "ไข่ไก่ (วัตถุดิบ)", "นม (วัตถุดิบ)", "อ้อย (วัตถุดิบ)", "หิน (แร่)", "ไวเบรเนียม (แร่)"},
     Default = "ขนมปัง (วัตถุดิบ)", Flag = "StorageFarmType",
     Callback = function(v)
-        local map = {["ขนมปัง (วัตถุดิบ)"]="Bread", ["ซอสมะเขือเทศ (วัตถุดิบ)"]="Catchup", ["หมู (วัตถุดิบ)"]="Pig", ["มะม่วง (วัตถุดิบ)"]="Mango", ["ข้าว (วัตถุดิบ)"]="Rice", ["มะเขือเทศ (วัตถุดิบ)"]="Tomato", ["กล้วย (วัตถุดิบ)"]="Banana", ["ปู (วัตถุดิบ)"]="Crab", ["มะพร้าว (วัตถุดิบ)"]="Coconut", ["ข้าวโพด (วัตถุดิบ)"]="Corn", ["ไข่ไก่ (วัตถุดิบ)"]="Egg", ["นม (วัตถุดิบ)"]="Milk", ["อ้อย (วัตถุดิบ)"]="Sugarcane"}
+        local map = {["ขนมปัง (วัตถุดิบ)"]="Bread", ["ซอสมะเขือเทศ (วัตถุดิบ)"]="Catchup", ["หมู (วัตถุดิบ)"]="Pig", ["มะม่วง (วัตถุดิบ)"]="Mango", ["ข้าว (วัตถุดิบ)"]="Rice", ["มะเขือเทศ (วัตถุดิบ)"]="Tomato", ["กล้วย (วัตถุดิบ)"]="Banana", ["ปู (วัตถุดิบ)"]="Crab", ["มะพร้าว (วัตถุดิบ)"]="Coconut", ["ข้าวโพด (วัตถุดิบ)"]="Corn", ["ไข่ไก่ (วัตถุดิบ)"]="Egg", ["นม (วัตถุดิบ)"]="Milk", ["อ้อย (วัตถุดิบ)"]="Sugarcane", ["หิน (แร่)"]="Rock", ["ไวเบรเนียม (แร่)"]="Svibranium"}
         StorageSel.Crop = map[v] or "Bread"
     end
 })
-StorageSection:Slider({
-    Title = "ฟาร์มกี่ชิ้นก่อนเก็บเข้ารถ", Default = 60, Min = 10, Max = 200, Rounding = 0, Flag = "StorageFarmAmount",
-    Callback = function(v) StorageSel.Amount = math.clamp(math.round(v), 10, 200) end
+StorageSection:Dropdown({
+    Title = "เลือกวิธี",
+    Options = {"ขายทันที (ปกติ)", "เก็บหลังรถ - รถเต็มไปขาย", "เก็บหลังรถ - รถเต็มเก็บตู้", "เก็บหลังรถ - รถเต็มโพแร่-แพ็ก"},
+    Default = "ขายทันที (ปกติ)", Flag = "StorageFarmMode",
+    Callback = function(v)
+        local map = {
+            ["ขายทันที (ปกติ)"] = "Sell",
+            ["เก็บหลังรถ - รถเต็มไปขาย"] = "TrunkSell",
+            ["เก็บหลังรถ - รถเต็มเก็บตู้"] = "TrunkVault",
+            ["เก็บหลังรถ - รถเต็มโพแร่-แพ็ก"] = "TrunkProcess",
+        }
+        StorageSel.Mode = map[v] or "Sell"
+    end
 })
 StorageSection:Toggle({
-    Title = "ออโต้ ฟาร์มเก็บเข้ารถ", Default = false, Flag = "AutoStorageFarm",
+    Title = "เริ่มงาน", Default = false, Flag = "AutoStorageFarm",
     Callback = function(v)
         MarvenState[STORAGE_KEY] = v
         if v then RunStorageFarm() else StopSession(STORAGE_KEY) end
