@@ -3398,14 +3398,17 @@ local function ClickGuiObject(obj)
         warn("[StorageDebug] CLICK FAILED: hidden object", obj:GetFullName())
         return false
     end
+    if obj.AbsoluteSize.X <= 0 or obj.AbsoluteSize.Y <= 0 then
+        warn("[StorageDebug] CLICK FAILED: zero-sized object", obj:GetFullName())
+        return false
+    end
 
+    -- AbsolutePosition is already the GUI's screen position; do not add GuiInset again.
+    local p = obj.AbsolutePosition + (obj.AbsoluteSize / 2)
     local ok, err = pcall(function()
-        local sg = obj:FindFirstAncestorOfClass("ScreenGui")
-        local inset = (sg and sg.IgnoreGuiInset) and Vector2.zero or GuiService:GetGuiInset()
-        local p = obj.AbsolutePosition + (obj.AbsoluteSize / 2) + inset
         print("[StorageDebug] CLICK:", obj:GetFullName(), "at", p.X, p.Y)
         VirtualInputManager:SendMouseButtonEvent(p.X, p.Y, 0, true, game, 0)
-        task.wait(0.12)
+        task.wait(0.15)
         VirtualInputManager:SendMouseButtonEvent(p.X, p.Y, 0, false, game, 0)
     end)
 
@@ -3525,6 +3528,49 @@ local function WaitForChildPath(root, names, timeout)
     return nil
 end
 
+-- หาแถวไอเทมจากชื่องานที่เลือกในเมนูฟาร์ม แล้วกดปุ่มของแถวนั้น
+-- เช่น StorageSel.Crop = "Bread" จะเลือก Bread.Holder.Button
+local function FindStorageItemButton(mainFrame, cropName)
+    local inventory = FindChildPath(mainFrame, {"Scrolling", "Inventory", "Scrolling"})
+    if not inventory then
+        warn("[StorageFarm] ไม่พบรายการ Inventory.Scrolling")
+        return nil
+    end
+
+    local wanted = tostring(cropName or ""):lower()
+    if wanted == "" then return nil end
+
+    -- วิธีหลัก: หาแถวที่ชื่อ Instance ตรงกับชื่องาน แล้วใช้ Holder.Button
+    for _, row in ipairs(inventory:GetChildren()) do
+        if row.Name:lower() == wanted then
+            local holder = row:FindFirstChild("Holder")
+            local button = holder and holder:FindFirstChild("Button")
+            if button and button:IsA("GuiButton") and IsGuiShown(button) then
+                print("[StorageFarm] ITEM MATCH BY NAME:", row.Name, button:GetFullName())
+                return button
+            end
+        end
+    end
+
+    -- สำรอง: ค้นหาชื่อแถวแบบไม่สนตัวพิมพ์เล็ก/ใหญ่ใน descendants
+    for _, row in ipairs(inventory:GetDescendants()) do
+        if row.Name:lower() == wanted then
+            local holder = row:FindFirstChild("Holder")
+            local button = holder and holder:FindFirstChild("Button")
+            if button and button:IsA("GuiButton") and IsGuiShown(button) then
+                print("[StorageFarm] ITEM MATCH BY DESCENDANT:", row:GetFullName(), button:GetFullName())
+                return button
+            end
+        end
+    end
+
+    warn("[StorageFarm] ไม่พบปุ่มของไอเทมตามชื่องาน:", cropName)
+    for _, row in ipairs(inventory:GetChildren()) do
+        print("[StorageFarm] INVENTORY ITEM:", row.Name)
+    end
+    return nil
+end
+
 -- ใช้ Path ที่ตรวจพบจาก UI จริง: เลือกไอเทม -> MAX -> CONFIRM
 local function TransferCropToStorage(cropName)
     local gui
@@ -3548,17 +3594,16 @@ local function TransferCropToStorage(cropName)
         return false
     end
 
-    -- 1) เลือกช่องไอเทมตามชื่อที่กำลังฟาร์ม
-    local slotButton = WaitForChildPath(mainFrame, {
-        "Scrolling", "Inventory", "Scrolling", cropName, "Holder", "Button"
-    }, 5)
+    -- 1) อ่านชื่องานที่กำลังฟาร์ม แล้วคลิกปุ่มในแถวไอเทมชื่อนั้น
+    -- ไม่ล็อก Bread: ถ้าเลือก Rice / Banana / Rock ก็เลือกแถวนั้นตามจริง
+    local slotButton = FindStorageItemButton(mainFrame, cropName)
 
-    if not slotButton or not slotButton:IsA("GuiObject") or not IsGuiShown(slotButton) then
-        warn("[StorageFarm] ไม่พบช่องไอเทม:", cropName)
+    if not slotButton or not slotButton:IsA("GuiButton") or not IsGuiShown(slotButton) then
+        warn("[StorageFarm] ไม่พบปุ่มเลือกไอเทม:", cropName)
         return false
     end
 
-    print("[StorageFarm] SELECT:", slotButton:GetFullName())
+    print("[StorageFarm] SELECT JOB ITEM:", cropName, slotButton:GetFullName())
     if not ClickGuiObject(slotButton) then
         warn("[StorageFarm] เลือกไอเทมไม่สำเร็จ:", cropName)
         return false
@@ -3570,7 +3615,7 @@ local function TransferCropToStorage(cropName)
         "Menu", "Main", "Amount", "Max"
     }, 5)
 
-    if not maxButton or not maxButton:IsA("GuiObject") or not IsGuiShown(maxButton) then
+    if not maxButton or not maxButton:IsA("GuiButton") or not IsGuiShown(maxButton) then
         warn("[StorageFarm] ไม่พบปุ่ม MAX ที่ Car_Storage.Group.Main.Menu.Main.Amount.Max")
         return false
     end
@@ -3587,7 +3632,7 @@ local function TransferCropToStorage(cropName)
         "Menu", "Main", "Button", "Confirm"
     }, 5)
 
-    if not confirmButton or not confirmButton:IsA("GuiObject") or not IsGuiShown(confirmButton) then
+    if not confirmButton or not confirmButton:IsA("GuiButton") or not IsGuiShown(confirmButton) then
         warn("[StorageFarm] ไม่พบปุ่ม CONFIRM ที่ Car_Storage.Group.Main.Menu.Main.Button.Confirm")
         return false
     end
