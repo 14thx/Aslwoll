@@ -1177,6 +1177,65 @@ end
 -- =====================================
 -- DRIVE CAR TO (A* + STRAIGHT RAIL - NO SWAY)
 -- =====================================
+
+-- ลดจุดที่เกือบเป็นเส้นตรง -> เกลี่ย -> เรียงจุดห่างเท่ากัน
+local function SmoothRoute(r, spacing)
+    spacing = spacing or 8
+    if #r < 3 then return r end
+
+    -- [a] ตัดจุดซ้ำ/ใกล้กันเกินไป
+    local clean = {r[1]}
+    for i = 2, #r do
+        if (r[i] - clean[#clean]).Magnitude > 0.5 then
+            clean[#clean + 1] = r[i]
+        end
+    end
+    r = clean
+    if #r < 3 then return r end
+
+    -- [b] ตัดจุดที่อยู่แนวเส้นตรงเดียวกัน
+    local simp = {r[1]}
+    for i = 2, #r - 1 do
+        local a = (r[i] - simp[#simp]).Unit
+        local b = (r[i + 1] - r[i]).Unit
+        if a:Dot(b) < 0.995 then simp[#simp + 1] = r[i] end
+    end
+    simp[#simp + 1] = r[#r]
+    r = simp
+
+    -- [c] เกลี่ย 6 รอบ (ปลายทั้งสองข้างคงที่)
+    if #r >= 3 then
+        for _ = 1, 6 do
+            local s = {r[1]}
+            for i = 2, #r - 1 do
+                s[i] = (r[i - 1] + r[i] * 2 + r[i + 1]) * 0.25
+            end
+            s[#r] = r[#r]
+            r = s
+        end
+    end
+
+    -- [d] resample ทุก spacing studs
+    local out = {r[1]}
+    local carry = 0
+    for i = 2, #r do
+        local a, b = r[i - 1], r[i]
+        local seg = b - a
+        local len = seg.Magnitude
+        if len > 1e-4 then
+            local dir = seg / len
+            local pos = spacing - carry
+            while pos <= len do
+                out[#out + 1] = a + dir * pos
+                pos += spacing
+            end
+            carry = len - (pos - spacing)
+        end
+    end
+    out[#out + 1] = r[#r]
+    return out
+end
+
 DriveCarTo = function(dest, check)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -1446,16 +1505,7 @@ DriveCarTo = function(dest, check)
         route = {Vector3.new(dest.X, 0, dest.Z)}
     else
         table.insert(route, Vector3.new(dest.X, 0, dest.Z))
-        if #route >= 4 then
-            for _ = 1, 2 do
-                local smoothed = {route[1]}
-                for i = 2, #route - 1 do
-                    smoothed[i] = (route[i - 1] + route[i] * 2 + route[i + 1]) * 0.25
-                end
-                smoothed[#route] = route[#route]
-                route = smoothed
-            end
-        end
+        route = SmoothRoute(route, 8)
         pcall(function()
             local minimap = PlayerGui:FindFirstChild("Minimap")
             if minimap then
@@ -1525,10 +1575,16 @@ DriveCarTo = function(dest, check)
                 else
                     local dir = seg.Unit
                     flatPos += dir * step
-                    local lookTarget = route[math.min(currentIdx + 1, #route)]
+
+                    -- เล็งไปข้างหน้า ~32 studs (4 จุด x 8 studs)
+                    local aheadIdx = math.min(currentIdx + 4, #route)
+                    local lookTarget = route[aheadIdx]
                     local aimVec = Vector3.new(lookTarget.X - flatPos.X, 0, lookTarget.Z - flatPos.Z)
                     local desiredDir = (aimVec.Magnitude > 0.5) and aimVec.Unit or dir
-                    flatLook = flatLook:Lerp(desiredDir, math.clamp(dt * 14, 0.15, 1)).Unit
+
+                    -- หมุนนุ่ม ไม่มีค่าต่ำสุด
+                    local newLook = flatLook:Lerp(desiredDir, math.clamp(dt * 4, 0, 1))
+                    if newLook.Magnitude > 0.001 then flatLook = newLook.Unit end
                     step = 0
                 end
             end
@@ -1541,7 +1597,7 @@ DriveCarTo = function(dest, check)
 
             local groundY = GetGroundLevel(flatPos.X, flatPos.Z, smoothY)
             local targetY = groundY + 2.6 + (tonumber(VehicleHeightOffset) or 0)
-            smoothY += (targetY - smoothY) * math.clamp(dt * 18, 0.15, 1)
+            smoothY += (targetY - smoothY) * math.clamp(dt * 6, 0, 1)
 
             local newPos = Vector3.new(flatPos.X, smoothY, flatPos.Z)
             car:PivotTo(CFrame.lookAt(newPos, newPos + flatLook))
