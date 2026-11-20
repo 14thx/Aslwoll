@@ -1660,37 +1660,7 @@ local function ResolveCropPrompt(cropName, leaf)
 end
 
 local function GetFarmPrompt(cropName) return ResolveCropPrompt(cropName, "Farm") end
-
--- Car_Storage เป็น Storage ของรถ ไม่ใช่ Storage prompt ใต้โฟลเดอร์ฟาร์มของพืช
--- ใช้รถของผู้เล่นที่ระบบตรวจ ownership ได้ แล้วหา ProximityPrompt ชื่อ Storage
-local function GetStoragePrompt(cropName)
-    -- Storage prompt อยู่ที่เสาฟาร์มของไอเทม ไม่ใช่ Chassis ของรถ
-    -- ใช้โครงสร้างที่ ResolveCropPrompt ระบุไว้:
-    -- Systems.Farm.<Crop>.Prompt.Farm.Prompt.Storage.Prompt
-    local prompt = ResolveCropPrompt(cropName, "Storage")
-    if prompt and prompt:IsA("ProximityPrompt") and prompt.Enabled then
-        return prompt
-    end
-
-    -- fallback: ค้นหาเฉพาะโฟลเดอร์ฟาร์มของไอเทมที่กำลังทำงาน
-    local farmSys = workspace:FindFirstChild("Systems")
-        and workspace.Systems:FindFirstChild("Farm")
-    local cropFolder = farmSys and farmSys:FindFirstChild(cropName)
-    if cropFolder then
-        for _, obj in ipairs(cropFolder:GetDescendants()) do
-            if obj:IsA("ProximityPrompt") and obj.Enabled then
-                local fullName = obj:GetFullName():lower()
-                local parentName = obj.Parent and obj.Parent.Name:lower() or ""
-                if parentName == "storage" or fullName:find("storage") then
-                    return obj
-                end
-            end
-        end
-    end
-
-    warn("[StorageFarm] ไม่พบ Storage Prompt ที่เสาฟาร์ม:", tostring(cropName))
-    return nil
-end
+local function GetStoragePrompt(cropName) return ResolveCropPrompt(cropName, "Storage") end
 
 -- (ใช้ดีบัก) พิมพ์ prompt ทั้งหมดของพืชนั้น เพื่อดูว่ามีตัวไหนบ้าง
 local function DebugFarmPrompts(cropName)
@@ -2352,7 +2322,7 @@ end
 -- VAULT SYSTEM
 -- =====================================
 local DEPOSITABLE_ITEMS = {
-    Rock=true, Svibranium=true, Vibranium=true, Bread=true, Catchup=true, Pig=true,
+    Rock=true, Svibranium=true, Bread=true, Catchup=true, Pig=true,
     Mango=true, Rice=true, Tomato=true, Banana=true, Crab=true,
     Coconut=true, Corn=true, Egg=true, Milk=true, Sugarcane=true,
     Sandwich=true, MangoRice=true, BananaPack=true, KangSom=true,
@@ -3433,17 +3403,21 @@ local function ClickGuiObject(obj)
         return false
     end
 
-    -- AbsolutePosition is already the GUI's screen position; do not add GuiInset again.
-    local p = obj.AbsolutePosition + (obj.AbsoluteSize / 2)
+    -- Prefer Roblox's GuiButton activation; fall back to a screen-coordinate tap.
     local ok, err = pcall(function()
-        print("[StorageDebug] CLICK:", obj:GetFullName(), "at", p.X, p.Y)
-        VirtualInputManager:SendMouseButtonEvent(p.X, p.Y, 0, true, game, 0)
-        task.wait(0.15)
-        VirtualInputManager:SendMouseButtonEvent(p.X, p.Y, 0, false, game, 0)
+        print("[StorageDebug] ACTIVATE:", obj:GetFullName())
+        if obj:IsA("GuiButton") then
+            obj:Activate()
+        else
+            local p = obj.AbsolutePosition + (obj.AbsoluteSize / 2)
+            VirtualInputManager:SendMouseButtonEvent(p.X, p.Y, 0, true, game, 0)
+            task.wait(0.15)
+            VirtualInputManager:SendMouseButtonEvent(p.X, p.Y, 0, false, game, 0)
+        end
     end)
 
     if not ok then
-        warn("[StorageDebug] CLICK ERROR:", tostring(err))
+        warn("[StorageDebug] ACTIVATE ERROR:", tostring(err))
         return false
     end
     return true
@@ -3558,54 +3532,6 @@ local function WaitForChildPath(root, names, timeout)
     return nil
 end
 
--- หาแถวไอเทมจากชื่องานที่เลือกในเมนูฟาร์ม แล้วกดปุ่มของแถวนั้น
--- เช่น StorageSel.Crop = "Bread" จะเลือก Bread.Holder.Button
-local function FindStorageItemButton(mainFrame, cropName)
-    local inventory = FindChildPath(mainFrame, {"Scrolling", "Inventory", "Scrolling"})
-    if not inventory then
-        warn("[StorageFarm] ไม่พบรายการ Inventory.Scrolling")
-        return nil
-    end
-
-    local wanted = tostring(cropName or ""):lower()
-    if wanted == "" then return nil end
-
-    -- ชื่อในระบบฟาร์มบางเวอร์ชันคือ Svibranium แต่ชื่อช่องในกระเป๋าแสดง Vibranium
-    local aliases = { svibranium = "vibranium" }
-    local acceptedNames = {[wanted] = true}
-    if aliases[wanted] then acceptedNames[aliases[wanted]] = true end
-
-    -- วิธีหลัก: หาแถวที่ชื่อ Instance ตรงกับชื่องาน/ชื่อที่แสดงในกระเป๋า แล้วใช้ Holder.Button
-    for _, row in ipairs(inventory:GetChildren()) do
-        if acceptedNames[row.Name:lower()] then
-            local holder = row:FindFirstChild("Holder")
-            local button = holder and holder:FindFirstChild("Button")
-            if button and button:IsA("GuiButton") and IsGuiShown(button) then
-                print("[StorageFarm] ITEM MATCH BY NAME:", row.Name, button:GetFullName())
-                return button
-            end
-        end
-    end
-
-    -- สำรอง: ค้นหาชื่อแถวแบบไม่สนตัวพิมพ์เล็ก/ใหญ่ใน descendants
-    for _, row in ipairs(inventory:GetDescendants()) do
-        if acceptedNames[row.Name:lower()] then
-            local holder = row:FindFirstChild("Holder")
-            local button = holder and holder:FindFirstChild("Button")
-            if button and button:IsA("GuiButton") and IsGuiShown(button) then
-                print("[StorageFarm] ITEM MATCH BY DESCENDANT:", row:GetFullName(), button:GetFullName())
-                return button
-            end
-        end
-    end
-
-    warn("[StorageFarm] ไม่พบปุ่มของไอเทมตามชื่องาน:", cropName)
-    for _, row in ipairs(inventory:GetChildren()) do
-        print("[StorageFarm] INVENTORY ITEM:", row.Name)
-    end
-    return nil
-end
-
 -- ใช้ Path ที่ตรวจพบจาก UI จริง: เลือกไอเทม -> MAX -> CONFIRM
 local function TransferCropToStorage(cropName)
     local gui
@@ -3629,28 +3555,46 @@ local function TransferCropToStorage(cropName)
         return false
     end
 
-    -- 1) อ่านชื่องานที่กำลังฟาร์ม แล้วคลิกปุ่มในแถวไอเทมชื่อนั้น
-    -- ไม่ล็อก Bread: ถ้าเลือก Rice / Banana / Rock ก็เลือกแถวนั้นตามจริง
-    local slotButton = FindStorageItemButton(mainFrame, cropName)
+    -- 1) เลือกช่องไอเทมตามชื่อที่กำลังฟาร์ม
+    local slotButton = WaitForChildPath(mainFrame, {
+        "Scrolling", "Inventory", "Scrolling", cropName, "Holder", "Button"
+    }, 5)
 
-    if not slotButton or not slotButton:IsA("GuiButton") or not IsGuiShown(slotButton) then
-        warn("[StorageFarm] ไม่พบปุ่มเลือกไอเทม:", cropName)
+    if not slotButton or not slotButton:IsA("GuiObject") or not IsGuiShown(slotButton) then
+        warn("[StorageFarm] ไม่พบช่องไอเทม:", cropName)
         return false
     end
 
-    print("[StorageFarm] SELECT JOB ITEM:", cropName, slotButton:GetFullName())
+    local itemFrame = slotButton.Parent and slotButton.Parent.Parent
+    local itemCountLabel = itemFrame and itemFrame:FindFirstChild("items")
+    print("[StorageFarm] INVENTORY ITEM:", cropName, "count=", itemCountLabel and itemCountLabel.Text or "unknown")
+    print("[StorageFarm] SELECT:", slotButton:GetFullName())
     if not ClickGuiObject(slotButton) then
         warn("[StorageFarm] เลือกไอเทมไม่สำเร็จ:", cropName)
         return false
     end
-    task.wait(0.35)
+
+    -- The inspector showed Menu.Visible=false even though Menu.Main.Visible=true.
+    -- Wait for the parent menu to become visible after selecting an inventory item.
+    local menuFrame = mainFrame:FindFirstChild("Menu")
+    local menuStarted = os.clock()
+    repeat
+        if menuFrame and menuFrame.Visible and IsGuiShown(menuFrame) then break end
+        task.wait(0.1)
+    until os.clock() - menuStarted >= 3
+
+    if not menuFrame or not menuFrame.Visible or not IsGuiShown(menuFrame) then
+        warn("[StorageFarm] เลือก", cropName, "แล้ว แต่ Menu ยังซ่อนอยู่ (Menu.Visible=false); ยกเลิกก่อนกด MAX")
+        return false
+    end
+    task.wait(0.2)
 
     -- 2) กด MAX ตาม Path ที่ตรวจพบ
     local maxButton = WaitForChildPath(mainFrame, {
         "Menu", "Main", "Amount", "Max"
     }, 5)
 
-    if not maxButton or not maxButton:IsA("GuiButton") or not IsGuiShown(maxButton) then
+    if not maxButton or not maxButton:IsA("GuiObject") or not IsGuiShown(maxButton) then
         warn("[StorageFarm] ไม่พบปุ่ม MAX ที่ Car_Storage.Group.Main.Menu.Main.Amount.Max")
         return false
     end
@@ -3667,7 +3611,7 @@ local function TransferCropToStorage(cropName)
         "Menu", "Main", "Button", "Confirm"
     }, 5)
 
-    if not confirmButton or not confirmButton:IsA("GuiButton") or not IsGuiShown(confirmButton) then
+    if not confirmButton or not confirmButton:IsA("GuiObject") or not IsGuiShown(confirmButton) then
         warn("[StorageFarm] ไม่พบปุ่ม CONFIRM ที่ Car_Storage.Group.Main.Menu.Main.Button.Confirm")
         return false
     end
@@ -3728,71 +3672,6 @@ local function WaitCountDrop(cropName, fromCount, timeout)
         task.wait(0.25)
     end
     return false
-end
-
--- ใช้รายการ DEPOSITABLE_ITEMS ชุดเดียวกับระบบฝากตู้
--- แต่โอนผ่าน Car_Storage UI เท่านั้น ไม่เรียก Remote _vault_tx
-local function StoreAllVaultItemsToCar(check, onlyItem)
-    local items = {}
-    local pd = LocalPlayer:FindFirstChild("PlayerData")
-    if onlyItem then
-        -- โหมดฟาร์ม: เก็บเฉพาะไอเทมที่เลือก ไม่วนไปแตะของชนิดอื่นในกระเป๋า
-        if DEPOSITABLE_ITEMS[onlyItem] and GetPlayerInventoryCount(onlyItem) > 0 then
-            table.insert(items, onlyItem)
-        else
-            warn("[StorageFarm] ไอเทมงานนี้ไม่มีในรายการฝากหรือจำนวนเป็นศูนย์:", tostring(onlyItem))
-            return false
-        end
-    else
-        if not pd then
-            warn("[StorageFarm] ไม่พบ PlayerData จึงอ่านรายการของที่จะเก็บไม่ได้")
-            return false
-        end
-        for attr in pairs(pd:GetAttributes()) do
-            if DEPOSITABLE_ITEMS[attr] and GetPlayerInventoryCount(attr) > 0 then
-                table.insert(items, attr)
-            end
-        end
-        table.sort(items)
-    end
-
-    if #items == 0 then
-        warn("[StorageFarm] ไม่มีไอเทมในรายการ DEPOSITABLE_ITEMS ให้เก็บเข้ารถ")
-        return false
-    end
-
-    local allStored = true
-    for _, itemName in ipairs(items) do
-        if not ScriptRunning or (check and not check()) then return false end
-
-        local before = GetPlayerInventoryCount(itemName)
-        if before > 0 then
-            if not GetStoragePrompt(itemName) then
-                print("[StorageFarm] ข้ามไอเทมที่ไม่มี Storage prompt:", itemName)
-            else
-                local stored = false
-                for attempt = 1, 2 do
-                    if not ScriptRunning or (check and not check()) then return false end
-                    local clicked = StoreAtPole(itemName, check, true)
-                    if clicked and WaitCountDrop(itemName, before, 5.0) then
-                        stored = true
-                        break
-                    end
-                    task.wait(0.4)
-                end
-
-                if stored then
-                    print(string.format("[StorageFarm] เก็บเข้ารถสำเร็จ: %s x%d", itemName, before - GetPlayerInventoryCount(itemName)))
-                else
-                    warn("[StorageFarm] เก็บเข้ารถไม่สำเร็จ:", itemName, "อาจเต็มหรือเกมไม่รับ CONFIRM")
-                    allStored = false
-                    break
-                end
-            end
-        end
-    end
-
-    return allStored
 end
 
 -- ฟาร์มต่อเนื่องที่เดิม: ครบ N ชิ้น -> กดเก็บเข้ารถที่เสา -> ฟาร์มต่อ -> วนจนรถเต็ม
@@ -3890,9 +3769,8 @@ local function StorageFarmSession(cropName, amount, check)
             local stored = false
             for attempt = 1, 2 do
                 if not check() then break end
-                -- ใช้รายการฝากของชุดเดียวกับ Vault แล้วส่งผ่าน Car_Storage ทีละรายการ
-                local transferOK = StoreAllVaultItemsToCar(check, cropName)
-                if transferOK and GetPlayerInventoryCount(cropName) < n then
+                local transferOK = StoreAtPole(cropName, check, attempt == 2)
+                if transferOK and WaitCountDrop(cropName, n, 5.0) then
                     stored = true
                     break
                 end
