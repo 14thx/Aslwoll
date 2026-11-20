@@ -1664,35 +1664,31 @@ local function GetFarmPrompt(cropName) return ResolveCropPrompt(cropName, "Farm"
 -- Car_Storage เป็น Storage ของรถ ไม่ใช่ Storage prompt ใต้โฟลเดอร์ฟาร์มของพืช
 -- ใช้รถของผู้เล่นที่ระบบตรวจ ownership ได้ แล้วหา ProximityPrompt ชื่อ Storage
 local function GetStoragePrompt(cropName)
-    local vehicle = GetPlayerVehicle() or GetNearbyPlayerVehicle(80)
-    if vehicle then
-        local chassis = vehicle:FindFirstChild("Chassis")
-        local storageNode = chassis and chassis:FindFirstChild("Storage")
-        if storageNode then
-            if storageNode:IsA("ProximityPrompt") and storageNode.Enabled then
-                return storageNode
-            end
-            local direct = storageNode:FindFirstChild("Storage")
-            if direct and direct:IsA("ProximityPrompt") and direct.Enabled then
-                return direct
-            end
-            for _, obj in ipairs(storageNode:GetDescendants()) do
-                if obj:IsA("ProximityPrompt") and obj.Enabled then
+    -- Storage prompt อยู่ที่เสาฟาร์มของไอเทม ไม่ใช่ Chassis ของรถ
+    -- ใช้โครงสร้างที่ ResolveCropPrompt ระบุไว้:
+    -- Systems.Farm.<Crop>.Prompt.Farm.Prompt.Storage.Prompt
+    local prompt = ResolveCropPrompt(cropName, "Storage")
+    if prompt and prompt:IsA("ProximityPrompt") and prompt.Enabled then
+        return prompt
+    end
+
+    -- fallback: ค้นหาเฉพาะโฟลเดอร์ฟาร์มของไอเทมที่กำลังทำงาน
+    local farmSys = workspace:FindFirstChild("Systems")
+        and workspace.Systems:FindFirstChild("Farm")
+    local cropFolder = farmSys and farmSys:FindFirstChild(cropName)
+    if cropFolder then
+        for _, obj in ipairs(cropFolder:GetDescendants()) do
+            if obj:IsA("ProximityPrompt") and obj.Enabled then
+                local fullName = obj:GetFullName():lower()
+                local parentName = obj.Parent and obj.Parent.Name:lower() or ""
+                if parentName == "storage" or fullName:find("storage") then
                     return obj
                 end
             end
         end
-
-        -- fallback: หา prompt ชื่อ Storage ภายในรถของผู้เล่นเท่านั้น
-        for _, obj in ipairs(vehicle:GetDescendants()) do
-            if obj:IsA("ProximityPrompt") and obj.Enabled
-                and obj.Name:lower() == "storage" then
-                return obj
-            end
-        end
     end
 
-    -- ไม่ fallback ไปยัง prompt ของแปลงฟาร์ม เพราะอาจกดผิดจุด
+    warn("[StorageFarm] ไม่พบ Storage Prompt ที่เสาฟาร์ม:", tostring(cropName))
     return nil
 end
 
