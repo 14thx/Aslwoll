@@ -1627,6 +1627,53 @@ end
 -- =====================================
 -- HARVEST SYSTEM
 -- =====================================
+-- ===== FARM PROMPT (ฟาร์ม / เก็บของใส่รถ แยก path ชัดเจน) =====
+local function PromptWorldPos(prompt)
+    local par = prompt and prompt.Parent
+    if not par then return nil end
+    if par:IsA("Attachment") then return par.WorldPosition end
+    if par:IsA("BasePart") then return par.Position end
+    if par:IsA("Model") then return par:GetPivot().Position end
+    local bp = par:FindFirstChildWhichIsA("BasePart", true)
+    if bp then return bp.Position end
+    if par.Parent and par.Parent:IsA("BasePart") then return par.Parent.Position end
+    return nil
+end
+
+-- โครงสร้างจริง (ยืนยันจาก Finder UI):
+--   Systems.Farm.<Crop>.Prompt.Farm.Prompt.Farm.Prompt     = ฟาร์ม
+--   Systems.Farm.<Crop>.Prompt.Farm.Prompt.Storage.Prompt  = เก็บของใส่รถ
+local function ResolveCropPrompt(cropName, leaf)
+    local farmSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Farm")
+    local node = farmSys and farmSys:FindFirstChild(cropName)
+    for _, name in ipairs({"Prompt", "Farm", "Prompt", leaf, "Prompt"}) do
+        node = node and node:FindFirstChild(name)
+    end
+    if node and node:IsA("ProximityPrompt") then return node end
+
+    -- สำรอง: หา ProximityPrompt ใต้โหนด leaf เท่านั้น (ไม่ปนกับอีกโหนด)
+    local base = farmSys and farmSys:FindFirstChild(cropName)
+    for _, name in ipairs({"Prompt", "Farm", "Prompt", leaf}) do
+        base = base and base:FindFirstChild(name)
+    end
+    return base and base:FindFirstChildWhichIsA("ProximityPrompt", true) or nil
+end
+
+local function GetFarmPrompt(cropName) return ResolveCropPrompt(cropName, "Farm") end
+local function GetStoragePrompt(cropName) return ResolveCropPrompt(cropName, "Storage") end
+
+-- (ใช้ดีบัก) พิมพ์ prompt ทั้งหมดของพืชนั้น เพื่อดูว่ามีตัวไหนบ้าง
+local function DebugFarmPrompts(cropName)
+    local farmSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Farm")
+    local cropFolder = farmSys and farmSys:FindFirstChild(cropName)
+    if not cropFolder then warn("[FarmDebug] ไม่เจอโฟลเดอร์", cropName) return end
+    for _, d in ipairs(cropFolder:GetDescendants()) do
+        if d:IsA("ProximityPrompt") then
+            print("[FarmDebug]", d:GetFullName(), "| Action:", d.ActionText, "| Object:", d.ObjectText, "| Enabled:", d.Enabled)
+        end
+    end
+end
+
 local function TriggerFarmPromptDirectly(cropName)
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -1640,73 +1687,53 @@ local function TriggerFarmPromptDirectly(cropName)
         end)
         task.wait(0.15)
     end
-    local farmSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Farm")
-    local farmFolder = farmSys and farmSys:FindFirstChild(cropName)
-    local targetPrompt = nil
-    if farmFolder then
-        for _, d in ipairs(farmFolder:GetDescendants()) do
-            if d:IsA("ProximityPrompt") and d.Enabled then
-                local n = (d.Parent and d.Parent.Name or ""):lower()
-                local a = (d.ActionText or ""):lower()
-                local o = (d.ObjectText or ""):lower()
-                if not n:find("spawn") and not a:find("spawn") and not a:find("car") and not o:find("car") then
-                    targetPrompt = d break
-                end
-            end
-        end
-    end
-    if not targetPrompt then
-        for _, desc in ipairs(workspace:GetDescendants()) do
-            if desc:IsA("ProximityPrompt") and desc.Enabled then
-                local prParent = desc.Parent
-                local pPos = (prParent:IsA("Attachment") and prParent.WorldPosition) or (prParent:IsA("BasePart") and prParent.Position)
-                if pPos and (pPos - root.Position).Magnitude <= 18 then
-                    local action = (desc.ActionText or ""):lower()
-                    local obj = (desc.ObjectText or ""):lower()
-                    if not action:find("spawn") and not action:find("car") and not obj:find("car") then
-                        targetPrompt = desc
-                        break
-                    end
-                end
-            end
-        end
-    end
-    if targetPrompt then
+
+    local targetPrompt = GetFarmPrompt(cropName)
+    if not targetPrompt then return false end
+
+    pcall(function()
+        targetPrompt.Enabled = true
+        targetPrompt.RequiresLineOfSight = false
+        targetPrompt.MaxActivationDistance = math.max(targetPrompt.MaxActivationDistance, 20)
+    end)
+
+    pcall(function()
+        if fireproximityprompt then pcall(function() fireproximityprompt(targetPrompt) end) end
         pcall(function()
-            if fireproximityprompt then pcall(function() fireproximityprompt(targetPrompt) end) end
-            pcall(function()
-                targetPrompt:InputHoldBegin()
-                task.wait(targetPrompt.HoldDuration > 0 and (targetPrompt.HoldDuration + 0.05) or 0.15)
-                targetPrompt:InputHoldEnd()
-            end)
+            targetPrompt:InputHoldBegin()
+            task.wait(targetPrompt.HoldDuration > 0 and (targetPrompt.HoldDuration + 0.05) or 0.15)
+            targetPrompt:InputHoldEnd()
         end)
-        return true
-    end
-    return false
+    end)
+    return true
+end
+
+-- กดปุ่ม "เก็บของใส่รถ" (Storage) ที่เสา
+local function TriggerStoragePrompt(cropName)
+    local p = GetStoragePrompt(cropName)
+    if not p then return false end
+    pcall(function()
+        p.Enabled = true
+        p.RequiresLineOfSight = false
+        p.MaxActivationDistance = math.max(p.MaxActivationDistance, 20)
+    end)
+    pcall(function()
+        if fireproximityprompt then pcall(function() fireproximityprompt(p) end) end
+        pcall(function()
+            p:InputHoldBegin()
+            task.wait(p.HoldDuration > 0 and (p.HoldDuration + 0.05) or 0.15)
+            p:InputHoldEnd()
+        end)
+    end)
+    return true
 end
 
 local function GetExactFarmPromptPosition(cropName)
     local locData = TYPER_LOCATIONS[cropName]
-    local fallback = locData and locData.Farm
-    local farmSys = workspace:FindFirstChild("Systems") and workspace.Systems:FindFirstChild("Farm")
-    local farmFolder = farmSys and farmSys:FindFirstChild(cropName)
-    if farmFolder then
-        for _, desc in ipairs(farmFolder:GetDescendants()) do
-            if desc:IsA("ProximityPrompt") and desc.Enabled then
-                local n = (desc.Parent and desc.Parent.Name or ""):lower()
-                local a = (desc.ActionText or ""):lower()
-                local o = (desc.ObjectText or ""):lower()
-                if not n:find("spawn") and not a:find("spawn") and not a:find("car") and not o:find("car") then
-                    local prParent = desc.Parent
-                    local pPos = (prParent:IsA("Attachment") and prParent.WorldPosition)
-                              or (prParent:IsA("BasePart") and prParent.Position)
-                              or (prParent.Parent and prParent.Parent:IsA("BasePart") and prParent.Parent.Position)
-                    if pPos then return pPos end
-                end
-            end
-        end
-    end
-    return fallback
+    local p = GetFarmPrompt(cropName)
+    local pos = p and PromptWorldPos(p)
+    if pos then return pos end
+    return locData and locData.Farm
 end
 
 local function GetHumanLikeFarmStandingSpot(centerPos)
@@ -2930,6 +2957,7 @@ local function StopAllFarms(exceptKey)
     if exceptKey ~= "AutoFarmItem" then MarvenState.AutoFarmItem = false; StopSession("AutoFarmItem") end
     if exceptKey ~= "AutoProcessFarm" then MarvenState.AutoProcessFarm = false; StopSession("AutoProcessFarm") end
     if exceptKey ~= "AutoMineFarm" then MarvenState.AutoMineFarm = false; StopSession("AutoMineFarm") end
+    if exceptKey ~= "AutoStorageFarm" then MarvenState.AutoStorageFarm = false; StopSession("AutoStorageFarm") end
     if exceptKey ~= "AutoFish" and MarvenState.AutoFish then MarvenState.AutoFish = false; pcall(StopAutoFishing) end
 end
 
@@ -3263,6 +3291,7 @@ UnloadSection:Button({
         MarvenState.AutoFarmItem = false
         MarvenState.AutoProcessFarm = false
         MarvenState.AutoMineFarm = false
+        MarvenState.AutoStorageFarm = false
         MarvenState.AutoFish = false
         StopAllFarms(nil)
         pcall(StopAutoFishing)
@@ -3274,6 +3303,142 @@ UnloadSection:Button({
             if fishingPlatform then fishingPlatform:Destroy() fishingPlatform = nil end
         end)
         pcall(function() Window:Destroy() end)
+    end
+})
+
+-- =====================================
+-- แท็บ: ฟาร์มเก็บเข้ารถ
+-- =====================================
+local StorageSel = { Crop = "Bread", Amount = 60 }
+local STORAGE_KEY = "AutoStorageFarm"
+MarvenState[STORAGE_KEY] = false
+
+-- ดูว่ามี ScreenGui อะไรเปิดอยู่บ้าง (ไว้ตรวจว่ากด Storage แล้วมี UI ใหม่เด้งไหม)
+local function SnapshotOpenGuis()
+    local snap = {}
+    for _, g in ipairs(PlayerGui:GetChildren()) do
+        if g:IsA("ScreenGui") and g.Enabled then
+            local grp = g:FindFirstChild("Group")
+            snap[g.Name .. ((grp and grp:IsA("GuiObject") and grp.Visible) and ":open" or "")] = g
+        end
+    end
+    return snap
+end
+
+-- ถ้ามี UI ใหม่เด้ง ลองกดปุ่มแนว "เก็บทั้งหมด/Store/Deposit/All" ในนั้น
+local function ClickNewStorageUi(before)
+    local after = SnapshotOpenGuis()
+    for key, g in pairs(after) do
+        if not before[key] then
+            print("[StorageFarm] UI ใหม่:", key)
+            for _, b in ipairs(g:GetDescendants()) do
+                if b:IsA("GuiButton") and b.Visible then
+                    local n = b.Name:lower()
+                    local t = (b:IsA("TextButton") and b.Text or ""):lower()
+                    if n:find("all") or n:find("store") or n:find("deposit") or n:find("put")
+                       or t:find("all") or t:find("store") or t:find("deposit") or t:find("เก็บ") or t:find("ทั้งหมด") then
+                        print("[StorageFarm] กดปุ่ม:", b:GetFullName())
+                        SafeClickGuiButton(b)
+                        task.wait(0.3)
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- ไปยืนที่เสา แล้วกด Storage (เก็บของใส่รถ)
+local function StoreAtPole(cropName, check)
+    local prompt = GetStoragePrompt(cropName)
+    if not prompt then
+        warn("[StorageFarm] ไม่เจอ Storage prompt ของ", cropName)
+        return false
+    end
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local pos = PromptWorldPos(prompt)
+    if not root or not hum or not pos then return false end
+
+    if hum.Sit then ExitCarNaturally(GetPlayerVehicle() or GetNearbyPlayerVehicle(80)) end
+    if check and not check() then return false end
+
+    local gy = GetGroundLevel(pos.X, pos.Z, pos.Y)
+    root.CFrame = CFrame.lookAt(Vector3.new(pos.X + 2.5, gy + 2.5, pos.Z), Vector3.new(pos.X, gy + 2.5, pos.Z))
+    root.AssemblyLinearVelocity = Vector3.zero
+    root.AssemblyAngularVelocity = Vector3.zero
+    GrantAntiXGrace(10)
+    task.wait(0.4)
+
+    local before = SnapshotOpenGuis()
+    TriggerStoragePrompt(cropName)
+    task.wait(1.0)
+    ClickNewStorageUi(before)
+    task.wait(0.8)
+    return true
+end
+
+local function RunStorageFarm()
+    if not MarvenState[STORAGE_KEY] then return end
+    StopAllFarms(STORAGE_KEY) -- ปิดฟาร์มอื่นก่อน (ฟาร์มปกติ/โพสต์/เหมือง/ตกปลา)
+    local base = StartSession(STORAGE_KEY)
+    local function check()
+        return base() and not MarvenState.AutoFarmItem and not MarvenState.AutoProcessFarm
+            and not MarvenState.AutoMineFarm and not MarvenState.AutoFish
+    end
+    task.spawn(function()
+        local first, fails = true, 0
+        while check() do
+            if first then WarpToTownAndSpawnCar() first = false end
+            if not check() then break end
+
+            local crop = StorageSel.Crop
+            if not TYPER_LOCATIONS[crop] then break end
+
+            HarvestSingleCrop(crop, StorageSel.Amount, check)
+            if not check() then break end
+
+            local before = GetPlayerInventoryCount(crop)
+            StoreAtPole(crop, check)
+            local after = GetPlayerInventoryCount(crop)
+
+            if after >= before and before > 0 then
+                fails += 1
+                warn(string.format("[StorageFarm] เก็บเข้ารถไม่สำเร็จ (%d/3) ของก่อน=%d หลัง=%d", fails, before, after))
+                if fails >= 3 then
+                    warn("[StorageFarm] หยุด: เก็บไม่เข้า (รถอาจเต็ม/กดผิด prompt)")
+                    MarvenState[STORAGE_KEY] = false
+                    break
+                end
+            else
+                fails = 0
+            end
+            task.wait(0.5)
+        end
+    end)
+end
+
+-- ---------- UI ----------
+local StorageTab = Window:Tab({Title = "ฟาร์มเก็บรถ", Icon = "package"})
+local StorageSection = StorageTab:Section({Title = "ฟาร์มแล้วเก็บเข้าท้ายรถ (ไม่ขาย)"})
+StorageSection:Dropdown({
+    Title = "เลือกฟาร์ม",
+    Options = {"ขนมปัง (วัตถุดิบ)", "ซอสมะเขือเทศ (วัตถุดิบ)", "หมู (วัตถุดิบ)", "มะม่วง (วัตถุดิบ)", "ข้าว (วัตถุดิบ)", "มะเขือเทศ (วัตถุดิบ)", "กล้วย (วัตถุดิบ)", "ปู (วัตถุดิบ)", "มะพร้าว (วัตถุดิบ)", "ข้าวโพด (วัตถุดิบ)", "ไข่ไก่ (วัตถุดิบ)", "นม (วัตถุดิบ)", "อ้อย (วัตถุดิบ)"},
+    Default = "ขนมปัง (วัตถุดิบ)", Flag = "StorageFarmType",
+    Callback = function(v)
+        local map = {["ขนมปัง (วัตถุดิบ)"]="Bread", ["ซอสมะเขือเทศ (วัตถุดิบ)"]="Catchup", ["หมู (วัตถุดิบ)"]="Pig", ["มะม่วง (วัตถุดิบ)"]="Mango", ["ข้าว (วัตถุดิบ)"]="Rice", ["มะเขือเทศ (วัตถุดิบ)"]="Tomato", ["กล้วย (วัตถุดิบ)"]="Banana", ["ปู (วัตถุดิบ)"]="Crab", ["มะพร้าว (วัตถุดิบ)"]="Coconut", ["ข้าวโพด (วัตถุดิบ)"]="Corn", ["ไข่ไก่ (วัตถุดิบ)"]="Egg", ["นม (วัตถุดิบ)"]="Milk", ["อ้อย (วัตถุดิบ)"]="Sugarcane"}
+        StorageSel.Crop = map[v] or "Bread"
+    end
+})
+StorageSection:Slider({
+    Title = "ฟาร์มกี่ชิ้นก่อนเก็บเข้ารถ", Default = 60, Min = 10, Max = 200, Rounding = 0, Flag = "StorageFarmAmount",
+    Callback = function(v) StorageSel.Amount = math.clamp(math.round(v), 10, 200) end
+})
+StorageSection:Toggle({
+    Title = "ออโต้ ฟาร์มเก็บเข้ารถ", Default = false, Flag = "AutoStorageFarm",
+    Callback = function(v)
+        MarvenState[STORAGE_KEY] = v
+        if v then RunStorageFarm() else StopSession(STORAGE_KEY) end
     end
 })
 
