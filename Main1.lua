@@ -3695,6 +3695,62 @@ local function WaitCountDrop(cropName, fromCount, timeout)
     return false
 end
 
+-- ใช้รายการ DEPOSITABLE_ITEMS ชุดเดียวกับระบบฝากตู้
+-- แต่โอนผ่าน Car_Storage UI เท่านั้น ไม่เรียก Remote _vault_tx
+local function StoreAllVaultItemsToCar(check)
+    local items = {}
+    local pd = LocalPlayer:FindFirstChild("PlayerData")
+    if not pd then
+        warn("[StorageFarm] ไม่พบ PlayerData จึงอ่านรายการของที่จะเก็บไม่ได้")
+        return false
+    end
+
+    for attr in pairs(pd:GetAttributes()) do
+        if DEPOSITABLE_ITEMS[attr] and GetPlayerInventoryCount(attr) > 0 then
+            table.insert(items, attr)
+        end
+    end
+    table.sort(items)
+
+    if #items == 0 then
+        warn("[StorageFarm] ไม่มีไอเทมในรายการ DEPOSITABLE_ITEMS ให้เก็บเข้ารถ")
+        return false
+    end
+
+    local allStored = true
+    for _, itemName in ipairs(items) do
+        if not ScriptRunning or (check and not check()) then return false end
+
+        local before = GetPlayerInventoryCount(itemName)
+        if before > 0 then
+            if not GetStoragePrompt(itemName) then
+                print("[StorageFarm] ข้ามไอเทมที่ไม่มี Storage prompt:", itemName)
+            else
+                local stored = false
+                for attempt = 1, 2 do
+                    if not ScriptRunning or (check and not check()) then return false end
+                    local clicked = StoreAtPole(itemName, check, true)
+                    if clicked and WaitCountDrop(itemName, before, 5.0) then
+                        stored = true
+                        break
+                    end
+                    task.wait(0.4)
+                end
+
+                if stored then
+                    print(string.format("[StorageFarm] เก็บเข้ารถสำเร็จ: %s x%d", itemName, before - GetPlayerInventoryCount(itemName)))
+                else
+                    warn("[StorageFarm] เก็บเข้ารถไม่สำเร็จ:", itemName, "อาจเต็มหรือเกมไม่รับ CONFIRM")
+                    allStored = false
+                    break
+                end
+            end
+        end
+    end
+
+    return allStored
+end
+
 -- ฟาร์มต่อเนื่องที่เดิม: ครบ N ชิ้น -> กดเก็บเข้ารถที่เสา -> ฟาร์มต่อ -> วนจนรถเต็ม
 local function StorageFarmSession(cropName, amount, check)
     local char = LocalPlayer.Character
@@ -3790,8 +3846,9 @@ local function StorageFarmSession(cropName, amount, check)
             local stored = false
             for attempt = 1, 2 do
                 if not check() then break end
-                local transferOK = StoreAtPole(cropName, check, attempt == 2)
-                if transferOK and WaitCountDrop(cropName, n, 5.0) then
+                -- ใช้รายการฝากของชุดเดียวกับ Vault แล้วส่งผ่าน Car_Storage ทีละรายการ
+                local transferOK = StoreAllVaultItemsToCar(check)
+                if transferOK and GetPlayerInventoryCount(cropName) < n then
                     stored = true
                     break
                 end
