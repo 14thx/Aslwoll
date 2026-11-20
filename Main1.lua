@@ -1178,44 +1178,8 @@ end
 -- DRIVE CAR TO (A* + STRAIGHT RAIL - NO SWAY)
 -- =====================================
 
--- ลดจุดที่เกือบเป็นเส้นตรง -> เกลี่ย -> เรียงจุดห่างเท่ากัน
-local function SmoothRoute(r, spacing)
-    spacing = spacing or 8
-    if #r < 3 then return r end
-
-    -- [a] ตัดจุดซ้ำ/ใกล้กันเกินไป
-    local clean = {r[1]}
-    for i = 2, #r do
-        if (r[i] - clean[#clean]).Magnitude > 0.5 then
-            clean[#clean + 1] = r[i]
-        end
-    end
-    r = clean
-    if #r < 3 then return r end
-
-    -- [b] ตัดจุดที่อยู่แนวเส้นตรงเดียวกัน
-    local simp = {r[1]}
-    for i = 2, #r - 1 do
-        local a = (r[i] - simp[#simp]).Unit
-        local b = (r[i + 1] - r[i]).Unit
-        if a:Dot(b) < 0.995 then simp[#simp + 1] = r[i] end
-    end
-    simp[#simp + 1] = r[#r]
-    r = simp
-
-    -- [c] เกลี่ย 6 รอบ (ปลายทั้งสองข้างคงที่)
-    if #r >= 3 then
-        for _ = 1, 6 do
-            local s = {r[1]}
-            for i = 2, #r - 1 do
-                s[i] = (r[i - 1] + r[i] * 2 + r[i + 1]) * 0.25
-            end
-            s[#r] = r[#r]
-            r = s
-        end
-    end
-
-    -- [d] resample ทุก spacing studs
+-- เรียงจุดห่างเท่ากันตามเส้นทางเดิม (คงรูปทรงเส้น)
+local function Resample(r, spacing)
     local out = {r[1]}
     local carry = 0
     for i = 2, #r do
@@ -1232,8 +1196,29 @@ local function SmoothRoute(r, spacing)
             carry = len - (pos - spacing)
         end
     end
-    out[#out + 1] = r[#r]
+    if (out[#out] - r[#r]).Magnitude > 0.5 then
+        out[#out + 1] = r[#r]
+    else
+        out[#out] = r[#r]
+    end
     return out
+end
+
+-- เรียงจุดถี่ก่อน แล้วค่อยเกลี่ยเบาๆ (ไม่ตัดจุด จึงไม่ตัดโค้ง/ไม่หลุดถนน)
+local function SmoothRoute(r, spacing)
+    spacing = spacing or 6
+    if #r < 2 then return r end
+    r = Resample(r, spacing)
+    if #r < 3 then return r end
+    for _ = 1, 5 do
+        local s = {r[1]}
+        for i = 2, #r - 1 do
+            s[i] = (r[i - 1] + r[i] * 2 + r[i + 1]) * 0.25
+        end
+        s[#r] = r[#r]
+        r = s
+    end
+    return r
 end
 
 DriveCarTo = function(dest, check)
@@ -1505,7 +1490,23 @@ DriveCarTo = function(dest, check)
         route = {Vector3.new(dest.X, 0, dest.Z)}
     else
         table.insert(route, Vector3.new(dest.X, 0, dest.Z))
-        route = SmoothRoute(route, 8)
+        -- เริ่มเส้นจากตำแหน่งรถจริง + ตัดจุดต้นทางที่อยู่ "หลังรถ" ทิ้ง
+        -- (กันรถพุ่งข้างไปหาจุดกลางถนนแล้วหลุดออกนอกเส้นตอนออกตัว)
+        local startCF = car:GetPivot()
+        local sp = Vector3.new(startCF.Position.X, 0, startCF.Position.Z)
+        local carLook = Vector3.new(startCF.LookVector.X, 0, startCF.LookVector.Z)
+        carLook = (carLook.Magnitude > 0.001) and carLook.Unit or Vector3.new(0, 0, -1)
+        while #route > 2 do
+            local d = route[1] - sp
+            if d.Magnitude < 36 and d:Dot(carLook) < 0 then
+                table.remove(route, 1)
+            else
+                break
+            end
+        end
+        table.insert(route, 1, sp)
+
+        route = SmoothRoute(route, 6)
         pcall(function()
             local minimap = PlayerGui:FindFirstChild("Minimap")
             if minimap then
@@ -1576,8 +1577,8 @@ DriveCarTo = function(dest, check)
                     local dir = seg.Unit
                     flatPos += dir * step
 
-                    -- เล็งไปข้างหน้า ~32 studs (4 จุด x 8 studs)
-                    local aheadIdx = math.min(currentIdx + 4, #route)
+                    -- เล็งไปข้างหน้า ~30 studs (5 จุด x 6 studs)
+                    local aheadIdx = math.min(currentIdx + 5, #route)
                     local lookTarget = route[aheadIdx]
                     local aimVec = Vector3.new(lookTarget.X - flatPos.X, 0, lookTarget.Z - flatPos.Z)
                     local desiredDir = (aimVec.Magnitude > 0.5) and aimVec.Unit or dir
