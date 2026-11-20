@@ -3376,15 +3376,194 @@ local function ClickNewStorageUi(before)
     end
 end
 
--- กดเก็บของใส่รถที่เสา
---   moveNear=false : ยืนอยู่ตรงนี้แล้วยิง prompt เลย (ไม่เบิกรถ ไม่เดิน)
---   moveNear=true  : วาร์ปไปยืนข้างเสาก่อน (ใช้เมื่อกดจากที่ยืนไม่ติด)
+-- ===== โอนของจากกระเป๋า -> YOUR STORAGE (หน้าต่างที่เด้งหลังกด Storage) =====
+local GuiService = game:GetService("GuiService")
+
+local function IsGuiShown(obj)
+    local cur = obj
+    while cur and cur ~= game do
+        if cur:IsA("GuiObject") and not cur.Visible then return false end
+        if cur:IsA("ScreenGui") then return cur.Enabled end
+        cur = cur.Parent
+    end
+    return true
+end
+
+local function ClickGuiObject(obj)
+    pcall(function()
+        local sg = obj:FindFirstAncestorOfClass("ScreenGui")
+        local inset = (sg and sg.IgnoreGuiInset) and Vector2.zero or GuiService:GetGuiInset()
+        local p = obj.AbsolutePosition + (obj.AbsoluteSize / 2) + inset
+        VirtualInputManager:SendMouseButtonEvent(p.X, p.Y, 0, true, game, 0)
+        task.wait(0.06)
+        VirtualInputManager:SendMouseButtonEvent(p.X, p.Y, 0, false, game, 0)
+    end)
+end
+
+local function FindStorageGui()
+    for _, g in ipairs(PlayerGui:GetChildren()) do
+        if g:IsA("ScreenGui") and g.Enabled then
+            for _, d in ipairs(g:GetDescendants()) do
+                if d:IsA("TextLabel") and d.Visible and d.Text:lower():find("your storage", 1, true) then
+                    return g, d
+                end
+            end
+        end
+    end
+end
+
+local function CloseStorageGui(g)
+    if not g then return end
+    for _, b in ipairs(g:GetDescendants()) do
+        if b:IsA("GuiButton") and IsGuiShown(b) then
+            local n = b.Name:lower()
+            if n:find("exit") or n == "close" or n == "closed" then
+                ClickGuiObject(b)
+                task.wait(0.3)
+                return
+            end
+        end
+    end
+    pcall(function()
+        local grp = g:FindFirstChild("Group")
+        if grp and grp:IsA("GuiObject") then grp.Visible = false else g.Enabled = false end
+    end)
+end
+
+-- =========================================================
+-- STORAGE TRANSFER: SELECT ITEM -> MAX -> CONFIRM
+-- =========================================================
+local function GetGuiButtonCaption(button)
+    local texts = {}
+
+    if button:IsA("TextButton") then
+        table.insert(texts, button.Text)
+    end
+
+    for _, child in ipairs(button:GetDescendants()) do
+        if child:IsA("TextLabel") or child:IsA("TextButton") then
+            table.insert(texts, child.Text)
+        end
+    end
+
+    return table.concat(texts, " "):lower()
+end
+
+local function FindStorageActionButton(gui, wanted)
+    wanted = wanted:lower()
+
+    for _, obj in ipairs(gui:GetDescendants()) do
+        if obj:IsA("GuiButton") and IsGuiShown(obj) then
+            local caption = GetGuiButtonCaption(obj)
+            local name = obj.Name:lower()
+
+            if caption:match("%f[%a]" .. wanted .. "%f[%A]")
+                or name:match("%f[%a]" .. wanted .. "%f[%A]") then
+                return obj
+            end
+        end
+    end
+
+    return nil
+end
+
+local function WaitStorageActionButton(gui, wanted, timeout)
+    local started = os.clock()
+
+    repeat
+        local button = FindStorageActionButton(gui, wanted)
+        if button then
+            return button
+        end
+        task.wait(0.15)
+    until os.clock() - started >= timeout
+
+    return nil
+end
+
+-- เลือกไอเทม -> MAX -> CONFIRM
+local function TransferCropToStorage(cropName)
+    local gui, storLabel
+    local started = os.clock()
+
+    repeat
+        gui, storLabel = FindStorageGui()
+        if gui then break end
+        task.wait(0.2)
+    until os.clock() - started >= 5
+
+    if not gui then
+        warn("[StorageFarm] ไม่พบหน้าต่าง YOUR STORAGE")
+        return false
+    end
+
+    -- หาไอเทมตามชื่อที่กำลังฟาร์ม ฝั่ง YOUR BACKPACK เท่านั้น
+    local slotLabel
+    for _, obj in ipairs(gui:GetDescendants()) do
+        if obj:IsA("TextLabel")
+            and IsGuiShown(obj)
+            and obj.Text:lower() == cropName:lower()
+            and obj.AbsolutePosition.X < storLabel.AbsolutePosition.X then
+            slotLabel = obj
+            break
+        end
+    end
+
+    if not slotLabel then
+        warn("[StorageFarm] ไม่พบไอเทมในกระเป๋า:", cropName)
+        CloseStorageGui(gui)
+        return false
+    end
+
+    local slot = slotLabel:FindFirstAncestorWhichIsA("GuiButton") or slotLabel.Parent
+    if not slot or not slot:IsA("GuiObject") then
+        warn("[StorageFarm] ช่องไอเทมไม่ใช่ GuiObject")
+        CloseStorageGui(gui)
+        return false
+    end
+
+    -- 1) เลือกไอเทม
+    print("[StorageFarm] เลือกไอเทม:", cropName)
+    ClickGuiObject(slot)
+    task.wait(0.5)
+
+    -- 2) กด MAX
+    local maxButton = WaitStorageActionButton(gui, "max", 4)
+    if not maxButton then
+        warn("[StorageFarm] ไม่พบปุ่ม MAX")
+        CloseStorageGui(gui)
+        return false
+    end
+
+    print("[StorageFarm] กด MAX")
+    ClickGuiObject(maxButton)
+    task.wait(0.4)
+
+    -- 3) กด CONFIRM
+    local confirmButton = WaitStorageActionButton(gui, "confirm", 4)
+    if not confirmButton then
+        warn("[StorageFarm] ไม่พบปุ่ม CONFIRM")
+        CloseStorageGui(gui)
+        return false
+    end
+
+    print("[StorageFarm] กด CONFIRM")
+    ClickGuiObject(confirmButton)
+    task.wait(0.8)
+
+    CloseStorageGui(gui)
+    print("[StorageFarm] ส่งคำสั่งโอนแล้ว:", cropName)
+    return true
+end
+
+-- กดเก็บของเข้ารถผ่านหน้าต่าง Storage
 local function StoreAtPole(cropName, check, moveNear)
     local prompt = GetStoragePrompt(cropName)
     if not prompt then
         warn("[StorageFarm] ไม่เจอ Storage prompt ของ", cropName)
         return false
     end
+
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not root then return false end
@@ -3392,20 +3571,26 @@ local function StoreAtPole(cropName, check, moveNear)
     if moveNear then
         local pos = PromptWorldPos(prompt)
         if not pos then return false end
+
         local gy = GetGroundLevel(pos.X, pos.Z, pos.Y)
-        root.CFrame = CFrame.lookAt(Vector3.new(pos.X + 2.5, gy + 2.5, pos.Z), Vector3.new(pos.X, gy + 2.5, pos.Z))
+        root.CFrame = CFrame.lookAt(
+            Vector3.new(pos.X + 2.5, gy + 2.5, pos.Z),
+            Vector3.new(pos.X, gy + 2.5, pos.Z)
+        )
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
         GrantAntiXGrace(10)
         task.wait(0.4)
     end
+
     if check and not check() then return false end
 
-    local before = SnapshotOpenGuis()
     TriggerStoragePrompt(cropName)
     task.wait(1.0)
-    ClickNewStorageUi(before)
-    return true
+
+    if check and not check() then return false end
+
+    return TransferCropToStorage(cropName)
 end
 
 -- รอให้จำนวนของในตัวลดลง (แปลว่าเก็บเข้ารถสำเร็จ)
@@ -3513,13 +3698,16 @@ local function StorageFarmSession(cropName, amount, check)
             local stored = false
             for attempt = 1, 2 do
                 if not check() then break end
-                StoreAtPole(cropName, check, attempt == 2) -- ครั้งที่ 2 ค่อยวาร์ปไปข้างเสา
-                if WaitCountDrop(cropName, n, 3.0) then stored = true break end
+                local transferOK = StoreAtPole(cropName, check, attempt == 2)
+                if transferOK and WaitCountDrop(cropName, n, 5.0) then
+                    stored = true
+                    break
+                end
             end
             if not check() then break end
             StandAtFarm() -- กลับมายืนที่ฟาร์ม (เผื่อวาร์ปไปที่เสา)
             if not stored then
-                warn("[StorageFarm] เก็บเข้ารถไม่เข้า (รถน่าจะเต็ม)")
+                warn("[StorageFarm] เก็บเข้ารถไม่เข้า (รถเต็ม หรือกดโอนไม่ติด ดู Console ด้านบน)")
                 result = "full"
                 break
             end
