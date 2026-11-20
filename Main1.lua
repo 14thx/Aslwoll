@@ -3390,14 +3390,30 @@ local function IsGuiShown(obj)
 end
 
 local function ClickGuiObject(obj)
-    pcall(function()
+    if not obj or not obj:IsA("GuiObject") then
+        warn("[StorageDebug] CLICK FAILED: invalid GuiObject")
+        return false
+    end
+    if not IsGuiShown(obj) then
+        warn("[StorageDebug] CLICK FAILED: hidden object", obj:GetFullName())
+        return false
+    end
+
+    local ok, err = pcall(function()
         local sg = obj:FindFirstAncestorOfClass("ScreenGui")
         local inset = (sg and sg.IgnoreGuiInset) and Vector2.zero or GuiService:GetGuiInset()
         local p = obj.AbsolutePosition + (obj.AbsoluteSize / 2) + inset
+        print("[StorageDebug] CLICK:", obj:GetFullName(), "at", p.X, p.Y)
         VirtualInputManager:SendMouseButtonEvent(p.X, p.Y, 0, true, game, 0)
-        task.wait(0.06)
+        task.wait(0.12)
         VirtualInputManager:SendMouseButtonEvent(p.X, p.Y, 0, false, game, 0)
     end)
+
+    if not ok then
+        warn("[StorageDebug] CLICK ERROR:", tostring(err))
+        return false
+    end
+    return true
 end
 
 local function FindStorageGui()
@@ -3524,7 +3540,11 @@ local function TransferCropToStorage(cropName)
 
     -- 1) เลือกไอเทม
     print("[StorageFarm] เลือกไอเทม:", cropName)
-    ClickGuiObject(slot)
+    if not ClickGuiObject(slot) then
+        warn("[StorageFarm] คลิกช่องไอเทมไม่สำเร็จ")
+        CloseStorageGui(gui)
+        return false
+    end
     task.wait(0.5)
 
     -- 2) กด MAX
@@ -3536,7 +3556,11 @@ local function TransferCropToStorage(cropName)
     end
 
     print("[StorageFarm] กด MAX")
-    ClickGuiObject(maxButton)
+    if not ClickGuiObject(maxButton) then
+        warn("[StorageFarm] คลิก MAX ไม่สำเร็จ")
+        CloseStorageGui(gui)
+        return false
+    end
     task.wait(0.4)
 
     -- 3) กด CONFIRM
@@ -3548,11 +3572,15 @@ local function TransferCropToStorage(cropName)
     end
 
     print("[StorageFarm] กด CONFIRM")
-    ClickGuiObject(confirmButton)
+    if not ClickGuiObject(confirmButton) then
+        warn("[StorageFarm] คลิก CONFIRM ไม่สำเร็จ")
+        CloseStorageGui(gui)
+        return false
+    end
     task.wait(0.8)
 
     CloseStorageGui(gui)
-    print("[StorageFarm] ส่งคำสั่งโอนแล้ว:", cropName)
+    print("[StorageFarm] ส่งคำสั่งโอนแล้ว รอตรวจจำนวนของ:", cropName)
     return true
 end
 
@@ -3813,7 +3841,7 @@ StorageSection:Dropdown({
             ["ขายทันที (ปกติ)"] = "Sell",
             ["เก็บหลังรถ - รถเต็มไปขาย"] = "TrunkSell",
             ["เก็บหลังรถ - รถเต็มเก็บตู้"] = "TrunkVault",
-            ["เก็บหลังรถ - รถเต็มโพแร่-แพ็ก"] = "TrunkProcess",
+            ["เก็บหลังรถ - รถเต็มโพแร่แพ็ก"] = "TrunkProcess",
         }
         StorageSel.Mode = map[v] or "Sell"
     end
