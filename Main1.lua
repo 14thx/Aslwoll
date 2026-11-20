@@ -1175,7 +1175,7 @@ local function EnsureVehiclePlatform(surfaceY, carPos)
 end
 
 -- =====================================
--- DRIVE CAR TO (STABLE RAIL + WHEEL SPIN)
+-- DRIVE CAR TO (A* + STRAIGHT RAIL - NO SWAY)
 -- =====================================
 DriveCarTo = function(dest, check)
     local char = LocalPlayer.Character
@@ -1200,29 +1200,7 @@ DriveCarTo = function(dest, check)
 
     local prevMouseBehavior = UserInputService.MouseBehavior
     local prevMouseIcon = UserInputService.MouseIconEnabled
-    local prevPrimaryAnchored = car.PrimaryPart and car.PrimaryPart.Anchored or false
     local savedCanCollide = {}
-
-    local wheelParts = {}
-    local wheelMotors = {}
-    pcall(function()
-        for _, desc in ipairs(car:GetDescendants()) do
-            if desc:IsA("BasePart") and desc ~= car.PrimaryPart and desc ~= seat then
-                local n = desc.Name:lower()
-                if n:find("wheel") or n:find("tire") or n:find("rim") or n == "fl" or n == "fr" or n == "rl" or n == "rr" then
-                    local rad = math.max(math.min(desc.Size.Y, desc.Size.Z) * 0.5, 0.5)
-                    table.insert(wheelParts, {part = desc, radius = rad})
-                end
-            elseif desc:IsA("HingeConstraint") or desc:IsA("CylindricalConstraint") then
-                if desc.ActuatorType == Enum.ActuatorType.Motor then
-                    table.insert(wheelMotors, {
-                        constraint = desc,
-                        origVelocity = desc.AngularVelocity
-                    })
-                end
-            end
-        end
-    end)
 
     local function SetTempNoClip(enabled)
         if not isVehicleNoclipEnabled and enabled then return end
@@ -1246,45 +1224,8 @@ DriveCarTo = function(dest, check)
         end)
     end
 
-    local function SpinWheels(stepDist, speedVal)
-        local omega = (speedVal / 1.5)
-        for _, m in ipairs(wheelMotors) do
-            pcall(function()
-                if m.constraint and m.constraint.Parent then
-                    m.constraint.AngularVelocity = -omega
-                end
-            end)
-        end
-        for _, w in ipairs(wheelParts) do
-            pcall(function()
-                if w.part and w.part.Parent and not w.part.Anchored then
-                    local angle = stepDist / w.radius
-                    w.part.CFrame = w.part.CFrame * CFrame.Angles(-angle, 0, 0)
-                end
-            end)
-        end
-    end
-
-    local function RestoreWheels()
-        for _, m in ipairs(wheelMotors) do
-            pcall(function()
-                if m.constraint and m.constraint.Parent then
-                    m.constraint.AngularVelocity = m.origVelocity
-                end
-            end)
-        end
-    end
-
     local function CleanupDrive()
         isRoadDriving = false
-        RestoreWheels()
-        pcall(function()
-            if car and car.PrimaryPart then
-                car.PrimaryPart.Anchored = prevPrimaryAnchored
-                car.PrimaryPart.AssemblyLinearVelocity = Vector3.zero
-                car.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
-            end
-        end)
         SetTempNoClip(false)
         pcall(function()
             UserInputService.MouseBehavior = prevMouseBehavior
@@ -1506,7 +1447,7 @@ DriveCarTo = function(dest, check)
     else
         table.insert(route, Vector3.new(dest.X, 0, dest.Z))
         if #route >= 4 then
-            for _ = 1, 3 do
+            for _ = 1, 2 do
                 local smoothed = {route[1]}
                 for i = 2, #route - 1 do
                     smoothed[i] = (route[i - 1] + route[i] * 2 + route[i + 1]) * 0.25
@@ -1533,14 +1474,9 @@ DriveCarTo = function(dest, check)
         end)
     end
 
-    -- [3] ล็อกความนิ่ง + มองไกลล่วงหน้า + หมุนล้อ
+    -- [3] Straight Rail Lock (ไม่ส่ายซ้าย-ขวา)
     isRoadDriving = true
     SetTempNoClip(true)
-    pcall(function()
-        if car.PrimaryPart then
-            car.PrimaryPart.Anchored = true
-        end
-    end)
 
     local driveStartTime = os.clock()
     local currentIdx = 1
@@ -1577,7 +1513,6 @@ DriveCarTo = function(dest, check)
 
             local maxSpeed = math.clamp(tonumber(VehicleDriveSpeed) or 150, 10, 280)
             local step = maxSpeed * dt
-            local movedDist = 0
 
             while step > 0 and currentIdx <= #route do
                 local wp = route[currentIdx]
@@ -1585,30 +1520,15 @@ DriveCarTo = function(dest, check)
                 local dist = seg.Magnitude
                 if dist <= step then
                     flatPos = Vector3.new(wp.X, 0, wp.Z)
-                    movedDist += dist
                     step -= dist
                     currentIdx += 1
                 else
                     local dir = seg.Unit
                     flatPos += dir * step
-                    movedDist += step
-
-                    local lookAheadDist = 36
-                    local accum = 0
-                    local lookTarget = route[#route]
-                    for j = currentIdx, #route - 1 do
-                        local dSeg = (route[j + 1] - route[j]).Magnitude
-                        if accum + dSeg >= lookAheadDist then
-                            local rem = (lookAheadDist - accum) / math.max(dSeg, 0.001)
-                            lookTarget = route[j]:Lerp(route[j + 1], math.clamp(rem, 0, 1))
-                            break
-                        end
-                        accum += dSeg
-                    end
-
+                    local lookTarget = route[math.min(currentIdx + 1, #route)]
                     local aimVec = Vector3.new(lookTarget.X - flatPos.X, 0, lookTarget.Z - flatPos.Z)
                     local desiredDir = (aimVec.Magnitude > 0.5) and aimVec.Unit or dir
-                    flatLook = flatLook:Lerp(desiredDir, math.clamp(dt * 10, 0.12, 1)).Unit
+                    flatLook = flatLook:Lerp(desiredDir, math.clamp(dt * 14, 0.15, 1)).Unit
                     step = 0
                 end
             end
@@ -1621,11 +1541,17 @@ DriveCarTo = function(dest, check)
 
             local groundY = GetGroundLevel(flatPos.X, flatPos.Z, smoothY)
             local targetY = groundY + 2.6 + (tonumber(VehicleHeightOffset) or 0)
-            smoothY += (targetY - smoothY) * math.clamp(dt * 14, 0.12, 1)
+            smoothY += (targetY - smoothY) * math.clamp(dt * 18, 0.15, 1)
 
             local newPos = Vector3.new(flatPos.X, smoothY, flatPos.Z)
             car:PivotTo(CFrame.lookAt(newPos, newPos + flatLook))
-            SpinWheels(movedDist, maxSpeed)
+
+            pcall(function()
+                if car.PrimaryPart then
+                    car.PrimaryPart.AssemblyLinearVelocity = Vector3.zero
+                    car.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
+                end
+            end)
 
             if isVehiclePlatformEnabled then
                 EnsureVehiclePlatform(groundY, newPos)
