@@ -1660,7 +1660,41 @@ local function ResolveCropPrompt(cropName, leaf)
 end
 
 local function GetFarmPrompt(cropName) return ResolveCropPrompt(cropName, "Farm") end
-local function GetStoragePrompt(cropName) return ResolveCropPrompt(cropName, "Storage") end
+
+-- Car_Storage เป็น Storage ของรถ ไม่ใช่ Storage prompt ใต้โฟลเดอร์ฟาร์มของพืช
+-- ใช้รถของผู้เล่นที่ระบบตรวจ ownership ได้ แล้วหา ProximityPrompt ชื่อ Storage
+local function GetStoragePrompt(cropName)
+    local vehicle = GetPlayerVehicle() or GetNearbyPlayerVehicle(80)
+    if vehicle then
+        local chassis = vehicle:FindFirstChild("Chassis")
+        local storageNode = chassis and chassis:FindFirstChild("Storage")
+        if storageNode then
+            if storageNode:IsA("ProximityPrompt") and storageNode.Enabled then
+                return storageNode
+            end
+            local direct = storageNode:FindFirstChild("Storage")
+            if direct and direct:IsA("ProximityPrompt") and direct.Enabled then
+                return direct
+            end
+            for _, obj in ipairs(storageNode:GetDescendants()) do
+                if obj:IsA("ProximityPrompt") and obj.Enabled then
+                    return obj
+                end
+            end
+        end
+
+        -- fallback: หา prompt ชื่อ Storage ภายในรถของผู้เล่นเท่านั้น
+        for _, obj in ipairs(vehicle:GetDescendants()) do
+            if obj:IsA("ProximityPrompt") and obj.Enabled
+                and obj.Name:lower() == "storage" then
+                return obj
+            end
+        end
+    end
+
+    -- ไม่ fallback ไปยัง prompt ของแปลงฟาร์ม เพราะอาจกดผิดจุด
+    return nil
+end
 
 -- (ใช้ดีบัก) พิมพ์ prompt ทั้งหมดของพืชนั้น เพื่อดูว่ามีตัวไหนบ้าง
 local function DebugFarmPrompts(cropName)
@@ -2322,7 +2356,7 @@ end
 -- VAULT SYSTEM
 -- =====================================
 local DEPOSITABLE_ITEMS = {
-    Rock=true, Svibranium=true, Bread=true, Catchup=true, Pig=true,
+    Rock=true, Svibranium=true, Vibranium=true, Bread=true, Catchup=true, Pig=true,
     Mango=true, Rice=true, Tomato=true, Banana=true, Crab=true,
     Coconut=true, Corn=true, Egg=true, Milk=true, Sugarcane=true,
     Sandwich=true, MangoRice=true, BananaPack=true, KangSom=true,
@@ -3540,9 +3574,14 @@ local function FindStorageItemButton(mainFrame, cropName)
     local wanted = tostring(cropName or ""):lower()
     if wanted == "" then return nil end
 
-    -- วิธีหลัก: หาแถวที่ชื่อ Instance ตรงกับชื่องาน แล้วใช้ Holder.Button
+    -- ชื่อในระบบฟาร์มบางเวอร์ชันคือ Svibranium แต่ชื่อช่องในกระเป๋าแสดง Vibranium
+    local aliases = { svibranium = "vibranium" }
+    local acceptedNames = {[wanted] = true}
+    if aliases[wanted] then acceptedNames[aliases[wanted]] = true end
+
+    -- วิธีหลัก: หาแถวที่ชื่อ Instance ตรงกับชื่องาน/ชื่อที่แสดงในกระเป๋า แล้วใช้ Holder.Button
     for _, row in ipairs(inventory:GetChildren()) do
-        if row.Name:lower() == wanted then
+        if acceptedNames[row.Name:lower()] then
             local holder = row:FindFirstChild("Holder")
             local button = holder and holder:FindFirstChild("Button")
             if button and button:IsA("GuiButton") and IsGuiShown(button) then
@@ -3554,7 +3593,7 @@ local function FindStorageItemButton(mainFrame, cropName)
 
     -- สำรอง: ค้นหาชื่อแถวแบบไม่สนตัวพิมพ์เล็ก/ใหญ่ใน descendants
     for _, row in ipairs(inventory:GetDescendants()) do
-        if row.Name:lower() == wanted then
+        if acceptedNames[row.Name:lower()] then
             local holder = row:FindFirstChild("Holder")
             local button = holder and holder:FindFirstChild("Button")
             if button and button:IsA("GuiButton") and IsGuiShown(button) then
@@ -3697,20 +3736,29 @@ end
 
 -- ใช้รายการ DEPOSITABLE_ITEMS ชุดเดียวกับระบบฝากตู้
 -- แต่โอนผ่าน Car_Storage UI เท่านั้น ไม่เรียก Remote _vault_tx
-local function StoreAllVaultItemsToCar(check)
+local function StoreAllVaultItemsToCar(check, onlyItem)
     local items = {}
     local pd = LocalPlayer:FindFirstChild("PlayerData")
-    if not pd then
-        warn("[StorageFarm] ไม่พบ PlayerData จึงอ่านรายการของที่จะเก็บไม่ได้")
-        return false
-    end
-
-    for attr in pairs(pd:GetAttributes()) do
-        if DEPOSITABLE_ITEMS[attr] and GetPlayerInventoryCount(attr) > 0 then
-            table.insert(items, attr)
+    if onlyItem then
+        -- โหมดฟาร์ม: เก็บเฉพาะไอเทมที่เลือก ไม่วนไปแตะของชนิดอื่นในกระเป๋า
+        if DEPOSITABLE_ITEMS[onlyItem] and GetPlayerInventoryCount(onlyItem) > 0 then
+            table.insert(items, onlyItem)
+        else
+            warn("[StorageFarm] ไอเทมงานนี้ไม่มีในรายการฝากหรือจำนวนเป็นศูนย์:", tostring(onlyItem))
+            return false
         end
+    else
+        if not pd then
+            warn("[StorageFarm] ไม่พบ PlayerData จึงอ่านรายการของที่จะเก็บไม่ได้")
+            return false
+        end
+        for attr in pairs(pd:GetAttributes()) do
+            if DEPOSITABLE_ITEMS[attr] and GetPlayerInventoryCount(attr) > 0 then
+                table.insert(items, attr)
+            end
+        end
+        table.sort(items)
     end
-    table.sort(items)
 
     if #items == 0 then
         warn("[StorageFarm] ไม่มีไอเทมในรายการ DEPOSITABLE_ITEMS ให้เก็บเข้ารถ")
@@ -3847,7 +3895,7 @@ local function StorageFarmSession(cropName, amount, check)
             for attempt = 1, 2 do
                 if not check() then break end
                 -- ใช้รายการฝากของชุดเดียวกับ Vault แล้วส่งผ่าน Car_Storage ทีละรายการ
-                local transferOK = StoreAllVaultItemsToCar(check)
+                local transferOK = StoreAllVaultItemsToCar(check, cropName)
                 if transferOK and GetPlayerInventoryCount(cropName) < n then
                     stored = true
                     break
