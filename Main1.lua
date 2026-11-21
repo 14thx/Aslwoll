@@ -1221,8 +1221,6 @@ local function SmoothRoute(r, spacing)
     return r
 end
 
--- ความเร่งตอนออกตัว (studs/s^2) ปรับได้
-DriveAccel = 70
 -- ความหน่วงตอนเข้าใกล้จุดหมาย (studs/s^2) ยิ่งน้อยยิ่งเริ่มลดความเร็วจากไกล
 DriveBrake = 140
 
@@ -1581,7 +1579,8 @@ DriveCarTo = function(dest, check)
     if flatLook.Magnitude < 0.001 then flatLook = Vector3.new(0, 0, -1) else flatLook = flatLook.Unit end
     local smoothY = startPivot.Position.Y
     local arrived = false
-    local curSpeed = 0
+    -- ล็อคความเร็วตามสไลเดอร์ตั้งแต่ออกตัว (ไม่ไล่เร่งจาก 0)
+    local curSpeed = math.clamp(tonumber(VehicleDriveSpeed) or 150, 10, 280)
     local endFlat = Vector3.new(dest.X, 0, dest.Z)
     pcall(function()
         lockedChassis = FindChassisObject(car)
@@ -1617,11 +1616,11 @@ DriveCarTo = function(dest, check)
 
             local maxSpeed = math.clamp(tonumber(VehicleDriveSpeed) or 150, 10, 280)
 
-            -- คงความเร็วที่ตั้งไว้ แล้วลดความเร็วเมื่อใกล้จุดหมาย (ไม่ชะลอตอนเข้าโค้ง)
+            -- ล็อคความเร็วที่ตั้งไว้ตลอดทาง แล้วลดความเร็วเมื่อใกล้จุดหมายเท่านั้น (ไม่ชะลอตอนเข้าโค้ง)
             local toEnd = (endFlat - flatPos).Magnitude
             local targetSpeed = math.min(maxSpeed, math.sqrt(2 * DriveBrake * math.max(toEnd - 4, 0)) + 6)
             if curSpeed < targetSpeed then
-                curSpeed = math.min(targetSpeed, curSpeed + DriveAccel * dt)
+                curSpeed = targetSpeed -- ล็อคที่ความเร็วตั้งไว้ทันที
             else
                 curSpeed = math.max(targetSpeed, curSpeed - DriveBrake * dt)
             end
@@ -3015,7 +3014,7 @@ task.spawn(function()
 end)
 
 local MarvenState = {
-    AutoEat = true, AutoFarmItem = false, AutoProcessFarm = false, AutoMineFarm = false, AutoFish = false, InfiniteStamina = true, InfiniteHunger = false
+    AutoEat = true, AutoFarmItem = false, AutoProcessFarm = false, AutoMineFarm = false, AutoMarketFarm = false, AutoFish = false, InfiniteStamina = true, InfiniteHunger = false
 }
 local MarvenSelected = { NormalFarmType = "Bread", ProcessFarmType = "Banana", MineFarmType = "Rock" }
 local MarvenSession = { AutoFarmItem = 0, AutoProcessFarm = 0, AutoMineFarm = 0 }
@@ -3031,6 +3030,7 @@ local function StopAllFarms(exceptKey)
     if exceptKey ~= "AutoFarmItem" then MarvenState.AutoFarmItem = false; StopSession("AutoFarmItem") end
     if exceptKey ~= "AutoProcessFarm" then MarvenState.AutoProcessFarm = false; StopSession("AutoProcessFarm") end
     if exceptKey ~= "AutoMineFarm" then MarvenState.AutoMineFarm = false; StopSession("AutoMineFarm") end
+    if exceptKey ~= "AutoMarketFarm" then MarvenState.AutoMarketFarm = false; StopSession("AutoMarketFarm") end
     if exceptKey ~= "AutoFish" and MarvenState.AutoFish then MarvenState.AutoFish = false; pcall(StopAutoFishing) end
 end
 
@@ -3075,8 +3075,47 @@ local StatsGrid = Status:StatGrid({
     {Label = "Game", Value = GameName}, {Label = "Time", Value = "00:00:00"}
 })
 
-local MarketTab = Window:Tab({Title = "ตลาด Real-Time", Icon = "trending-up"})
-local MarketSection = MarketTab:Section({Title = "ราคาสินค้าในตลาดสด (อัปเดตอัตโนมัติ)"})
+-- =====================================
+-- ฟาร์มอาหารตามราคาตลาด Real-Time
+-- =====================================
+-- อาหาร/ของแปรรูปที่ตลาดรับซื้อ: key = ชนิดที่ ProcessCycle รู้จัก, aliases = ชื่อที่อาจโผล่ในข้อมูลราคา
+MarketFoods = {
+    {key = "Banana",       label = "กล้วยแพ็ค",       aliases = {"bananapack", "packbanana", "กล้วยแพ็ค"}},
+    {key = "Sandwich",     label = "แซนวิช",          aliases = {"sandwich", "sandwish", "foodsandwich", "แซนวิช"}},
+    {key = "Mango",        label = "ข้าวมันมะม่วง",    aliases = {"mangorice", "foodmangorice", "ข้าวมันมะม่วง"}},
+    {key = "RiceKapaoMoo", label = "ข้าวกะเพราหมู",    aliases = {"ricekapaomoo", "kapaomoo", "foodricekapaomoo", "ข้าวกะเพราหมู"}},
+    {key = "KangSom",      label = "แกงส้ม",          aliases = {"kangsom", "foodkangsom", "แกงส้ม"}},
+}
+
+-- ราคาปัจจุบันของอาหารชนิดนั้นจากข้อมูล _economy (nil ถ้ายังไม่มีข้อมูลจริง ไม่ใช้ค่าเดาแบบ 2500)
+GetFoodPrice = function(food)
+    local prices = _G.RealTimePrices
+    if type(prices) ~= "table" then return nil end
+    for k, v in pairs(prices) do
+        if type(k) == "string" and type(v) == "number" and v > 0 then
+            local lk = k:lower():gsub("[%s_]", "")
+            for _, w in ipairs(food.aliases) do
+                if lk == w then return v end
+            end
+        end
+    end
+    return nil
+end
+
+-- เลือกอาหารที่ราคาสูงสุดตอนนี้ คืน (key, ราคา, รายการเรียงราคามาก→น้อย)
+PickBestFood = function()
+    local ranked = {}
+    for _, food in ipairs(MarketFoods) do
+        local price = GetFoodPrice(food)
+        if price then ranked[#ranked + 1] = {key = food.key, label = food.label, price = price} end
+    end
+    table.sort(ranked, function(x, y) return x.price > y.price end)
+    if #ranked == 0 then return nil, nil, ranked end
+    return ranked[1].key, ranked[1].price, ranked
+end
+
+local MarketTab = Window:Tab({Title = "ฟาร์มตามราคาดี", Icon = "trending-up"})
+local MarketSection = MarketTab:Section({Title = "ราคาอาหารที่ดีที่สุด (อัปเดตอัตโนมัติ)"})
 local MarketPriceDisplay = MarketSection:Paragraph({
     Title = "ราคาตลาดปัจจุบัน",
     Content = "กำลังเชื่อมต่อข้อมูลราคาจากเซิร์ฟเวอร์..."
@@ -3087,15 +3126,26 @@ task.spawn(function()
         task.wait(1.5)
         if not ScriptRunning then break end
         pcall(function()
-            local currentPrices = GetRealMarketPrices()
-            local text = "📊 [ราคาสินค้าหลักในตลาด]\n"
-            for item, price in pairs(currentPrices) do
-                text = text .. "🔹 " .. tostring(item) .. " : 💰 " .. tostring(price) .. " บาท\n"
+            -- แสดงเฉพาะอาหารที่ราคาดีที่สุดตอนนี้ (อันเดียว)
+            local bestKey, bestPrice, ranked = PickBestFood()
+            local text
+            if bestKey then
+                text = "🏆 อาหารราคาดีที่สุดตอนนี้\n" .. ranked[1].label .. " : 💰 " .. tostring(bestPrice) .. " บาท"
+            else
+                text = "⏳ ยังไม่ได้รับราคาอาหารจากเซิร์ฟเวอร์"
             end
             MarketPriceDisplay:Set(text)
         end)
     end
 end)
+
+MarketSection:Toggle({
+    Title = "ออโต้ ฟาร์มอาหารตามราคาดีที่สุด", Default = false, Flag = "AutoMarketFarm",
+    Callback = function(v)
+        MarvenState.AutoMarketFarm = v
+        if v then RunMarketFarm() else StopSession("AutoMarketFarm") end
+    end
+})
 
 local fc, lu = 0, os.clock()
 local statsConn = nil
@@ -3142,6 +3192,71 @@ local function RunNormalFarm()
     end)
 end
 
+-- หนึ่งรอบของฟาร์มแปรรูป/คราฟต์ตามชนิด k (เก็บวัตถุดิบ → แปรรูป/คราฟต์ → ขายตลาด)
+ProcessCycle = function(k, check)
+    if k == "Banana" then
+        if GetPlayerInventoryCount("Banana") < 60 then HarvestSingleCrop("Banana", 60, check) end
+        if not check() then return end
+        ProcessBananaAtStation(check)
+        if not check() then return end
+        SellAtEconomyMarket(check)
+
+    elseif k == "Sandwich" then
+        if GetPlayerInventoryCount("Bread") < 60 then HarvestSingleCrop("Bread", 60, check) end
+        if not check() then return end
+        if GetPlayerInventoryCount("Catchup") < 60 then HarvestSingleCrop("Catchup", 60, check) end
+        if not check() then return end
+        if GetPlayerInventoryCount("Pig") < 60 then HarvestSingleCrop("Pig", 60, check) end
+        if not check() then return end
+        if GetPlayerInventoryCount("Bread") < 3 or GetPlayerInventoryCount("Catchup") < 2 or GetPlayerInventoryCount("Pig") < 2 then
+            task.wait(1)
+            return
+        end
+        CraftFoodAtStation("Sandwish", check)
+        if not check() then return end
+        SellAtEconomyMarket(check)
+
+    elseif k == "Mango" then
+        if GetPlayerInventoryCount("Mango") < 60 then HarvestSingleCrop("Mango", 60, check) end
+        if not check() then return end
+        if GetPlayerInventoryCount("Rice") < 60 then HarvestSingleCrop("Rice", 60, check) end
+        if not check() then return end
+        if GetPlayerInventoryCount("Mango") < 2 or GetPlayerInventoryCount("Rice") < 3 then
+            task.wait(1)
+            return
+        end
+        CraftFoodAtStation("MangoRice", check)
+        if not check() then return end
+        SellAtEconomyMarket(check)
+
+    elseif k == "RiceKapaoMoo" then
+        if GetPlayerInventoryCount("Rice") < 60 then HarvestSingleCrop("Rice", 60, check) end
+        if not check() then return end
+        if GetPlayerInventoryCount("Pig") < 60 then HarvestSingleCrop("Pig", 60, check) end
+        if not check() then return end
+        if GetPlayerInventoryCount("Rice") < 3 or GetPlayerInventoryCount("Pig") < 2 then
+            task.wait(1)
+            return
+        end
+        CraftFoodAtStation("RiceKapaoMoo", check)
+        if not check() then return end
+        SellAtEconomyMarket(check)
+
+    elseif k == "KangSom" then
+        if GetPlayerInventoryCount("Tomato") < 60 then HarvestSingleCrop("Tomato", 60, check) end
+        if not check() then return end
+        if GetPlayerInventoryCount("Crab") < 60 then HarvestSingleCrop("Crab", 60, check) end
+        if not check() then return end
+        if GetPlayerInventoryCount("Tomato") < 2 or GetPlayerInventoryCount("Crab") < 2 then
+            task.wait(1)
+            return
+        end
+        CraftFoodAtStation("KangSom", check)
+        if not check() then return end
+        SellAtEconomyMarket(check)
+    end
+end
+
 local function RunProcessFarm()
     if not MarvenState.AutoProcessFarm then return end
     StopAllFarms("AutoProcessFarm")
@@ -3151,70 +3266,7 @@ local function RunProcessFarm()
         while check() do
             if first then WarpToTownAndSpawnCar() first = false end
             if not check() then break end
-            local k = MarvenSelected.ProcessFarmType or "Banana"
-
-            if k == "Banana" then
-                if GetPlayerInventoryCount("Banana") < 60 then HarvestSingleCrop("Banana", 60, check) end
-                if not check() then break end
-                ProcessBananaAtStation(check)
-                if not check() then break end
-                SellAtEconomyMarket(check)
-
-            elseif k == "Sandwich" then
-                if GetPlayerInventoryCount("Bread") < 60 then HarvestSingleCrop("Bread", 60, check) end
-                if not check() then break end
-                if GetPlayerInventoryCount("Catchup") < 60 then HarvestSingleCrop("Catchup", 60, check) end
-                if not check() then break end
-                if GetPlayerInventoryCount("Pig") < 60 then HarvestSingleCrop("Pig", 60, check) end
-                if not check() then break end
-                if GetPlayerInventoryCount("Bread") < 3 or GetPlayerInventoryCount("Catchup") < 2 or GetPlayerInventoryCount("Pig") < 2 then
-                    task.wait(1)
-                    continue
-                end
-                CraftFoodAtStation("Sandwish", check)
-                if not check() then break end
-                SellAtEconomyMarket(check)
-
-            elseif k == "Mango" then
-                if GetPlayerInventoryCount("Mango") < 60 then HarvestSingleCrop("Mango", 60, check) end
-                if not check() then break end
-                if GetPlayerInventoryCount("Rice") < 60 then HarvestSingleCrop("Rice", 60, check) end
-                if not check() then break end
-                if GetPlayerInventoryCount("Mango") < 2 or GetPlayerInventoryCount("Rice") < 3 then
-                    task.wait(1)
-                    continue
-                end
-                CraftFoodAtStation("MangoRice", check)
-                if not check() then break end
-                SellAtEconomyMarket(check)
-
-            elseif k == "RiceKapaoMoo" then
-                if GetPlayerInventoryCount("Rice") < 60 then HarvestSingleCrop("Rice", 60, check) end
-                if not check() then break end
-                if GetPlayerInventoryCount("Pig") < 60 then HarvestSingleCrop("Pig", 60, check) end
-                if not check() then break end
-                if GetPlayerInventoryCount("Rice") < 3 or GetPlayerInventoryCount("Pig") < 2 then
-                    task.wait(1)
-                    continue
-                end
-                CraftFoodAtStation("RiceKapaoMoo", check)
-                if not check() then break end
-                SellAtEconomyMarket(check)
-
-            elseif k == "KangSom" then
-                if GetPlayerInventoryCount("Tomato") < 60 then HarvestSingleCrop("Tomato", 60, check) end
-                if not check() then break end
-                if GetPlayerInventoryCount("Crab") < 60 then HarvestSingleCrop("Crab", 60, check) end
-                if not check() then break end
-                if GetPlayerInventoryCount("Tomato") < 2 or GetPlayerInventoryCount("Crab") < 2 then
-                    task.wait(1)
-                    continue
-                end
-                CraftFoodAtStation("KangSom", check)
-                if not check() then break end
-                SellAtEconomyMarket(check)
-            end
-
+            ProcessCycle(MarvenSelected.ProcessFarmType or "Banana", check)
             task.wait(0.5)
         end
     end)
@@ -3237,6 +3289,37 @@ local function RunMineFarm()
             if not check() then break end
             DepositAllToVault(check)
             task.wait(1.0)
+        end
+    end)
+end
+
+RunMarketFarm = function()
+    if not MarvenState.AutoMarketFarm then return end
+    StopAllFarms("AutoMarketFarm")
+    local check = StartSession("AutoMarketFarm")
+    task.spawn(function()
+        local first = true
+        while check() do
+            if first then WarpToTownAndSpawnCar() first = false end
+            if not check() then break end
+
+            -- เลือกอาหารที่ราคาสูงสุด ณ ตอนนี้ (เช็คใหม่ทุกรอบ ราคาเปลี่ยนก็สลับให้เอง)
+            local k = PickBestFood()
+            if not k then
+                -- ยังไม่มีข้อมูลราคา: รอรับจากเซิร์ฟเวอร์ (ยิง Request ทุก 3 วิ) สูงสุด ~9 วิ
+                for _ = 1, 9 do
+                    if not check() then break end
+                    task.wait(1)
+                    k = PickBestFood()
+                    if k then break end
+                end
+                -- ยังไม่มีอยู่ดี ใช้ชนิดที่เลือกไว้ในแท็บฟาร์มไปก่อน
+                k = k or MarvenSelected.ProcessFarmType or "Banana"
+            end
+            if not check() then break end
+
+            ProcessCycle(k, check)
+            task.wait(0.5)
         end
     end)
 end
@@ -3364,6 +3447,7 @@ UnloadSection:Button({
         MarvenState.AutoFarmItem = false
         MarvenState.AutoProcessFarm = false
         MarvenState.AutoMineFarm = false
+        MarvenState.AutoMarketFarm = false
         MarvenState.AutoFish = false
         StopAllFarms(nil)
         pcall(StopAutoFishing)
