@@ -1221,9 +1221,22 @@ local function SmoothRoute(r, spacing)
     return r
 end
 
--- ความเร่ง/ความหน่วงของรถตอนวิ่งอัตโนมัติ (studs/s^2) ปรับได้
+-- ความเร่งตอนออกตัว (studs/s^2) ปรับได้
 DriveAccel = 70
-DriveBrake = 140
+
+-- ล็อกเกียร์ที่ตัวเลขนี้ตลอดการขับอัตโนมัติ
+DriveLockGear = 5
+
+-- หา Chassis object ของรถคันนี้ (instance ที่มี Car/Wheels/Gear)
+function FindChassisObject(car)
+    if type(getgc) ~= "function" then return nil end
+    for _, t in ipairs(getgc(true)) do
+        if type(t) == "table" and rawget(t, "Car") == car and rawget(t, "Wheels") and rawget(t, "Gear") ~= nil then
+            return t
+        end
+    end
+    return nil
+end
 
 DriveCarTo = function(dest, check)
     local char = LocalPlayer.Character
@@ -1249,6 +1262,7 @@ DriveCarTo = function(dest, check)
     local prevMouseBehavior = UserInputService.MouseBehavior
     local prevMouseIcon = UserInputService.MouseIconEnabled
     local savedCanCollide = {}
+    local lockedChassis = nil
 
     local function SetTempNoClip(enabled)
         if not isVehicleNoclipEnabled and enabled then return end
@@ -1275,6 +1289,14 @@ DriveCarTo = function(dest, check)
     local function CleanupDrive()
         isRoadDriving = false
         SetTempNoClip(false)
+        -- คืนเกียร์ให้เกมคำนวณเอง + หยุดรถ (กันรถไหลต่อด้วยความเร็วที่ป้อนไว้)
+        pcall(function()
+            if lockedChassis then rawset(lockedChassis, 'UpdateGear', nil) lockedChassis = nil end
+            if car and car.PrimaryPart then
+                car.PrimaryPart.AssemblyLinearVelocity = Vector3.zero
+                car.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
+            end
+        end)
         pcall(function()
             UserInputService.MouseBehavior = prevMouseBehavior
             UserInputService.MouseIconEnabled = prevMouseIcon
@@ -1542,7 +1564,13 @@ DriveCarTo = function(dest, check)
     local smoothY = startPivot.Position.Y
     local arrived = false
     local curSpeed = 0
-    local endFlat = Vector3.new(dest.X, 0, dest.Z)
+    pcall(function()
+        lockedChassis = FindChassisObject(car)
+        if lockedChassis then
+            lockedChassis.Gear = DriveLockGear
+            rawset(lockedChassis, 'UpdateGear', function(self) self.Gear = DriveLockGear end)
+        end
+    end)
 
     pcall(function()
         UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
@@ -1570,25 +1598,11 @@ DriveCarTo = function(dest, check)
 
             local maxSpeed = math.clamp(tonumber(VehicleDriveSpeed) or 150, 10, 280)
 
-            -- ความเร็วเป้าหมาย: ชะลอเมื่อเข้าโค้ง และเบรกก่อนถึงปลายทาง
-            local targetSpeed = maxSpeed
-            do
-                local wpNow = route[math.min(currentIdx, #route)]
-                local wpFar = route[math.min(currentIdx + 8, #route)]
-                local d1 = Vector3.new(wpNow.X - flatPos.X, 0, wpNow.Z - flatPos.Z)
-                local d2 = Vector3.new(wpFar.X - wpNow.X, 0, wpFar.Z - wpNow.Z)
-                if d1.Magnitude > 0.1 and d2.Magnitude > 0.1 then
-                    local turn = math.acos(math.clamp(d1.Unit:Dot(d2.Unit), -1, 1))
-                    targetSpeed = maxSpeed * (1 - math.clamp(turn / math.rad(70), 0, 1) * 0.55)
-                end
-                local toEnd = (endFlat - flatPos).Magnitude
-                local vBrake = math.sqrt(2 * DriveBrake * math.max(toEnd - 4, 0)) + 6
-                targetSpeed = math.min(targetSpeed, vBrake)
-            end
-            if curSpeed < targetSpeed then
-                curSpeed = math.min(targetSpeed, curSpeed + DriveAccel * dt)
+            -- เร่งขึ้นถึงความเร็วที่ตั้งแล้วคงที่ (ไม่ชะลอโค้ง ไม่เบรกท้ายทาง)
+            if curSpeed < maxSpeed then
+                curSpeed = math.min(maxSpeed, curSpeed + DriveAccel * dt)
             else
-                curSpeed = math.max(targetSpeed, curSpeed - DriveBrake * dt)
+                curSpeed = maxSpeed
             end
 
             local prevFlat = flatPos
