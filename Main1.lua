@@ -1221,6 +1221,265 @@ local function SmoothRoute(r, spacing)
     return r
 end
 
+-- =====================================
+-- DRIVE FX: ล้อหมุนตามระยะ / เข็มความเร็ว / เกียร์ 1-5
+-- (ใช้ global table เพื่อไม่กิน local slot ของ chunk หลัก)
+-- =====================================
+DriveFx = {}
+DriveFx.MAX_GEAR = 5
+DriveFx.HUD_MAX_SPEED = 300
+DriveFx.ACCEL = 70      -- studs/s^2 ตอนเร่ง
+DriveFx.BRAKE = 140     -- studs/s^2 ตอนเบรก
+-- ชื่อชิ้นส่วนที่ถือว่าเป็นล้อ (ตัวพิมพ์เล็ก) เพิ่มได้ถ้ารถในเกมตั้งชื่ออื่น
+DriveFx.WHEEL_HINTS = {"wheel", "tire", "tyre", "ล้อ"}
+DriveFx.WHEEL_SKIP = {"brake", "steer", "arch", "well", "cover", "fender", "guard"}
+
+local function nameHas(name, list)
+    for _, k in ipairs(list) do
+        if name:find(k, 1, true) then return true end
+    end
+    return false
+end
+
+-- ---------- ล้อ ----------
+function DriveFx.CollectWheels(car)
+    local wheels = {}
+    local ok = pcall(function()
+        local pivot = car:GetPivot()
+        local jointOf = {}
+        for _, j in ipairs(car:GetDescendants()) do
+            if (j:IsA("Motor6D") or j:IsA("Weld")) and j.Part1 then
+                jointOf[j.Part1] = j
+            end
+        end
+        for _, p in ipairs(car:GetDescendants()) do
+            if p:IsA("BasePart") then
+                local n = p.Name:lower()
+                if nameHas(n, DriveFx.WHEEL_HINTS) and not nameHas(n, DriveFx.WHEEL_SKIP) then
+                    -- แกนล้อ = มิติที่สั้นที่สุด, รัศมี = ครึ่งหนึ่งของมิติที่ใหญ่กว่าในอีกสองมิติ
+                    local sz = p.Size
+                    local dims = {{sz.X, Vector3.xAxis}, {sz.Y, Vector3.yAxis}, {sz.Z, Vector3.zAxis}}
+                    table.sort(dims, function(a, b) return a[1] < b[1] end)
+                    local axis = dims[1][2]
+                    local radius = math.max(dims[2][1], dims[3][1]) / 2
+                    -- แกนต้องชี้ไปทางซ้าย-ขวาของรถ ไม่งั้นถือว่าจับผิดชิ้น
+                    local aCar = pivot:VectorToObjectSpace(p.CFrame:VectorToWorldSpace(axis))
+                    if radius >= 0.3 and radius <= 8 and math.abs(aCar.X) >= 0.5 then
+                        local w = {
+                            part = p, axis = axis, radius = radius,
+                            sign = (aCar.X < 0) and 1 or -1,
+                            angle = 0,
+                        }
+                        local j = jointOf[p]
+                        if j then
+                            w.joint = j
+                            w.c1 = j.C1
+                        else
+                            w.rel = pivot:ToObjectSpace(p.CFrame)
+                        end
+                        wheels[#wheels + 1] = w
+                    end
+                end
+            end
+        end
+    end)
+    if not ok then return {} end
+    return wheels
+end
+
+function DriveFx.SpinWheels(wheels, carCF, dist)
+    if not wheels or dist <= 0 then return end
+    for _, w in ipairs(wheels) do
+        if w.part and w.part.Parent then
+            w.angle = (w.angle + dist / w.radius) % (math.pi * 2)
+            local th = w.angle * w.sign
+            if w.joint then
+                -- ชิ้นล้อเป็น Part1 ของข้อต่อ: หมุนรอบจุดศูนย์กลางผ่าน C1
+                w.joint.C1 = CFrame.new(w.c1.Position) * CFrame.fromAxisAngle(w.axis, -th) * w.c1.Rotation
+            else
+                w.part.CFrame = carCF * w.rel * CFrame.fromAxisAngle(w.axis, th)
+            end
+        end
+    end
+end
+
+function DriveFx.RestoreWheels(wheels, car)
+    if not wheels then return end
+    pcall(function()
+        local carCF = car and car.Parent and car:GetPivot()
+        for _, w in ipairs(wheels) do
+            if w.part and w.part.Parent then
+                if w.joint then
+                    w.joint.C1 = w.c1
+                elseif carCF then
+                    w.part.CFrame = carCF * w.rel
+                end
+            end
+        end
+    end)
+end
+
+-- ---------- เกียร์ ----------
+-- เกียร์ 1-5 แบ่งตามสัดส่วนความเร็วสูงสุดที่ตั้งไว้, 0 = N (จอด)
+function DriveFx.GearFor(speed, maxSpeed, prev)
+    if speed < 1 then return 0 end
+    local share = speed / math.max(maxSpeed, 1)
+    local g = math.clamp(math.ceil(share * DriveFx.MAX_GEAR), 1, DriveFx.MAX_GEAR)
+    -- กันเกียร์เด้งไปมาตรงรอยต่อ (ลดเกียร์ต้องต่ำกว่าเส้นแบ่ง 4%)
+    if prev and prev > 0 and g < prev and share > (prev - 1) / DriveFx.MAX_GEAR - 0.04 then
+        g = prev
+    end
+    return g
+end
+
+-- ---------- HUD เข็มความเร็ว ----------
+function DriveFx.DestroyHud()
+    local h = DriveFx.Hud
+    DriveFx.Hud = nil
+    if h and h.Gui then pcall(function() h.Gui:Destroy() end) end
+    pcall(function()
+        for _, g in ipairs(PlayerGui:GetChildren()) do
+            if g.Name == "MarvenDriveHud" then g:Destroy() end
+        end
+    end)
+end
+
+function DriveFx.CreateHud()
+    DriveFx.DestroyHud()
+    local ok, h = pcall(function()
+        local SIZE, MAXS = 200, DriveFx.HUD_MAX_SPEED
+        local gui = Instance.new("ScreenGui")
+        gui.Name = "MarvenDriveHud"
+        gui.ResetOnSpawn = false
+        gui.IgnoreGuiInset = true
+        gui.DisplayOrder = 50
+
+        local root = Instance.new("Frame")
+        root.AnchorPoint = Vector2.new(1, 1)
+        root.Position = UDim2.new(1, -24, 1, -24)
+        root.Size = UDim2.fromOffset(SIZE, SIZE)
+        root.BackgroundColor3 = Color3.fromRGB(14, 16, 22)
+        root.BackgroundTransparency = 0.12
+        root.BorderSizePixel = 0
+        root.Parent = gui
+        local rc = Instance.new("UICorner"); rc.CornerRadius = UDim.new(1, 0); rc.Parent = root
+        local rs = Instance.new("UIStroke"); rs.Color = Color3.fromRGB(70, 80, 100); rs.Thickness = 2; rs.Parent = root
+
+        -- ตัวเลขสเกล 0..300 (เข็มกวาด -135° ถึง +135°)
+        for v = 0, MAXS, 50 do
+            local a = math.rad(-135 + 270 * v / MAXS)
+            local r = SIZE / 2 - 18
+            local t = Instance.new("TextLabel")
+            t.AnchorPoint = Vector2.new(0.5, 0.5)
+            t.Size = UDim2.fromOffset(28, 14)
+            t.Position = UDim2.fromOffset(SIZE / 2 + math.sin(a) * r, SIZE / 2 - math.cos(a) * r)
+            t.BackgroundTransparency = 1
+            t.Font = Enum.Font.GothamBold
+            t.TextSize = 10
+            t.Text = tostring(v)
+            t.TextColor3 = (v >= 250) and Color3.fromRGB(255, 90, 90) or Color3.fromRGB(190, 200, 215)
+            t.Parent = root
+        end
+
+        -- เข็ม: กรอบเต็มวงหมุนรอบจุดกึ่งกลาง ข้างในมีแท่งเข็มครึ่งบน
+        local holder = Instance.new("Frame")
+        holder.AnchorPoint = Vector2.new(0.5, 0.5)
+        holder.Position = UDim2.fromScale(0.5, 0.5)
+        holder.Size = UDim2.fromOffset(SIZE, SIZE)
+        holder.BackgroundTransparency = 1
+        holder.Rotation = -135
+        holder.Parent = root
+        local needle = Instance.new("Frame")
+        needle.Size = UDim2.fromOffset(4, SIZE / 2 - 34)
+        needle.Position = UDim2.fromOffset(SIZE / 2 - 2, 34)
+        needle.BackgroundColor3 = Color3.fromRGB(255, 70, 70)
+        needle.BorderSizePixel = 0
+        needle.Parent = holder
+        local nc = Instance.new("UICorner"); nc.CornerRadius = UDim.new(1, 0); nc.Parent = needle
+
+        local hub = Instance.new("Frame")
+        hub.AnchorPoint = Vector2.new(0.5, 0.5)
+        hub.Position = UDim2.fromScale(0.5, 0.5)
+        hub.Size = UDim2.fromOffset(14, 14)
+        hub.BackgroundColor3 = Color3.fromRGB(230, 235, 245)
+        hub.BorderSizePixel = 0
+        hub.ZIndex = 3
+        hub.Parent = root
+        local hc = Instance.new("UICorner"); hc.CornerRadius = UDim.new(1, 0); hc.Parent = hub
+
+        local speedLbl = Instance.new("TextLabel")
+        speedLbl.AnchorPoint = Vector2.new(0.5, 0)
+        speedLbl.Position = UDim2.fromOffset(SIZE / 2, SIZE * 0.60)
+        speedLbl.Size = UDim2.fromOffset(100, 26)
+        speedLbl.BackgroundTransparency = 1
+        speedLbl.Font = Enum.Font.GothamBlack
+        speedLbl.TextSize = 24
+        speedLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+        speedLbl.Text = "0"
+        speedLbl.Parent = root
+
+        local unitLbl = Instance.new("TextLabel")
+        unitLbl.AnchorPoint = Vector2.new(0.5, 0)
+        unitLbl.Position = UDim2.fromOffset(SIZE / 2, SIZE * 0.60 + 24)
+        unitLbl.Size = UDim2.fromOffset(100, 12)
+        unitLbl.BackgroundTransparency = 1
+        unitLbl.Font = Enum.Font.Gotham
+        unitLbl.TextSize = 10
+        unitLbl.TextColor3 = Color3.fromRGB(150, 160, 180)
+        unitLbl.Text = "studs/s"
+        unitLbl.Parent = root
+
+        local gearLbl = Instance.new("TextLabel")
+        gearLbl.AnchorPoint = Vector2.new(0.5, 0)
+        gearLbl.Position = UDim2.fromOffset(SIZE / 2, SIZE * 0.60 + 40)
+        gearLbl.Size = UDim2.fromOffset(100, 18)
+        gearLbl.BackgroundTransparency = 1
+        gearLbl.Font = Enum.Font.GothamBold
+        gearLbl.TextSize = 14
+        gearLbl.TextColor3 = Color3.fromRGB(120, 220, 255)
+        gearLbl.Text = "เกียร์ N"
+        gearLbl.Parent = root
+
+        gui.Parent = PlayerGui
+        return {Gui = gui, Holder = holder, Speed = speedLbl, Gear = gearLbl, speed = 0}
+    end)
+    if ok then DriveFx.Hud = h end
+end
+
+function DriveFx.SetHud(h, speed, gear)
+    if not h or not h.Gui or not h.Gui.Parent then return end
+    h.speed = speed
+    local frac = math.clamp(speed / DriveFx.HUD_MAX_SPEED, 0, 1)
+    h.Holder.Rotation = -135 + 270 * frac
+    h.Speed.Text = tostring(math.floor(speed + 0.5))
+    if gear and gear > 0 then
+        h.Gear.Text = "เกียร์ " .. gear .. "/" .. DriveFx.MAX_GEAR
+    else
+        h.Gear.Text = "เกียร์ N"
+    end
+end
+
+function DriveFx.UpdateHud(speed, gear)
+    pcall(DriveFx.SetHud, DriveFx.Hud, speed, gear)
+end
+
+-- จบการขับ: เข็มตกลงศูนย์ แล้วค่อยลบ HUD
+function DriveFx.FinishHud()
+    local h = DriveFx.Hud
+    if not h then return end
+    DriveFx.Hud = nil
+    task.spawn(function()
+        pcall(function()
+            local from, t0, dur = h.speed or 0, os.clock(), 0.8
+            while ScriptRunning and h.Gui and h.Gui.Parent and os.clock() - t0 < dur do
+                DriveFx.SetHud(h, from * (1 - (os.clock() - t0) / dur), 0)
+                RunService.Heartbeat:Wait()
+            end
+        end)
+        pcall(function() h.Gui:Destroy() end)
+    end)
+end
+
 DriveCarTo = function(dest, check)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -1245,6 +1504,7 @@ DriveCarTo = function(dest, check)
     local prevMouseBehavior = UserInputService.MouseBehavior
     local prevMouseIcon = UserInputService.MouseIconEnabled
     local savedCanCollide = {}
+    local driveWheels = nil
 
     local function SetTempNoClip(enabled)
         if not isVehicleNoclipEnabled and enabled then return end
@@ -1271,6 +1531,9 @@ DriveCarTo = function(dest, check)
     local function CleanupDrive()
         isRoadDriving = false
         SetTempNoClip(false)
+        DriveFx.RestoreWheels(driveWheels, car)
+        driveWheels = nil
+        DriveFx.FinishHud()
         pcall(function()
             UserInputService.MouseBehavior = prevMouseBehavior
             UserInputService.MouseIconEnabled = prevMouseIcon
@@ -1537,6 +1800,10 @@ DriveCarTo = function(dest, check)
     if flatLook.Magnitude < 0.001 then flatLook = Vector3.new(0, 0, -1) else flatLook = flatLook.Unit end
     local smoothY = startPivot.Position.Y
     local arrived = false
+    local curSpeed, shownGear = 0, 0
+    local endFlat = Vector3.new(dest.X, 0, dest.Z)
+    driveWheels = DriveFx.CollectWheels(car)
+    DriveFx.CreateHud()
 
     pcall(function()
         UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
@@ -1563,7 +1830,30 @@ DriveCarTo = function(dest, check)
             end
 
             local maxSpeed = math.clamp(tonumber(VehicleDriveSpeed) or 150, 10, 280)
-            local step = maxSpeed * dt
+
+            -- ความเร็วเป้าหมาย: ลดลงเมื่อเข้าโค้ง และเบรกก่อนถึงปลายทาง
+            local targetSpeed = maxSpeed
+            do
+                local wpNow = route[math.min(currentIdx, #route)]
+                local wpFar = route[math.min(currentIdx + 8, #route)]
+                local d1 = Vector3.new(wpNow.X - flatPos.X, 0, wpNow.Z - flatPos.Z)
+                local d2 = Vector3.new(wpFar.X - wpNow.X, 0, wpFar.Z - wpNow.Z)
+                if d1.Magnitude > 0.1 and d2.Magnitude > 0.1 then
+                    local turn = math.acos(math.clamp(d1.Unit:Dot(d2.Unit), -1, 1))
+                    targetSpeed = maxSpeed * (1 - math.clamp(turn / math.rad(70), 0, 1) * 0.55)
+                end
+                local toEnd = (endFlat - flatPos).Magnitude
+                local vBrake = math.sqrt(2 * DriveFx.BRAKE * math.max(toEnd - 4, 0)) + 6
+                targetSpeed = math.min(targetSpeed, vBrake)
+            end
+            if curSpeed < targetSpeed then
+                curSpeed = math.min(targetSpeed, curSpeed + DriveFx.ACCEL * dt)
+            else
+                curSpeed = math.max(targetSpeed, curSpeed - DriveFx.BRAKE * dt)
+            end
+
+            local step = curSpeed * dt
+            local moved = 0
 
             while step > 0 and currentIdx <= #route do
                 local wp = route[currentIdx]
@@ -1572,10 +1862,12 @@ DriveCarTo = function(dest, check)
                 if dist <= step then
                     flatPos = Vector3.new(wp.X, 0, wp.Z)
                     step -= dist
+                    moved += dist
                     currentIdx += 1
                 else
                     local dir = seg.Unit
                     flatPos += dir * step
+                    moved += step
 
                     -- เล็งไปข้างหน้า ~30 studs (5 จุด x 6 studs)
                     local aheadIdx = math.min(currentIdx + 5, #route)
@@ -1602,6 +1894,11 @@ DriveCarTo = function(dest, check)
 
             local newPos = Vector3.new(flatPos.X, smoothY, flatPos.Z)
             car:PivotTo(CFrame.lookAt(newPos, newPos + flatLook))
+
+            -- ล้อหมุนตามระยะที่รถเคลื่อนที่จริง (arc = รัศมี x มุม)
+            DriveFx.SpinWheels(driveWheels, car:GetPivot(), moved)
+            shownGear = DriveFx.GearFor(curSpeed, maxSpeed, shownGear)
+            DriveFx.UpdateHud(curSpeed, shownGear)
 
             pcall(function()
                 if car.PrimaryPart then
@@ -3307,6 +3604,7 @@ UnloadSection:Button({
             if _G._MarvenHungerConn then _G._MarvenHungerConn:Disconnect() _G._MarvenHungerConn = nil end
             if vehiclePlatformPart then vehiclePlatformPart:Destroy() vehiclePlatformPart = nil end
             if fishingPlatform then fishingPlatform:Destroy() fishingPlatform = nil end
+            if DriveFx and DriveFx.DestroyHud then DriveFx.DestroyHud() end
         end)
         pcall(function() Window:Destroy() end)
     end
