@@ -1223,6 +1223,8 @@ end
 
 -- ความเร่งตอนออกตัว (studs/s^2) ปรับได้
 DriveAccel = 70
+-- ความหน่วงตอนเข้าใกล้จุดหมาย (studs/s^2) ยิ่งน้อยยิ่งเริ่มลดความเร็วจากไกล
+DriveBrake = 140
 
 -- ล็อกเกียร์ที่ตัวเลขนี้ตลอดการขับอัตโนมัติ
 DriveLockGear = 5
@@ -1263,6 +1265,8 @@ DriveCarTo = function(dest, check)
     local prevMouseIcon = UserInputService.MouseIconEnabled
     local savedCanCollide = {}
     local lockedChassis = nil
+    DriveSettleToken = (DriveSettleToken or 0) + 1
+    local settleToken = DriveSettleToken
 
     local function SetTempNoClip(enabled)
         if not isVehicleNoclipEnabled and enabled then return end
@@ -1295,6 +1299,20 @@ DriveCarTo = function(dest, check)
             if car and car.PrimaryPart then
                 car.PrimaryPart.AssemblyLinearVelocity = Vector3.zero
                 car.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
+            end
+        end)
+        -- ถึงจุดหมายแล้วให้รถนิ่งสนิท: ล็อกความเร็วเป็นศูนย์ต่อ ~1.5 วิ (กันไหล/กระดอนหลังคืน collision)
+        -- เลิกทันทีถ้ามีการสั่งขับรอบใหม่ (token เปลี่ยน)
+        task.spawn(function()
+            local t0 = os.clock()
+            while ScriptRunning and DriveSettleToken == settleToken and os.clock() - t0 < 1.5 do
+                pcall(function()
+                    if car and car.Parent and car.PrimaryPart then
+                        car.PrimaryPart.AssemblyLinearVelocity = Vector3.zero
+                        car.PrimaryPart.AssemblyAngularVelocity = Vector3.zero
+                    end
+                end)
+                RunService.Heartbeat:Wait()
             end
         end)
         pcall(function()
@@ -1564,6 +1582,7 @@ DriveCarTo = function(dest, check)
     local smoothY = startPivot.Position.Y
     local arrived = false
     local curSpeed = 0
+    local endFlat = Vector3.new(dest.X, 0, dest.Z)
     pcall(function()
         lockedChassis = FindChassisObject(car)
         if lockedChassis then
@@ -1598,11 +1617,13 @@ DriveCarTo = function(dest, check)
 
             local maxSpeed = math.clamp(tonumber(VehicleDriveSpeed) or 150, 10, 280)
 
-            -- เร่งขึ้นถึงความเร็วที่ตั้งแล้วคงที่ (ไม่ชะลอโค้ง ไม่เบรกท้ายทาง)
-            if curSpeed < maxSpeed then
-                curSpeed = math.min(maxSpeed, curSpeed + DriveAccel * dt)
+            -- คงความเร็วที่ตั้งไว้ แล้วลดความเร็วเมื่อใกล้จุดหมาย (ไม่ชะลอตอนเข้าโค้ง)
+            local toEnd = (endFlat - flatPos).Magnitude
+            local targetSpeed = math.min(maxSpeed, math.sqrt(2 * DriveBrake * math.max(toEnd - 4, 0)) + 6)
+            if curSpeed < targetSpeed then
+                curSpeed = math.min(targetSpeed, curSpeed + DriveAccel * dt)
             else
-                curSpeed = maxSpeed
+                curSpeed = math.max(targetSpeed, curSpeed - DriveBrake * dt)
             end
 
             local prevFlat = flatPos
