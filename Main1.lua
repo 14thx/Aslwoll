@@ -3014,7 +3014,7 @@ task.spawn(function()
 end)
 
 local MarvenState = {
-    AutoEat = true, AutoFarmItem = false, AutoProcessFarm = false, AutoMineFarm = false, AutoMarketFarm = false, AutoFish = false, InfiniteStamina = true, InfiniteHunger = false
+    AutoEat = true, AutoFarmItem = false, AutoProcessFarm = false, AutoMineFarm = false, AutoMarketFarm = false, AutoTrunkFarm = false, AutoTrunkCraft = false, AutoFish = false, InfiniteStamina = true, InfiniteHunger = false
 }
 local MarvenSelected = { NormalFarmType = "Bread", ProcessFarmType = "Banana", MineFarmType = "Rock" }
 local MarvenSession = { AutoFarmItem = 0, AutoProcessFarm = 0, AutoMineFarm = 0 }
@@ -3031,6 +3031,8 @@ local function StopAllFarms(exceptKey)
     if exceptKey ~= "AutoProcessFarm" then MarvenState.AutoProcessFarm = false; StopSession("AutoProcessFarm") end
     if exceptKey ~= "AutoMineFarm" then MarvenState.AutoMineFarm = false; StopSession("AutoMineFarm") end
     if exceptKey ~= "AutoMarketFarm" then MarvenState.AutoMarketFarm = false; StopSession("AutoMarketFarm") end
+    if exceptKey ~= "AutoTrunkFarm" then MarvenState.AutoTrunkFarm = false; StopSession("AutoTrunkFarm") end
+    if exceptKey ~= "AutoTrunkCraft" then MarvenState.AutoTrunkCraft = false; StopSession("AutoTrunkCraft") end
     if exceptKey ~= "AutoFish" and MarvenState.AutoFish then MarvenState.AutoFish = false; pcall(StopAutoFishing) end
 end
 
@@ -3114,6 +3116,217 @@ PickBestFood = function()
     return ranked[1].key, ranked[1].price, ranked
 end
 
+-- =====================================
+-- ท้ายรถ (Car Storage): ฝาก/ดึงของฟาร์มผ่านรีโมต _storage_tx ของเกม
+-- =====================================
+-- ชื่อรถของเราใน Player.Cars (ใช้เป็นพารามิเตอร์ของ _storage_tx)
+TrunkCarName = function()
+    local cars = LocalPlayer:FindFirstChild("Cars")
+    if not cars then return nil end
+    local car = GetPlayerVehicle()
+    if car then
+        local cands = {car.Name, car:GetAttribute("CarName"), car:GetAttribute("Name"),
+                       car:GetAttribute("Model"), car:GetAttribute("CarId"), car:GetAttribute("Id")}
+        for _, n in ipairs(cands) do
+            if type(n) == "string" and cars:FindFirstChild(n) then return n end
+        end
+        for _, c in ipairs(cars:GetChildren()) do
+            if car.Name:find(c.Name, 1, true) then return c.Name end
+        end
+    end
+    local kids = cars:GetChildren()
+    for _, c in ipairs(kids) do
+        if c:GetAttribute("Spawned") or c:GetAttribute("Active") or c:GetAttribute("Selected") then return c.Name end
+    end
+    return kids[1] and kids[1].Name or nil
+end
+
+TrunkStorage = function()
+    local cars = LocalPlayer:FindFirstChild("Cars")
+    local name = TrunkCarName()
+    local c = cars and name and cars:FindFirstChild(name)
+    return c and c:FindFirstChild("Storage"), name
+end
+
+TrunkCount = function(item)
+    local st = TrunkStorage()
+    local v = st and st:GetAttribute(item)
+    return typeof(v) == "number" and v or 0
+end
+
+-- ย้ายของ: mode = "Deposit" (เข้าท้ายรถ) | "Withdraw" (ออกจากท้ายรถ) คืนจำนวนที่ย้ายได้จริง
+-- นับจากค่าท้ายรถที่เปลี่ยน ถ้าท้ายรถเต็ม/กระเป๋าเต็ม จะย้ายได้น้อยกว่าที่ขอ
+TrunkMove = function(mode, item, amount)
+    amount = math.floor(tonumber(amount) or 0)
+    if amount <= 0 then return 0 end
+    local R = GetRemotes()
+    local st, carName = TrunkStorage()
+    if not (R and st and carName) then return 0 end
+    local before = TrunkCount(item)
+    pcall(R.Invoke, "_storage_tx", mode, carName, item, amount)
+    local t0, moved = os.clock(), 0
+    repeat
+        task.wait(0.1)
+        moved = math.abs(TrunkCount(item) - before)
+    until moved >= amount or os.clock() - t0 > 1.5
+    return moved
+end
+
+-- รายการของฟาร์มที่ฝาก/ดึงได้ = พืช/วัตถุดิบที่มีจุดฟาร์มในสคริปต์
+TrunkIsFarmItem = function(name)
+    local d = TYPER_LOCATIONS[name]
+    return name ~= "Economy" and type(d) == "table" and d.Farm ~= nil
+end
+
+TrunkDepositAll = function()
+    local pd = LocalPlayer:FindFirstChild("PlayerData")
+    if not pd then return 0 end
+    local total = 0
+    for name, n in pairs(pd:GetAttributes()) do
+        if typeof(n) == "number" and n > 0 and TrunkIsFarmItem(name) then
+            total += TrunkMove("Deposit", name, n)
+            task.wait(0.15)
+        end
+    end
+    return total
+end
+
+TrunkWithdrawAll = function()
+    local st = TrunkStorage()
+    if not st then return 0 end
+    local total = 0
+    for name, n in pairs(st:GetAttributes()) do
+        if typeof(n) == "number" and n > 0 and TrunkIsFarmItem(name) then
+            total += TrunkMove("Withdraw", name, n)
+            task.wait(0.15)
+        end
+    end
+    return total
+end
+
+-- ฟาร์มเก็บเข้าท้ายรถ (แยกจากฟาร์มอื่น): เก็บพืชที่เลือก → ฝากเข้าท้ายรถ → วนต่อ จนท้ายรถเต็ม
+TrunkSelected = "Bread"
+RunTrunkFarm = function()
+    if not MarvenState.AutoTrunkFarm then return end
+    StopAllFarms("AutoTrunkFarm")
+    local check = StartSession("AutoTrunkFarm")
+    task.spawn(function()
+        local first = true
+        while check() do
+            if first then WarpToTownAndSpawnCar() first = false end
+            if not check() then break end
+            local crop = TrunkSelected or "Bread"
+            if not TYPER_LOCATIONS[crop] then break end
+            HarvestSingleCrop(crop, 60, check)
+            if not check() then break end
+            local have = GetPlayerInventoryCount(crop)
+            if have > 0 then
+                if TrunkMove("Deposit", crop, have) <= 0 then
+                    -- ฝากไม่เข้า (ท้ายรถเต็ม): หยุดฟาร์ม กันวนเปล่า
+                    MarvenState.AutoTrunkFarm = false
+                    StopSession("AutoTrunkFarm")
+                    break
+                end
+            end
+            task.wait(0.5)
+        end
+    end)
+end
+
+-- โหมด 2: เก็บวัตถุดิบเข้าท้ายรถจนเต็ม → ดึงออกมา → คราฟ/แปรรูปจนวัตถุดิบหมด → วนใหม่ (ไม่ขาย)
+-- kind: craft = คราฟที่โต๊ะคราฟ (_crafting) | process = แปรรูปที่สถานี (_process)
+TrunkCraftSelected = "Sandwich"
+TrunkRecipes = {
+    Sandwich     = {kind = "craft",   ing = {"Bread", "Catchup", "Pig"}, min = {Bread = 3, Catchup = 2, Pig = 2}, craft = "Sandwish"},
+    Mango        = {kind = "craft",   ing = {"Mango", "Rice"},           min = {Mango = 2, Rice = 3},             craft = "MangoRice"},
+    RiceKapaoMoo = {kind = "craft",   ing = {"Rice", "Pig"},             min = {Rice = 3, Pig = 2},               craft = "RiceKapaoMoo"},
+    KangSom      = {kind = "craft",   ing = {"Tomato", "Crab"},          min = {Tomato = 2, Crab = 2},            craft = "KangSom"},
+    Banana       = {kind = "process", ing = {"Banana"},                  min = {Banana = 1}},
+    Rock         = {kind = "process", ing = {"Rock"},                    min = {Rock = 2},       cap = 120, ore = "Rock",       minP = 2},
+    Svibranium   = {kind = "process", ing = {"Svibranium"},              min = {Svibranium = 4}, cap = 120, ore = "Svibranium", minP = 4},
+}
+
+TrunkMakeOnce = function(rc, check)
+    if rc.craft then CraftFoodAtStation(rc.craft, check)
+    elseif rc.ore then ProcessOreAtStation(rc.ore, rc.minP, check)
+    else ProcessBananaAtStation(check) end
+end
+
+TrunkBagSum = function(rc)
+    local n = 0
+    for _, item in ipairs(rc.ing) do n += GetPlayerInventoryCount(item) end
+    return n
+end
+
+RunTrunkCraftFarm = function()
+    if not MarvenState.AutoTrunkCraft then return end
+    StopAllFarms("AutoTrunkCraft")
+    local check = StartSession("AutoTrunkCraft")
+    task.spawn(function()
+        local first, halt = true, false
+        while check() and not halt do
+            if first then WarpToTownAndSpawnCar() first = false end
+            if not check() then break end
+            local rc = TrunkRecipes[TrunkCraftSelected or "Sandwich"]
+            if not rc then break end
+            local cap = rc.cap or 60
+
+            -- A) เก็บวัตถุดิบ + ฝากเข้าท้ายรถ วนทุกชนิดจนท้ายรถเต็ม (ฝากแล้วย้ายได้น้อยกว่าที่มี = เต็ม)
+            local full = false
+            while check() and not full do
+                for _, item in ipairs(rc.ing) do
+                    if not check() then break end
+                    HarvestSingleCrop(item, cap, check)
+                    if not check() then break end
+                    local have = GetPlayerInventoryCount(item)
+                    if have > 0 and TrunkMove("Deposit", item, have) < have then
+                        full = true
+                        break
+                    end
+                end
+            end
+            if not check() then break end
+
+            -- B) ดึงวัตถุดิบจากท้ายรถ → คราฟ/แปรรูป วนจนวัตถุดิบไม่พอ
+            local noProgress = 0
+            while check() do
+                for _, item in ipairs(rc.ing) do
+                    local have = GetPlayerInventoryCount(item)
+                    if have < cap then
+                        TrunkMove("Withdraw", item, math.min(cap - have, TrunkCount(item)))
+                    end
+                end
+                if not check() then break end
+                local enough = true
+                for item, need in pairs(rc.min) do
+                    if GetPlayerInventoryCount(item) < need then enough = false end
+                end
+                if not enough then break end
+
+                local before = TrunkBagSum(rc)
+                TrunkMakeOnce(rc, check)
+                if not check() then break end
+                if TrunkBagSum(rc) >= before then noProgress += 1 else noProgress = 0 end
+                if noProgress >= 3 then
+                    -- คราฟ/แปรรูปไม่ใช้วัตถุดิบ 3 รอบติด: หยุดโหมดนี้ กันวนเปล่า
+                    halt = true
+                    MarvenState.AutoTrunkCraft = false
+                    StopSession("AutoTrunkCraft")
+                    break
+                end
+                task.wait(0.5)
+            end
+
+            -- วัตถุดิบที่เหลือในกระเป๋า ฝากกลับท้ายรถ
+            for _, item in ipairs(rc.ing) do
+                local have = GetPlayerInventoryCount(item)
+                if have > 0 then TrunkMove("Deposit", item, have) end
+            end
+            task.wait(0.5)
+        end
+    end)
+end
+
 local MarketTab = Window:Tab({Title = "ฟาร์มตามราคาดี", Icon = "trending-up"})
 local MarketSection = MarketTab:Section({Title = "ราคาอาหารที่ดีที่สุด (อัปเดตอัตโนมัติ)"})
 local MarketPriceDisplay = MarketSection:Paragraph({
@@ -3146,6 +3359,69 @@ MarketSection:Toggle({
         if v then RunMarketFarm() else StopSession("AutoMarketFarm") end
     end
 })
+
+local TrunkTab = Window:Tab({Title = "ท้ายรถ", Icon = "car"})
+local TrunkSection = TrunkTab:Section({Title = "โหมด 1: ฟาร์มเก็บเข้าท้ายรถ"})
+TrunkSection:Dropdown({
+    Title = "เลือกของที่จะเก็บเข้าท้ายรถ",
+    Options = {"ขนมปัง", "ซอสมะเขือเทศ", "หมู", "มะม่วง", "ข้าว", "มะเขือเทศ", "กล้วย", "ปู", "มะพร้าว", "ข้าวโพด", "ไข่ไก่", "นม", "อ้อย"},
+    Default = "ขนมปัง", Flag = "TrunkFarmType",
+    Callback = function(v)
+        local map = {["ขนมปัง"]="Bread", ["ซอสมะเขือเทศ"]="Catchup", ["หมู"]="Pig", ["มะม่วง"]="Mango", ["ข้าว"]="Rice", ["มะเขือเทศ"]="Tomato", ["กล้วย"]="Banana", ["ปู"]="Crab", ["มะพร้าว"]="Coconut", ["ข้าวโพด"]="Corn", ["ไข่ไก่"]="Egg", ["นม"]="Milk", ["อ้อย"]="Sugarcane"}
+        TrunkSelected = map[v] or "Bread"
+    end
+})
+TrunkSection:Toggle({
+    Title = "ออโต้ ฟาร์มเก็บเข้าท้ายรถ", Default = false, Flag = "AutoTrunkFarm",
+    Callback = function(v)
+        MarvenState.AutoTrunkFarm = v
+        if v then RunTrunkFarm() else StopSession("AutoTrunkFarm") end
+    end
+})
+local TrunkCraftSection = TrunkTab:Section({Title = "โหมด 2: เก็บ + ดึงจากท้ายรถมาคราฟ/แปรรูป"})
+TrunkCraftSection:Dropdown({
+    Title = "เลือกของที่จะทำ",
+    Options = {"[คราฟ] แซนวิช", "[คราฟ] ข้าวมันมะม่วง", "[คราฟ] ข้าวกะเพราหมู", "[คราฟ] แกงส้ม", "[แปรรูป] กล้วยแพ็ค", "[แปรรูป] หิน (Rock)", "[แปรรูป] Svibranium"},
+    Default = "[คราฟ] แซนวิช", Flag = "TrunkCraftType",
+    Callback = function(v)
+        local map = {["[คราฟ] แซนวิช"]="Sandwich", ["[คราฟ] ข้าวมันมะม่วง"]="Mango", ["[คราฟ] ข้าวกะเพราหมู"]="RiceKapaoMoo", ["[คราฟ] แกงส้ม"]="KangSom", ["[แปรรูป] กล้วยแพ็ค"]="Banana", ["[แปรรูป] หิน (Rock)"]="Rock", ["[แปรรูป] Svibranium"]="Svibranium"}
+        TrunkCraftSelected = map[v] or "Sandwich"
+    end
+})
+TrunkCraftSection:Toggle({
+    Title = "ออโต้ เก็บจนเต็ม → ดึงท้ายรถ → คราฟ/แปรรูป", Default = false, Flag = "AutoTrunkCraft",
+    Callback = function(v)
+        MarvenState.AutoTrunkCraft = v
+        if v then RunTrunkCraftFarm() else StopSession("AutoTrunkCraft") end
+    end
+})
+
+local TrunkToolSection = TrunkTab:Section({Title = "เครื่องมือท้ายรถ"})
+TrunkToolSection:Button({
+    Title = "ฝากของฟาร์มทั้งหมดเข้าท้ายรถ",
+    Callback = function() task.spawn(TrunkDepositAll) end
+})
+TrunkToolSection:Button({
+    Title = "ดึงของฟาร์มทั้งหมดออกจากท้ายรถ",
+    Callback = function() task.spawn(TrunkWithdrawAll) end
+})
+local TrunkStatus = TrunkToolSection:Paragraph({Title = "ของในท้ายรถ", Content = "กำลังโหลด..."})
+task.spawn(function()
+    while ScriptRunning do
+        task.wait(2)
+        if not ScriptRunning then break end
+        pcall(function()
+            local st = TrunkStorage()
+            local text = ""
+            if st then
+                for name, n in pairs(st:GetAttributes()) do
+                    if typeof(n) == "number" and n > 0 then text = text .. name .. " x" .. n .. "\n" end
+                end
+            end
+            TrunkStatus:Set(text ~= "" and text or "ท้ายรถว่าง (หรือยังหาท้ายรถไม่เจอ)")
+        end)
+    end
+end)
 
 local fc, lu = 0, os.clock()
 local statsConn = nil
