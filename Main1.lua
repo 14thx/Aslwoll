@@ -3299,6 +3299,53 @@ TrunkRecipes = {
 TrunkCropRecipe = {Bread = "Sandwich", Catchup = "Sandwich", Pig = "Sandwich", Mango = "Mango", Rice = "Mango",
                    Tomato = "KangSom", Crab = "KangSom", Banana = "Banana", Rock = "Rock", Svibranium = "Svibranium"}
 
+-- เก็บของใส่ท้ายรถที่เสาฟาร์ม: กดปุ่ม "เก็บของใส่รถ" (Systems.Farm.<พืช>.Prompt.Farm.Prompt.Storage.Prompt)
+-- แบบเดียวกับที่ผู้เล่นกดเองตอนยืนตรงเสา ไม่ต้องเบิกรถ/ขับไปไหน คืนจำนวนที่เข้าท้ายรถจริง
+-- ถ้าไม่เจอปุ่ม หรือกดแล้วของไม่ลด จะใช้รีโมต _storage_tx แทน
+TrunkDebugged = {}
+TrunkStoreAtFarm = function(item, want)
+    local before = GetPlayerInventoryCount(item)
+    if before <= 0 then return 0 end
+    local pr = ResolveCropPrompt(item, "Storage")
+    if pr then
+        local char = LocalPlayer.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum and hum.Sit then
+            hum.Sit = false
+            pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+            task.wait(0.15)
+        end
+        -- ต้องยืนใกล้เสา (ปกติเก็บเสร็จก็ยืนอยู่แล้ว) ถ้าอยู่ไกลให้เดินกลับมายืนข้างเสา
+        local pos = PromptWorldPos(pr)
+        if root and pos and (root.Position - pos).Magnitude > 12 then
+            root.CFrame = CFrame.new(pos + Vector3.new(0, 3, 0))
+            task.wait(0.2)
+        end
+        for _ = 1, 3 do
+            pcall(function()
+                pr.Enabled = true
+                pr.RequiresLineOfSight = false
+                pr.MaxActivationDistance = math.max(pr.MaxActivationDistance, 20)
+                if fireproximityprompt then fireproximityprompt(pr) end
+                pr:InputHoldBegin()
+                task.wait(pr.HoldDuration > 0 and (pr.HoldDuration + 0.05) or 0.15)
+                pr:InputHoldEnd()
+            end)
+            local t0 = os.clock()
+            repeat task.wait(0.1) until GetPlayerInventoryCount(item) < before or os.clock() - t0 > 1.5
+            if GetPlayerInventoryCount(item) < before then break end
+        end
+        local moved = before - GetPlayerInventoryCount(item)
+        if moved > 0 then return moved end
+    elseif not TrunkDebugged[item] then
+        -- ไม่เจอปุ่มของพืชนี้: พิมพ์ prompt ทั้งหมดของพืชนี้ไว้ดู (ดูใน Console)
+        TrunkDebugged[item] = true
+        pcall(DebugFarmPrompts, item)
+    end
+    return TrunkMove("Deposit", item, want or before)
+end
+
 TrunkMakeOnce = function(rc, check)
     if rc.craft then CraftFoodAtStation(rc.craft, check)
     elseif rc.ore then ProcessOreAtStation(rc.ore, rc.minP, check)
@@ -3322,7 +3369,7 @@ TrunkMakeRound = function(rc, check)
             HarvestSingleCrop(item, cap, check)
             if not check() then break end
             local have = GetPlayerInventoryCount(item)
-            if have > 0 and TrunkMove("Deposit", item, have) < have then
+            if have > 0 and TrunkStoreAtFarm(item, have) < have then
                 full = true
                 break
             end
@@ -3399,7 +3446,7 @@ RunTrunkFarm = function()
                         if mode == "vault" then
                             DepositAllToVault(check)
                         else
-                            local moved = TrunkMove("Deposit", item, have)
+                            local moved = TrunkStoreAtFarm(item, have)
                             if mode == "store" then
                                 if moved <= 0 then halt = true break end -- ท้ายรถเต็ม: หยุด กันวนเปล่า
                             elseif moved < have then
